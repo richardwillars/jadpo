@@ -60,3 +60,7 @@ The `SYN_*` catalogue family is fully authored. Its public copy now describes
 the concrete grammar rule and a usable next step; the general parser expectation
 also carries the bounded `expected` and `found` facts supplied by the parser.
 Real trigger-fixture coverage is still tracked independently by the strict gate.
+
+The `SEM_*` name-resolution family is also fully authored: duplicate names,
+unresolved names and callees, wrong declaration kinds, and non-callable names
+now explain resolution scope and the concrete declaration change required.

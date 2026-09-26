@@ -563,6 +563,42 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     })
 }
 
+fn semantic_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "SEM_DUPLICATE_DECLARATION" => (
+            "Declaration name is already in use",
+            "Two declarations in the same visible namespace cannot share a name because every reference must resolve to exactly one semantic definition.",
+            "Rename one declaration or remove the duplicate",
+        ),
+        "SEM_UNKNOWN_NAME" => (
+            "Name does not resolve in this scope",
+            "The name is not a local binding, visible declaration, selected import, or supported built-in at this source location.",
+            "Correct the name, declare it, or import it from its module",
+        ),
+        "SEM_WRONG_NAME_KIND" => (
+            "Name resolves to the wrong kind of declaration",
+            "This grammar position requires a specific semantic declaration kind, but the resolved name identifies a different kind and cannot be substituted safely.",
+            "Use a declaration of the required kind at this location",
+        ),
+        "SEM_UNKNOWN_CALLEE" => (
+            "Called function or action cannot be found",
+            "An invocation must resolve to one visible `function` or `action`; no callable with this name is available in the current module and imports.",
+            "Correct, declare, or import the function or action being called",
+        ),
+        "SEM_NOT_CALLABLE" => (
+            "Resolved name cannot be called",
+            "The name exists, but it identifies a type, record, field, value, or other non-callable declaration rather than a `function` or `action`.",
+            "Use a function or action name, or remove the invocation parentheses",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let (category, remainder) = code.split_once('_').unwrap_or(("diagnostic", code));
     let category = match category {
@@ -586,7 +622,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     }
     .to_ascii_lowercase();
     let rule_id = format!("{category}.{}", remainder.to_ascii_lowercase());
-    let syntax_copy = syntax_catalogue_copy(code);
+    let authored = syntax_catalogue_copy(code).or_else(|| semantic_catalogue_copy(code));
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
@@ -650,7 +686,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
                     "Move `{found}` into its owning declaration, or replace it with a top-level declaration"
                 }
                 "SYN_UNEXPECTED_TOKEN" => "Provide {expected}",
-                _ => syntax_copy
+                _ => authored
                     .map(|copy| copy.next)
                     .unwrap_or("Update the source to satisfy this rule"),
             }
@@ -679,7 +715,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "RUNTIME_STARTUP_FAILED" => "Generated runtime failed during startup".to_owned(),
         "SYN_EXPECTED_DECLARATION" => "`{found}` cannot start a top-level declaration".to_owned(),
         "SYN_UNEXPECTED_TOKEN" => "Expected {expected}".to_owned(),
-        _ => syntax_copy
+        _ => authored
             .map(|copy| copy.summary.to_owned())
             .unwrap_or_else(|| sentence_case_identifier(remainder)),
     };
@@ -697,7 +733,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "RUNTIME_STARTUP_FAILED" => "The generated runtime could not establish its startup contract and did not report readiness.".to_owned(),
         "SYN_EXPECTED_DECLARATION" => "Jadpo files accept `type`, `enum`, `entity`, `value`, `input`, `output`, `failure`, `function`, `action`, `test`, and `route` declarations at the top level. Route items such as `path:` belong inside a `route` block, so `{found}` cannot be parsed here.".to_owned(),
         "SYN_UNEXPECTED_TOKEN" => "Found `{found}` while parsing this construct. Jadpo requires {expected} at this location, so parsing stops rather than guessing the authored structure.".to_owned(),
-        _ => syntax_copy.map_or_else(
+        _ => authored.map_or_else(
             || format!("The compiler-enforced `{code}` invariant is not satisfied at this location."),
             |copy| copy.reason.to_owned(),
         ),
@@ -709,7 +745,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     if fixtures.is_empty() {
         fixtures.push("jadpo/crates/diagnostics/src/lib.rs#every_catalogue_entry_is_renderable");
     }
-    let authored_copy = syntax_copy.is_some()
+    let authored_copy = authored.is_some()
         || matches!(
             code,
             "FAIL_ATTEMPT_REQUIRED"
@@ -1364,6 +1400,22 @@ mod tests {
             let definition = catalogue_definition(code);
             assert!(definition.authored_copy, "{code}");
             assert!(!definition.summary.contains("invariant"), "{code}");
+            assert!(!definition.reason.contains(code), "{code}");
+            assert_ne!(
+                definition.recommended_title, "Update the source to satisfy this rule",
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_semantic_name_diagnostic_has_rule_specific_public_copy() {
+        for code in CATALOGUE_CODES
+            .iter()
+            .filter(|code| code.starts_with("SEM_"))
+        {
+            let definition = catalogue_definition(code);
+            assert!(definition.authored_copy, "{code}");
             assert!(!definition.reason.contains(code), "{code}");
             assert_ne!(
                 definition.recommended_title, "Update the source to satisfy this rule",
