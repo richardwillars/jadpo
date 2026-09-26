@@ -113,6 +113,19 @@ searchable but visually secondary. Pipeline summaries such as
 `JADPO_TYPE_FAILED` become report status rather than duplicate errors, and
 dependent parse/type cascades are grouped under their root diagnostic.
 
+Interactive terminals receive a capability-aware rich renderer with restrained
+severity colour, source frames, precise carets, repair ownership, exact edit
+previews, alternatives, related locations, context, notes, and secondary rule
+metadata. It never reformats the source excerpt. Non-interactive streams use a
+stable ASCII plain renderer without ANSI escapes; `NO_COLOR` disables colour
+even when colour was requested, `JADPO_ASCII=1` makes renderer-owned decoration
+ASCII without altering source text, and terminal width is bounded from
+`COLUMNS`. `--diagnostic-format=human|plain|json` and
+`--color=auto|always|never` provide explicit control. JSON remains the
+canonical LLM/automation protocol and is byte-independent of terminal styling;
+`check`, `watch`, and `dev` accept diagnostic JSON explicitly, while existing
+machine-oriented commands continue to emit their JSON contracts directly.
+
 ### 3.2 IDE presentation
 
 The LSP transports the same semantic diagnostic object, using standard

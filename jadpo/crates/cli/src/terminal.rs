@@ -1,0 +1,727 @@
+use jadpo_diagnostics::{Diagnostic, Severity};
+use std::env;
+use std::fs;
+use std::io::{self, IsTerminal};
+use std::sync::OnceLock;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LayoutChoice {
+    Auto,
+    Human,
+    Plain,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ColorChoice {
+    Auto,
+    Always,
+    Never,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Presentation {
+    pub layout: LayoutChoice,
+    pub color: ColorChoice,
+}
+
+impl Default for Presentation {
+    fn default() -> Self {
+        Self {
+            layout: LayoutChoice::Auto,
+            color: ColorChoice::Auto,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RenderStyle {
+    rich: bool,
+    color: bool,
+    unicode: bool,
+    width: usize,
+}
+
+impl RenderStyle {
+    #[cfg(test)]
+    pub const fn plain() -> Self {
+        Self {
+            rich: false,
+            color: false,
+            unicode: false,
+            width: 100,
+        }
+    }
+
+    #[cfg(test)]
+    pub const fn rich_for_test(color: bool, unicode: bool, width: usize) -> Self {
+        Self {
+            rich: true,
+            color,
+            unicode,
+            width,
+        }
+    }
+}
+
+static PRESENTATION: OnceLock<Presentation> = OnceLock::new();
+
+pub fn configure(presentation: Presentation) {
+    let _ = PRESENTATION.set(presentation);
+}
+
+pub fn stderr_style() -> RenderStyle {
+    style_for(io::stderr().is_terminal())
+}
+
+pub fn stdout_style() -> RenderStyle {
+    style_for(io::stdout().is_terminal())
+}
+
+fn style_for(terminal: bool) -> RenderStyle {
+    let presentation = PRESENTATION.get().copied().unwrap_or_default();
+    let capable_terminal = terminal && env::var("TERM").map_or(true, |term| term != "dumb");
+    let rich = match presentation.layout {
+        LayoutChoice::Auto => capable_terminal || presentation.color == ColorChoice::Always,
+        LayoutChoice::Human => true,
+        LayoutChoice::Plain => false,
+    };
+    let color = if env::var_os("NO_COLOR").is_some() {
+        false
+    } else {
+        match presentation.color {
+            ColorChoice::Always => true,
+            ColorChoice::Never => false,
+            ColorChoice::Auto => capable_terminal,
+        }
+    };
+    let unicode = rich && env::var_os("JADPO_ASCII").is_none();
+    let width = env::var("COLUMNS")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(100)
+        .clamp(60, 140);
+    RenderStyle {
+        rich,
+        color,
+        unicode,
+        width,
+    }
+}
+
+pub fn render_diagnostic(diagnostic: &Diagnostic, style: RenderStyle) -> String {
+    if !style.rich {
+        return render_plain_diagnostic(diagnostic);
+    }
+    render_rich_diagnostic(diagnostic, style)
+}
+
+pub fn render_check_success(
+    source_files: usize,
+    declarations: usize,
+    semantic_nodes: usize,
+    style: RenderStyle,
+) -> String {
+    if !style.rich {
+        return format!(
+            "semantic check passed: {source_files} source file(s), {declarations} declaration(s), {semantic_nodes} semantic node(s)\n"
+        );
+    }
+    let mark = if style.unicode { "✓" } else { "+" };
+    let separator = separator(style);
+    format!(
+        "{} {}\n  {}{separator}{}{separator}{}\n",
+        paint(mark, "1;32", style.color),
+        paint("Check passed", "1;32", style.color),
+        plural(source_files, "source", "sources"),
+        plural(declarations, "declaration", "declarations"),
+        plural(semantic_nodes, "semantic node", "semantic nodes"),
+    )
+}
+
+pub fn render_build_success(artifact_count: usize, output: &str, style: RenderStyle) -> String {
+    if !style.rich {
+        return format!("built {artifact_count} derived and target file(s) beneath {output}\n");
+    }
+    let mark = if style.unicode { "✓" } else { "+" };
+    let arrow = if style.unicode { "→" } else { "->" };
+    format!(
+        "{} {}\n  {} {arrow} {}\n",
+        paint(mark, "1;32", style.color),
+        paint("Build complete", "1;32", style.color),
+        plural(artifact_count, "generated file", "generated files"),
+        paint(output, "36", style.color),
+    )
+}
+
+pub fn render_success(plain: &str, title: &str, detail: &str, style: RenderStyle) -> String {
+    if !style.rich {
+        return format!("{plain}\n");
+    }
+    let mark = if style.unicode { "✓" } else { "+" };
+    let mut output = format!(
+        "{} {}\n",
+        paint(mark, "1;32", style.color),
+        paint(title, "1;32", style.color),
+    );
+    if !detail.is_empty() {
+        let detail = if style.unicode {
+            detail.to_owned()
+        } else {
+            detail.replace(" · ", " | ").replace(" → ", " -> ")
+        };
+        for line in wrap(&detail, style.width.saturating_sub(4).max(30)) {
+            output.push_str(&format!("  {line}\n"));
+        }
+    }
+    output
+}
+
+pub fn render_lifecycle(
+    command: &str,
+    event: &str,
+    revision: u64,
+    status: &str,
+    stale: bool,
+    style: RenderStyle,
+) -> String {
+    if !style.rich {
+        return format!(
+            "{command}[{event}]: revision {revision}, status {status}, stale {stale}\n"
+        );
+    }
+    let (glyph, color) = match status {
+        "passed" | "succeeded" | "ready" | "running" | "built" => {
+            (if style.unicode { "●" } else { "+" }, "32")
+        }
+        "failed" | "stopped" => (if style.unicode { "×" } else { "x" }, "31"),
+        _ => (if style.unicode { "◆" } else { ">" }, "36"),
+    };
+    let separator = separator(style);
+    let stale_suffix = if stale {
+        format!("{separator}stale")
+    } else {
+        String::new()
+    };
+    format!(
+        "{} {}  {}\n",
+        paint(glyph, &format!("1;{color}"), style.color),
+        paint(&format!("{command}{separator}{event}"), "1", style.color,),
+        paint(
+            &format!("revision {revision}{separator}{status}{stale_suffix}"),
+            "2",
+            style.color,
+        ),
+    )
+}
+
+pub fn render_help(style: RenderStyle) -> String {
+    let heading = |value: &str| paint(value, "1;36", style.color && style.rich);
+    let command = |value: &str| paint(value, "1", style.color && style.rich);
+    let product = if style.rich {
+        format!(
+            "{}  {}\n{}\n",
+            paint("Jadpo", "1;32", style.color),
+            paint("one language for the whole web", "2", style.color),
+            paint("https://jadpo.dev/", "4;36", style.color),
+        )
+    } else {
+        "Jadpo - one language for the whole web\nhttps://jadpo.dev/\n".to_owned()
+    };
+
+    format!(
+        "{product}\n{}\n  {}\n\n{}\n  {:11} Create a deterministic project scaffold\n  {:11} Validate syntax and semantics\n  {:11} Emit the checked semantic manifest\n  {:11} Write deterministic derived artifacts\n  {:11} Generate the checked Bun target\n  {:11} Build and run authored tests\n  {:11} Format authored .jadpo files\n\n{}\n  {:11} Rebuild after authored-input changes\n  {:11} Rebuild, run Bun, and restart when ready\n  {:11} Enrich a secret-safe runtime event locally\n  {:11} Run the compiler-backed language server\n\n{}\n  {}\n  {}\n  {}\n  {}\n\n{}\n  {:30} Rich terminal, stable plain text, or diagnostic JSON\n  {:30} Automatic, forced, or disabled ANSI colour\n  {:30} Disable colour using the shared convention\n  {:30} Use ASCII decoration in rich output\n\n{}\n  Diagnostic JSON is available for check, watch, and dev. Other machine-oriented\n  commands emit JSON directly. Pipes default to ANSI-free plain text.\n",
+        heading("USAGE"),
+        command("jadpo <command> <project> [options]"),
+        heading("CORE COMMANDS"),
+        command("new"),
+        command("check"),
+        command("inspect"),
+        command("artifacts"),
+        command("build"),
+        command("test"),
+        command("fmt"),
+        heading("DEVELOPMENT"),
+        command("watch"),
+        command("dev"),
+        command("incident"),
+        command("lsp"),
+        heading("SCHEMA"),
+        command("jadpo schema <init|check|add|rename> <project> ..."),
+        command("jadpo schema <snapshot|diff> <project> ..."),
+        command("jadpo schema <decision-template|decision-check> <project> ..."),
+        command("jadpo schema <plan|sql|index-recommend|index-accept> <project> ..."),
+        heading("PRESENTATION"),
+        command("--diagnostic-format=human|plain|json"),
+        command("--color=auto|always|never"),
+        command("NO_COLOR=1"),
+        command("JADPO_ASCII=1"),
+        heading("AUTOMATION"),
+    )
+}
+
+fn render_plain_diagnostic(diagnostic: &Diagnostic) -> String {
+    let mut output = format!("{}: {}\n", diagnostic.severity, diagnostic.message);
+    if let Some(primary) = &diagnostic.primary {
+        match fs::read_to_string(&primary.source)
+            .ok()
+            .and_then(|source| source_excerpt(&source, primary.start, primary.end))
+        {
+            Some(excerpt) => {
+                output.push_str(&format!(
+                    " --> {}:{}:{}\n",
+                    primary.source, excerpt.line, excerpt.column
+                ));
+                let gutter = excerpt.line.to_string().len();
+                output.push_str(&format!("{} |\n", " ".repeat(gutter)));
+                output.push_str(&format!("{} | {}\n", excerpt.line, excerpt.text));
+                output.push_str(&format!(
+                    "{} | {}{}\n",
+                    " ".repeat(gutter),
+                    " ".repeat(excerpt.column.saturating_sub(1)),
+                    "^".repeat(excerpt.width)
+                ));
+            }
+            None => output.push_str(&format!(
+                "  at {}:{}..{}\n",
+                primary.source, primary.start, primary.end
+            )),
+        }
+    }
+    output.push_str(&format!("  reason: {}\n", diagnostic.reason));
+    output.push_str(&format!(
+        "  next: {} ({}, owner: {})\n",
+        diagnostic.recommended_next_step.title,
+        diagnostic.recommended_next_step.kind.as_str(),
+        diagnostic.decision_owner.as_str()
+    ));
+    output.push_str(&format!(
+        "  rule: {} (legacy: {})\n  help: {}\n",
+        diagnostic.rule_id, diagnostic.code, diagnostic.help_id
+    ));
+    for note in &diagnostic.notes {
+        output.push_str(&format!("  note: {note}\n"));
+    }
+    output
+}
+
+fn render_rich_diagnostic(diagnostic: &Diagnostic, style: RenderStyle) -> String {
+    let (glyph, severity_color) = match diagnostic.severity {
+        Severity::Error => (if style.unicode { "×" } else { "x" }, "31"),
+        Severity::Warning => (if style.unicode { "▲" } else { "!" }, "33"),
+        Severity::Note => (if style.unicode { "●" } else { "i" }, "36"),
+    };
+    let mut output = format!(
+        "{} {}  {}\n",
+        paint(glyph, &format!("1;{severity_color}"), style.color),
+        paint(
+            &diagnostic.severity.to_string(),
+            &format!("1;{severity_color}"),
+            style.color,
+        ),
+        paint(&diagnostic.message, "1", style.color),
+    );
+
+    if let Some(primary) = &diagnostic.primary {
+        let excerpt = fs::read_to_string(&primary.source)
+            .ok()
+            .and_then(|source| source_excerpt(&source, primary.start, primary.end));
+        if let Some(excerpt) = excerpt {
+            render_source_frame(
+                &mut output,
+                &primary.source,
+                &excerpt,
+                severity_color,
+                style,
+            );
+        } else {
+            labeled(
+                &mut output,
+                "At",
+                &format!("{}:{}..{}", primary.source, primary.start, primary.end),
+                style,
+            );
+        }
+    }
+
+    labeled(&mut output, "Why", &diagnostic.reason, style);
+    labeled(
+        &mut output,
+        "Fix",
+        &diagnostic.recommended_next_step.title,
+        style,
+    );
+    let repair_meta = format!(
+        "{}{}{} decision",
+        diagnostic.recommended_next_step.kind.as_str(),
+        separator(style),
+        diagnostic.decision_owner.as_str()
+    );
+    continuation(&mut output, &repair_meta, style, true);
+
+    for edit in &diagnostic.recommended_next_step.edits {
+        let replacement = visible_replacement(&edit.replacement);
+        continuation(
+            &mut output,
+            &format!(
+                "edit {}:{}..{} {} `{replacement}`",
+                edit.source,
+                edit.start,
+                edit.end,
+                if style.unicode { "→" } else { "->" }
+            ),
+            style,
+            false,
+        );
+    }
+
+    if !diagnostic.alternatives.is_empty() {
+        labeled(&mut output, "Other", "Valid alternatives", style);
+        for (index, alternative) in diagnostic.alternatives.iter().enumerate() {
+            continuation(
+                &mut output,
+                &format!(
+                    "{}. {} {} {}",
+                    index + 1,
+                    alternative.title,
+                    if style.unicode { "—" } else { "-" },
+                    alternative.reason
+                ),
+                style,
+                false,
+            );
+        }
+    }
+
+    if !diagnostic.context.is_empty() {
+        let context = diagnostic
+            .context
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect::<Vec<_>>()
+            .join(separator(style));
+        labeled(&mut output, "Context", &context, style);
+    }
+    if !diagnostic.impact.affected.is_empty() {
+        labeled(
+            &mut output,
+            "Impact",
+            &diagnostic.impact.affected.join(", "),
+            style,
+        );
+    }
+    for related in &diagnostic.related {
+        labeled(
+            &mut output,
+            "Related",
+            &format!("{}:{}..{}", related.source, related.start, related.end),
+            style,
+        );
+    }
+    for note in &diagnostic.notes {
+        labeled(&mut output, "Note", note, style);
+    }
+
+    metadata(
+        &mut output,
+        "Rule",
+        &format!(
+            "{}{}legacy {}{}{}",
+            diagnostic.rule_id,
+            separator(style),
+            diagnostic.code,
+            separator(style),
+            diagnostic.help_id
+        ),
+        style,
+    );
+    output.push('\n');
+    output
+}
+
+fn render_source_frame(
+    output: &mut String,
+    source: &str,
+    excerpt: &SourceExcerpt,
+    severity_color: &str,
+    style: RenderStyle,
+) {
+    let (top, vertical, bottom) = if style.unicode {
+        ("╭─", "│", "╰─")
+    } else {
+        ("+-", "|", "+-")
+    };
+    output.push_str(&format!(
+        "  {} {}\n",
+        paint(top, "2", style.color),
+        paint(
+            &format!("{source}:{}:{}", excerpt.line, excerpt.column),
+            "36",
+            style.color,
+        )
+    ));
+    let gutter = excerpt.line.to_string().len();
+    output.push_str(&format!(
+        "  {} {}\n",
+        " ".repeat(gutter),
+        paint(vertical, "2", style.color)
+    ));
+    output.push_str(&format!(
+        "  {} {} {}\n",
+        paint(&excerpt.line.to_string(), "2", style.color),
+        paint(vertical, "2", style.color),
+        excerpt.text
+    ));
+    output.push_str(&format!(
+        "  {} {} {}{}\n",
+        " ".repeat(gutter),
+        paint(vertical, "2", style.color),
+        " ".repeat(excerpt.column.saturating_sub(1)),
+        paint(
+            &"^".repeat(excerpt.width),
+            &format!("1;{severity_color}"),
+            style.color,
+        )
+    ));
+    output.push_str(&format!(
+        "  {} {}\n",
+        " ".repeat(gutter),
+        paint(bottom, "2", style.color)
+    ));
+}
+
+fn labeled(output: &mut String, label: &str, value: &str, style: RenderStyle) {
+    let label_width = 9usize;
+    let available = style.width.saturating_sub(label_width + 3).max(30);
+    let lines = wrap(value, available);
+    for (index, line) in lines.iter().enumerate() {
+        if index == 0 {
+            let padded_label = format!("{label:label_width$}");
+            output.push_str(&format!(
+                "  {} {}\n",
+                paint(&padded_label, "1;36", style.color),
+                line,
+            ));
+        } else {
+            output.push_str(&format!("  {:label_width$} {}\n", "", line));
+        }
+    }
+}
+
+fn continuation(output: &mut String, value: &str, style: RenderStyle, dim: bool) {
+    for line in wrap(value, style.width.saturating_sub(14).max(30)) {
+        let rendered = if dim {
+            paint(&line, "2", style.color)
+        } else {
+            line
+        };
+        output.push_str(&format!("  {:9}   {rendered}\n", ""));
+    }
+}
+
+fn metadata(output: &mut String, label: &str, value: &str, style: RenderStyle) {
+    let label_width = 9usize;
+    let available = style.width.saturating_sub(label_width + 3).max(30);
+    for (index, line) in wrap(value, available).iter().enumerate() {
+        let raw = if index == 0 {
+            format!("  {label:label_width$} {line}\n")
+        } else {
+            format!("  {:label_width$} {line}\n", "")
+        };
+        output.push_str(&paint(&raw, "2", style.color));
+    }
+}
+
+fn wrap(value: &str, width: usize) -> Vec<String> {
+    if value.is_empty() {
+        return vec![String::new()];
+    }
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for word in value.split_whitespace() {
+        if !current.is_empty() && current.chars().count() + 1 + word.chars().count() > width {
+            lines.push(current);
+            current = String::new();
+        }
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(word);
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
+fn visible_replacement(value: &str) -> String {
+    if value.is_empty() {
+        return "<delete>".to_owned();
+    }
+    value
+        .replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+        .replace('`', "\\`")
+}
+
+fn paint(value: &str, code: &str, enabled: bool) -> String {
+    if enabled {
+        format!("\u{1b}[{code}m{value}\u{1b}[0m")
+    } else {
+        value.to_owned()
+    }
+}
+
+pub fn plural(count: usize, singular: &str, plural: &str) -> String {
+    format!("{count} {}", if count == 1 { singular } else { plural })
+}
+
+fn separator(style: RenderStyle) -> &'static str {
+    if style.unicode {
+        " · "
+    } else {
+        " | "
+    }
+}
+
+struct SourceExcerpt {
+    line: usize,
+    column: usize,
+    width: usize,
+    text: String,
+}
+
+fn source_excerpt(source: &str, start: usize, end: usize) -> Option<SourceExcerpt> {
+    if start > source.len() || !source.is_char_boundary(start) {
+        return None;
+    }
+    let end = end.min(source.len());
+    if !source.is_char_boundary(end) {
+        return None;
+    }
+    let line_start = source[..start].rfind('\n').map_or(0, |offset| offset + 1);
+    let line_end = source[start..]
+        .find('\n')
+        .map_or(source.len(), |offset| start + offset);
+    let marker_end = end
+        .max(start + usize::from(start < source.len()))
+        .min(line_end);
+    let width = if marker_end > start {
+        source[start..marker_end].chars().count().max(1)
+    } else {
+        1
+    };
+    Some(SourceExcerpt {
+        line: source[..line_start]
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count()
+            + 1,
+        column: source[line_start..start].chars().count() + 1,
+        width,
+        text: source[line_start..line_end]
+            .strip_suffix('\r')
+            .unwrap_or(&source[line_start..line_end])
+            .to_owned(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        render_diagnostic, render_help, render_lifecycle, render_success, ColorChoice,
+        LayoutChoice, Presentation, RenderStyle,
+    };
+    use jadpo_diagnostics::{Diagnostic, SourceSpan, TextEdit};
+
+    #[test]
+    fn plain_output_is_deterministic_and_escape_free() {
+        let diagnostic = Diagnostic::error("FAIL_ATTEMPT_REQUIRED");
+        let output = render_diagnostic(&diagnostic, RenderStyle::plain());
+
+        assert!(output.starts_with("error: Fallible expression requires `attempt`\n"));
+        assert!(!output.contains('\u{1b}'));
+        assert!(!output.contains('╭'));
+    }
+
+    #[test]
+    fn rich_output_has_hierarchy_source_and_repair_without_changing_source() {
+        let root =
+            std::env::temp_dir().join(format!("jadpo-terminal-renderer-{}", std::process::id()));
+        std::fs::create_dir_all(&root).expect("fixture directory");
+        let source = root.join("app.jadpo");
+        std::fs::write(&source, "return child()\n").expect("fixture source");
+        let mut diagnostic = Diagnostic::error("FAIL_ATTEMPT_REQUIRED").with_edit(TextEdit {
+            source: source.to_string_lossy().into_owned(),
+            start: 7,
+            end: 7,
+            replacement: "attempt ".to_owned(),
+        });
+        diagnostic.primary = Some(SourceSpan {
+            source: source.to_string_lossy().into_owned(),
+            start: 7,
+            end: 12,
+        });
+
+        let output = render_diagnostic(&diagnostic, RenderStyle::rich_for_test(false, true, 88));
+
+        assert!(output.contains("× error  Fallible expression requires `attempt`"));
+        assert!(output.contains("╭─"));
+        assert!(output.contains("return child()"));
+        assert!(output.contains("^^^^^"));
+        assert!(output.contains("Fix"));
+        assert!(output.contains("`attempt `"));
+        assert!(!output.contains('\u{1b}'));
+        assert!(output.ends_with("\n\n"));
+        assert_eq!(
+            std::fs::read_to_string(&source).unwrap(),
+            "return child()\n"
+        );
+        std::fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn presentation_defaults_protect_noninteractive_consumers() {
+        assert_eq!(Presentation::default().layout, LayoutChoice::Auto);
+        assert_eq!(Presentation::default().color, ColorChoice::Auto);
+    }
+
+    #[test]
+    fn rich_colour_is_opt_in_and_ascii_mode_has_no_unicode_framing() {
+        let diagnostic = Diagnostic::error("FAIL_ATTEMPT_REQUIRED");
+        let output = render_diagnostic(&diagnostic, RenderStyle::rich_for_test(true, false, 80));
+        let lifecycle = render_lifecycle(
+            "watch",
+            "build",
+            7,
+            "passed",
+            false,
+            RenderStyle::rich_for_test(true, false, 80),
+        );
+
+        assert!(output.contains("\u{1b}[1;31m"));
+        assert!(output.starts_with("\u{1b}[1;31mx"));
+        assert!(!output.contains('×'));
+        assert!(!output.contains('╭'));
+        assert!(!lifecycle.contains('·'));
+        assert!(lifecycle.contains("watch | build"));
+    }
+
+    #[test]
+    fn the_whole_human_surface_has_a_plain_escape_free_fallback() {
+        let style = RenderStyle::plain();
+        let help = render_help(style);
+        let success = render_success("done", "Done", "one detail", style);
+        let lifecycle = render_lifecycle("watch", "build", 7, "passed", false, style);
+
+        assert!(help.contains("CORE COMMANDS"));
+        assert!(help.contains("Diagnostic JSON is available for check, watch, and dev"));
+        assert_eq!(success, "done\n");
+        assert_eq!(
+            lifecycle,
+            "watch[build]: revision 7, status passed, stale false\n"
+        );
+        assert!(!format!("{help}{success}{lifecycle}").contains('\u{1b}'));
+    }
+}

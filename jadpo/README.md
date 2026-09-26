@@ -60,6 +60,7 @@ and publish discriminated OpenAPI unions.
 ```text
 cargo run -p jadpo-cli -- new /tmp/example_application
 cargo run -p jadpo-cli -- check ../examples/jadpo-seed
+cargo run -p jadpo-cli -- check ../examples/jadpo-seed --diagnostic-format=plain
 cargo run -p jadpo-cli -- check ../examples/jadpo-seed --diagnostic-format=json
 cargo run -p jadpo-cli -- watch ../examples/jadpo-seed --diagnostic-format=json
 PORT=3000 cargo run -p jadpo-cli -- dev ../examples/jadpo-seed --diagnostic-format=json
@@ -81,6 +82,16 @@ cargo run -p jadpo-cli -- schema sql ../examples/persistence-seed --against /tmp
 cargo run -p jadpo-cli -- schema index-recommend ../examples/persistence-seed
 cargo run -p jadpo-cli -- schema index-accept ../examples/persistence-seed Customer.id
 ```
+
+Human commands use a rich source-and-repair presentation when their output is
+attached to a capable terminal. Pipes and redirected output automatically use
+deterministic ANSI-free plain text. Force a presentation with
+`--diagnostic-format=human|plain|json`, control colour with
+`--color=auto|always|never`, set `NO_COLOR` to disable colour (including a
+forced colour request), or set `JADPO_ASCII=1` to replace Unicode decoration.
+Machine integrations consuming `check`, `watch`, or `dev` diagnostics should
+request `--diagnostic-format=json`; other machine-oriented commands already
+emit their JSON contracts directly.
 
 - `new` creates the byte-stable scaffold without overwriting a non-empty
   destination.

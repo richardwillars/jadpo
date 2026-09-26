@@ -60,7 +60,7 @@
       "        resource_id: ${3:Resource.id}",
       "    }",
       "    output: ${4:Resource}",
-      "    action:${5} {",
+      "    action: ${5}{",
       "        ${6}",
       "    }",
       "}"

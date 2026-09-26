@@ -404,6 +404,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "CLI_INCIDENT_REVISION_MISMATCH" => {
             "Runtime event and local source revisions differ".to_owned()
         }
+        "CLI_PRESENTATION_ARGUMENTS" => "Terminal presentation option is invalid".to_owned(),
         "RUNTIME_UNHANDLED_FAULT" => "Generated runtime contained an unexpected fault".to_owned(),
         "RUNTIME_STARTUP_FAILED" => "Generated runtime failed during startup".to_owned(),
         _ => sentence_case_identifier(remainder),
@@ -416,6 +417,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "ROUTE_BEHAVIOUR_CONFLICT" | "ROUTE_BEHAVIOUR_REQUIRED" => "A route must select exactly one local inline action or one named `run:` invocation.".to_owned(),
         "ROUTE_ITEM_COLON_REQUIRED" => "Every route item uses the same explicit `name: value` separator, including block-valued path and action items.".to_owned(),
         "CLI_INCIDENT_REVISION_MISMATCH" => "Local enrichment is trustworthy only when the runtime event and compiler graph identify the same checked source revision.".to_owned(),
+        "CLI_PRESENTATION_ARGUMENTS" => "Diagnostic format and colour flags must select one supported presentation without changing the semantic diagnostic payload.".to_owned(),
         "RUNTIME_UNHANDLED_FAULT" => "An exception outside the declared domain-failure boundary was contained by the generated runtime.".to_owned(),
         "RUNTIME_STARTUP_FAILED" => "The generated runtime could not establish its startup contract and did not report readiness.".to_owned(),
         _ => format!("The compiler-enforced `{code}` invariant is not satisfied at this location."),

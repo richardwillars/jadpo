@@ -20,15 +20,37 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 mod lsp;
+mod terminal;
+
+use terminal::{ColorChoice, LayoutChoice, Presentation};
 
 fn main() -> ExitCode {
-    let arguments = env::args().skip(1).collect::<Vec<_>>();
-    if arguments.first().map(String::as_str) == Some("check")
-        && arguments
-            .iter()
-            .any(|argument| argument == "--diagnostic-format=json")
-    {
-        return run_json_check(&arguments);
+    let raw_arguments = env::args().skip(1).collect::<Vec<_>>();
+    let (arguments, presentation) = match presentation_arguments(raw_arguments) {
+        Ok(result) => result,
+        Err(diagnostic) => {
+            terminal::configure(Presentation::default());
+            print_human_diagnostic(&diagnostic);
+            return ExitCode::from(1);
+        }
+    };
+    terminal::configure(presentation);
+    let requests_json = arguments
+        .iter()
+        .any(|argument| argument == "--diagnostic-format=json");
+    if requests_json {
+        match arguments.first().map(String::as_str) {
+            Some("check") => return run_json_check(&arguments),
+            Some("watch" | "dev") => {}
+            _ => {
+                print_human_diagnostic(
+                    &Diagnostic::error("CLI_PRESENTATION_ARGUMENTS").with_note(
+                        "--diagnostic-format=json is supported by check, watch, and dev; other machine-oriented commands already emit JSON",
+                    ),
+                );
+                return ExitCode::from(1);
+            }
+        }
     }
 
     match run(arguments) {
@@ -38,6 +60,52 @@ fn main() -> ExitCode {
             ExitCode::from(1)
         }
     }
+}
+
+fn presentation_arguments(
+    arguments: Vec<String>,
+) -> Result<(Vec<String>, Presentation), Diagnostic> {
+    let mut presentation = Presentation::default();
+    let mut normalized = Vec::with_capacity(arguments.len());
+    let mut diagnostic_format = None;
+    let mut color_choice = None;
+
+    for argument in arguments {
+        if let Some(value) = argument.strip_prefix("--diagnostic-format=") {
+            if diagnostic_format.replace(value.to_owned()).is_some() {
+                return Err(Diagnostic::error("CLI_PRESENTATION_ARGUMENTS")
+                    .with_note("choose exactly one diagnostic format"));
+            }
+            match value {
+                "json" => normalized.push(argument),
+                "plain" => presentation.layout = LayoutChoice::Plain,
+                "human" => presentation.layout = LayoutChoice::Human,
+                _ => {
+                    return Err(Diagnostic::error("CLI_PRESENTATION_ARGUMENTS")
+                        .with_note("expected --diagnostic-format=human|plain|json"));
+                }
+            }
+            continue;
+        }
+        if let Some(value) = argument.strip_prefix("--color=") {
+            if color_choice.replace(value.to_owned()).is_some() {
+                return Err(Diagnostic::error("CLI_PRESENTATION_ARGUMENTS")
+                    .with_note("choose exactly one colour mode"));
+            }
+            presentation.color = match value {
+                "auto" => ColorChoice::Auto,
+                "always" => ColorChoice::Always,
+                "never" => ColorChoice::Never,
+                _ => {
+                    return Err(Diagnostic::error("CLI_PRESENTATION_ARGUMENTS")
+                        .with_note("expected --color=auto|always|never"));
+                }
+            };
+            continue;
+        }
+        normalized.push(argument);
+    }
+    Ok((normalized, presentation))
 }
 
 fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
@@ -70,10 +138,18 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
     match command {
         "new" => {
             let files = create_project(project)?;
-            println!(
-                "created project {} with {} deterministic file(s)",
-                project.display(),
-                files.len()
+            print_success(
+                &format!(
+                    "created project {} with {} deterministic file(s)",
+                    project.display(),
+                    files.len()
+                ),
+                "Project created",
+                &format!(
+                    "{} · {}",
+                    project.display(),
+                    terminal::plural(files.len(), "file", "files")
+                ),
             );
             Ok(())
         }
@@ -101,10 +177,18 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
             validate_schema_identities(project, &analyzed)?;
             let artifacts = derive_artifacts(project, &analyzed);
             let output = write_artifacts(project, &artifacts)?;
-            println!(
-                "generated {} deterministic artifact(s) beneath {}",
-                artifacts.len(),
-                output.display()
+            print_success(
+                &format!(
+                    "generated {} deterministic artifact(s) beneath {}",
+                    artifacts.len(),
+                    output.display()
+                ),
+                "Artifacts generated",
+                &format!(
+                    "{} · {}",
+                    terminal::plural(artifacts.len(), "artifact", "artifacts"),
+                    output.display()
+                ),
             );
             Ok(())
         }
@@ -198,7 +282,11 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
             let analyzed = analyze_project(project)?;
             require_valid_frontend(&analyzed)?;
             let path = initialize_schema_identities(project, &analyzed)?;
-            println!("initialized schema identities at {}", path.display());
+            print_success(
+                &format!("initialized schema identities at {}", path.display()),
+                "Schema identities initialized",
+                &path.display().to_string(),
+            );
             Ok(())
         }
         "check" => {
@@ -209,16 +297,28 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
                     "MIG_IDENTITY_REGISTRY_MISSING")
                 .with_note("run `jadpo schema init <project>` first")
             })?;
-            println!("schema identities match checked source: {}", path.display());
+            print_success(
+                &format!("schema identities match checked source: {}", path.display()),
+                "Schema identities verified",
+                &path.display().to_string(),
+            );
             Ok(())
         }
         "add" => {
             let analyzed = analyze_project(project)?;
             require_valid_frontend(&analyzed)?;
             let (path, count) = register_schema_additions(project, &analyzed)?;
-            println!(
-                "registered {count} additive schema identity entry(s) in {}",
-                path.display()
+            print_success(
+                &format!(
+                    "registered {count} additive schema identity entry(s) in {}",
+                    path.display()
+                ),
+                "Schema additions registered",
+                &format!(
+                    "{} · {}",
+                    terminal::plural(count, "identity", "identities"),
+                    path.display()
+                ),
             );
             Ok(())
         }
@@ -231,9 +331,13 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
             let analyzed = analyze_project(project)?;
             require_valid_frontend(&analyzed)?;
             let path = snapshot_schema_identities(project, &analyzed, Path::new(output))?;
-            println!(
-                "wrote immutable schema identity snapshot to {}",
-                path.display()
+            print_success(
+                &format!(
+                    "wrote immutable schema identity snapshot to {}",
+                    path.display()
+                ),
+                "Schema snapshot written",
+                &path.display().to_string(),
             );
             Ok(())
         }
@@ -276,9 +380,17 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
                 Path::new(previous),
                 Path::new(output),
             )?;
-            println!(
-                "wrote {count} unresolved schema decision(s) to {}",
-                path.display()
+            print_success(
+                &format!(
+                    "wrote {count} unresolved schema decision(s) to {}",
+                    path.display()
+                ),
+                "Decision template written",
+                &format!(
+                    "{} · {}",
+                    terminal::plural(count, "decision", "decisions"),
+                    path.display()
+                ),
             );
             Ok(())
         }
@@ -335,9 +447,17 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
                 adapter,
                 Path::new(output),
             )?;
-            println!(
-                "wrote non-executable {adapter} migration plan with {steps} step(s), {irreversible} irreversible, to {}",
-                path.display()
+            print_success(
+                &format!(
+                    "wrote non-executable {adapter} migration plan with {steps} step(s), {irreversible} irreversible, to {}",
+                    path.display()
+                ),
+                "Migration plan written",
+                &format!(
+                    "{adapter} · {} · {irreversible} irreversible · {}",
+                    terminal::plural(steps, "step", "steps"),
+                    path.display()
+                ),
             );
             Ok(())
         }
@@ -368,9 +488,16 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
                 adapter,
                 Path::new(output),
             )?;
-            println!(
-                "wrote non-executable {adapter} SQL review with {forward} forward and {rollback} rollback statement(s) to {}",
-                path.display()
+            print_success(
+                &format!(
+                    "wrote non-executable {adapter} SQL review with {forward} forward and {rollback} rollback statement(s) to {}",
+                    path.display()
+                ),
+                "SQL review written",
+                &format!(
+                    "{adapter} · {forward} forward · {rollback} rollback · {}",
+                    path.display()
+                ),
             );
             Ok(())
         }
@@ -388,10 +515,14 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
             let analyzed = analyze_project(project)?;
             require_valid_frontend(&analyzed)?;
             let (source, registry) = accept_index_recommendation(project, &analyzed, path)?;
-            println!(
-                "accepted index recommendation `{path}` in {}; registered identity in {}",
-                source.display(),
-                registry.display()
+            print_success(
+                &format!(
+                    "accepted index recommendation `{path}` in {}; registered identity in {}",
+                    source.display(),
+                    registry.display()
+                ),
+                "Index recommendation accepted",
+                &format!("{path} · {} · {}", source.display(), registry.display()),
             );
             Ok(())
         }
@@ -412,9 +543,13 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
             let analyzed = analyze_project(project)?;
             require_valid_frontend(&analyzed)?;
             let path = rename_schema_identity(project, &analyzed, kind, old_path, new_path)?;
-            println!(
-                "renamed schema {kind} identity `{old_path}` to `{new_path}` in {}",
-                path.display()
+            print_success(
+                &format!(
+                    "renamed schema {kind} identity `{old_path}` to `{new_path}` in {}",
+                    path.display()
+                ),
+                "Schema identity renamed",
+                &format!("{kind} · {old_path} -> {new_path} · {}", path.display()),
             );
             Ok(())
         }
@@ -427,52 +562,14 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
 }
 
 fn print_help() {
-    println!("Jadpo — one language for the whole web");
-    println!("https://jadpo.dev/");
-    println!();
-    println!("jadpo <new|check|inspect|artifacts|build|test|fmt|watch|dev> <project>");
-    println!("jadpo incident <project> <event-json-file>");
-    println!("jadpo lsp");
-    println!("jadpo schema init <project>");
-    println!("jadpo schema check <project>");
-    println!("jadpo schema add <project>");
-    println!("jadpo schema snapshot <project> <output>");
-    println!("jadpo schema diff <project> --against <snapshot>");
-    println!("jadpo schema decision-template <project> --against <snapshot> <output>");
-    println!("jadpo schema decision-check <project> --against <snapshot> <artifact>");
-    println!("jadpo schema plan <project> --against <snapshot> --decisions <artifact> --adapter <postgres|sqlite> <output>");
-    println!("jadpo schema sql <project> --against <snapshot> --decisions <artifact> --adapter <postgres|sqlite> <output>");
-    println!("jadpo schema index-recommend <project>");
-    println!("jadpo schema index-accept <project> <Entity.field>");
-    println!("jadpo schema rename <project> <entity|field> <old> <new>");
-    println!("jadpo check <project> --diagnostic-format=json");
-    println!("jadpo watch <project> [--diagnostic-format=json]");
-    println!("jadpo dev <project> [--diagnostic-format=json]");
-    println!();
-    println!("new      create the deterministic static base scaffold");
-    println!("check    validate syntax, names, types, failures, and effects");
-    println!("         add --diagnostic-format=json for the versioned machine protocol");
-    println!("inspect  emit the deterministic checked semantic manifest");
-    println!("artifacts  write deterministic derived artifacts beneath build/");
-    println!("build    generate the checked Bun target beneath build/");
-    println!("test     build and execute authored test blocks with Bun");
-    println!("fmt      deterministically format authored .jadpo files (`--check` is read-only)");
-    println!("lsp      run the compiler-backed language server over standard input/output");
-    println!("watch    rebuild atomically after coalesced authored-input changes");
-    println!("dev      watch, run Bun, and restart after successful ready builds");
-    println!("incident enrich one secret-safe runtime event from the local compiler graph");
-    println!("schema init  create the checked-in persistent schema identity registry");
-    println!("schema check  validate registry identity against checked source");
-    println!("schema add  register additions only; reject removals and renames");
-    println!("schema snapshot  write an immutable canonical checked-shape comparison input");
-    println!("schema diff  emit a shape-aware change set and typed decision requirements");
-    println!("schema decision-template  bind unresolved decisions to an exact change set");
-    println!("schema decision-check  reject stale, incomplete, or invalid decisions");
-    println!("schema plan  write an ordered non-executable adapter migration plan");
-    println!("schema sql  compile supported changes into reviewed forward/rollback SQL");
-    println!("schema index-recommend  report query-backed missing indexes without changing source");
-    println!("schema index-accept  add one recommended index to source and schema identity");
-    println!("schema rename  preserve identity across an explicit source rename");
+    print!("{}", terminal::render_help(terminal::stdout_style()));
+}
+
+fn print_success(plain: &str, title: &str, detail: &str) {
+    print!(
+        "{}",
+        terminal::render_success(plain, title, detail, terminal::stdout_style())
+    );
 }
 
 const DIAGNOSTIC_SCHEMA_VERSION: u32 = 2;
@@ -555,9 +652,14 @@ fn run_human_check(project: &Path) -> Result<(), Diagnostic> {
     let summary = report
         .summary
         .expect("a successful check report must contain a summary");
-    println!(
-        "semantic check passed: {} source file(s), {} declaration(s), {} semantic node(s)",
-        summary.source_files, summary.declarations, summary.semantic_nodes
+    print!(
+        "{}",
+        terminal::render_check_success(
+            summary.source_files,
+            summary.declarations,
+            summary.semantic_nodes,
+            terminal::stdout_style(),
+        )
     );
     Ok(())
 }
@@ -786,10 +888,13 @@ fn run_human_build(project: &Path) -> Result<(), Diagnostic> {
             for diagnostic in &success.diagnostics {
                 print_human_diagnostic(diagnostic);
             }
-            println!(
-                "built {} derived and target file(s) beneath {}",
-                success.artifact_count,
-                success.output.display()
+            print!(
+                "{}",
+                terminal::render_build_success(
+                    success.artifact_count,
+                    &success.output.display().to_string(),
+                    terminal::stdout_style(),
+                )
             );
             Ok(())
         }
@@ -861,10 +966,15 @@ fn run_format(project: &Path, check: bool) -> Result<(), Diagnostic> {
                 .join(", "),
         ));
     }
-    println!(
-        "{} {} source file(s)",
-        if check { "checked" } else { "formatted" },
-        changed.len()
+    let verb = if check { "checked" } else { "formatted" };
+    print_success(
+        &format!("{verb} {} source file(s)", changed.len()),
+        if check {
+            "Formatting verified"
+        } else {
+            "Formatting complete"
+        },
+        &terminal::plural(changed.len(), "changed source", "changed sources"),
     );
     Ok(())
 }
@@ -927,14 +1037,32 @@ fn emit_lifecycle_event(
             )
         );
     } else {
-        println!("{command}[{event}]: revision {revision}, status {status}, stale {stale}");
+        print!(
+            "{}",
+            terminal::render_lifecycle(
+                command,
+                event,
+                revision,
+                status,
+                stale,
+                terminal::stdout_style(),
+            )
+        );
         for diagnostic in diagnostics {
             print_human_diagnostic(diagnostic);
         }
         if let (Some(count), Some(output)) = (artifact_count, output) {
-            println!(
-                "{command}[built]: revision {revision}, {count} artifact(s) beneath {}",
-                output.display()
+            print_success(
+                &format!(
+                    "{command}[built]: revision {revision}, {count} artifact(s) beneath {}",
+                    output.display()
+                ),
+                "Build output ready",
+                &format!(
+                    "revision {revision} · {} · {}",
+                    terminal::plural(count, "artifact", "artifacts"),
+                    output.display()
+                ),
             );
         }
     }
@@ -1552,98 +1680,15 @@ fn diagnostics_json(diagnostics: &[Diagnostic]) -> String {
 }
 
 fn print_human_diagnostic(diagnostic: &Diagnostic) {
-    eprint!("{}", human_diagnostic(diagnostic));
+    eprint!(
+        "{}",
+        terminal::render_diagnostic(diagnostic, terminal::stderr_style())
+    );
 }
 
+#[cfg(test)]
 fn human_diagnostic(diagnostic: &Diagnostic) -> String {
-    let mut output = format!("{}: {}\n", diagnostic.severity, diagnostic.message);
-
-    if let Some(primary) = &diagnostic.primary {
-        match fs::read_to_string(&primary.source)
-            .ok()
-            .and_then(|source| source_excerpt(&source, primary.start, primary.end))
-        {
-            Some(excerpt) => {
-                output.push_str(&format!(
-                    " --> {}:{}:{}\n",
-                    primary.source, excerpt.line, excerpt.column
-                ));
-                let gutter = excerpt.line.to_string().len();
-                output.push_str(&format!("{} |\n", " ".repeat(gutter)));
-                output.push_str(&format!("{} | {}\n", excerpt.line, excerpt.text));
-                output.push_str(&format!(
-                    "{} | {}{}\n",
-                    " ".repeat(gutter),
-                    " ".repeat(excerpt.column.saturating_sub(1)),
-                    "^".repeat(excerpt.width)
-                ));
-            }
-            None => output.push_str(&format!(
-                "  at {}:{}..{}\n",
-                primary.source, primary.start, primary.end
-            )),
-        }
-    }
-
-    output.push_str(&format!("  reason: {}\n", diagnostic.reason));
-    output.push_str(&format!(
-        "  next: {} ({}, owner: {})\n",
-        diagnostic.recommended_next_step.title,
-        diagnostic.recommended_next_step.kind.as_str(),
-        diagnostic.decision_owner.as_str()
-    ));
-    output.push_str(&format!(
-        "  rule: {} (legacy: {})\n  help: {}\n",
-        diagnostic.rule_id, diagnostic.code, diagnostic.help_id
-    ));
-
-    for note in &diagnostic.notes {
-        output.push_str(&format!("  note: {note}\n"));
-    }
-    output
-}
-
-struct SourceExcerpt {
-    line: usize,
-    column: usize,
-    width: usize,
-    text: String,
-}
-
-fn source_excerpt(source: &str, start: usize, end: usize) -> Option<SourceExcerpt> {
-    if start > source.len() || !source.is_char_boundary(start) {
-        return None;
-    }
-    let end = end.min(source.len());
-    if !source.is_char_boundary(end) {
-        return None;
-    }
-    let line_start = source[..start].rfind('\n').map_or(0, |offset| offset + 1);
-    let line_end = source[start..]
-        .find('\n')
-        .map_or(source.len(), |offset| start + offset);
-    let marker_end = end
-        .max(start + usize::from(start < source.len()))
-        .min(line_end);
-    let width = if marker_end > start {
-        source[start..marker_end].chars().count().max(1)
-    } else {
-        1
-    };
-
-    Some(SourceExcerpt {
-        line: source[..line_start]
-            .bytes()
-            .filter(|byte| *byte == b'\n')
-            .count()
-            + 1,
-        column: source[line_start..start].chars().count() + 1,
-        width,
-        text: source[line_start..line_end]
-            .strip_suffix('\r')
-            .unwrap_or(&source[line_start..line_end])
-            .to_owned(),
-    })
+    terminal::render_diagnostic(diagnostic, terminal::RenderStyle::plain())
 }
 
 fn require_valid_frontend(project: &AnalyzedProject) -> Result<(), Diagnostic> {
@@ -1664,8 +1709,10 @@ fn require_valid_frontend(project: &AnalyzedProject) -> Result<(), Diagnostic> {
 mod tests {
     use super::{
         build_project, check_project, check_report_json, human_diagnostic, incident_packet,
-        lifecycle_event_json, parse_dev_port, watch_input_snapshot, CheckReport, CheckSummary,
+        lifecycle_event_json, parse_dev_port, presentation_arguments, watch_input_snapshot,
+        CheckReport, CheckSummary,
     };
+    use crate::terminal::{ColorChoice, LayoutChoice};
     use jadpo_diagnostics::{Diagnostic, SourceSpan};
     use std::fs;
     use std::path::Path;
@@ -1699,6 +1746,32 @@ mod tests {
         assert_eq!(
             parsed["diagnostics"][0]["recommendedNextStep"]["kind"],
             "guided_choice"
+        );
+    }
+
+    #[test]
+    fn separates_presentation_flags_from_command_arguments() {
+        let (arguments, presentation) = presentation_arguments(vec![
+            "check".to_owned(),
+            "example".to_owned(),
+            "--diagnostic-format=plain".to_owned(),
+            "--color=never".to_owned(),
+        ])
+        .expect("valid presentation flags");
+
+        assert_eq!(arguments, vec!["check", "example"]);
+        assert_eq!(presentation.layout, LayoutChoice::Plain);
+        assert_eq!(presentation.color, ColorChoice::Never);
+
+        let (arguments, _) = presentation_arguments(vec![
+            "check".to_owned(),
+            "example".to_owned(),
+            "--diagnostic-format=json".to_owned(),
+        ])
+        .expect("JSON remains part of the command protocol");
+        assert_eq!(
+            arguments,
+            vec!["check", "example", "--diagnostic-format=json"]
         );
     }
 
