@@ -3012,6 +3012,54 @@ value Result {
         assert_eq!(parsed.file.declarations.len(), 2);
     }
 
+    #[test]
+    fn reports_each_specific_parser_expectation() {
+        let cases = [
+            ("input Bad { constraint named: unique(value) }", "SYN_CONSTRAINT_NON_ENTITY"),
+            ("entity Bad { id: Uuid identity identity }", "SYN_DUPLICATE_FIELD_MODIFIER"),
+            ("module one\nimport two { }\ntype Name = Text {}", "SYN_EMPTY_IMPORT"),
+            ("enum Empty {}", "SYN_ENUM_EMPTY"),
+            ("type Name = Text { unknown }", "SYN_EXPECTED_CONSTRAINT"),
+            ("type Name = Text { max_length }", "SYN_EXPECTED_CONSTRAINT_VALUE"),
+            ("entity User { id: Uuid identity } entity Bad { owner: User.id references User.id on_delete unknown }", "SYN_EXPECTED_DELETE_ACTION"),
+            ("function bad() -> Bool { return }", "SYN_EXPECTED_EXPRESSION"),
+            ("failure Bad { unknown }", "SYN_EXPECTED_FAILURE_ITEM"),
+            ("output Result { ok: Bool } function bad() -> Result { return Result { 123 } }", "SYN_EXPECTED_FIELD_INITIALISER"),
+            ("route UNKNOWN /bad { auth: none action: { return true } }", "SYN_EXPECTED_HTTP_METHOD"),
+            ("entity User { id: Uuid identity inverse items: wrong Item via Item.user_id } entity Item { id: Uuid identity user_id: User.id references User.id on_delete cascade }", "SYN_EXPECTED_INVERSE_CARDINALITY"),
+            ("route GET /bad { auth: none run: true }", "SYN_EXPECTED_INVOCATION"),
+            ("test Bad { }", "SYN_EXPECTED_LITERAL"),
+            ("type Name = Other.123 {}", "SYN_EXPECTED_NAME"),
+            ("entity Item { id: Uuid identity } action list() -> List<Item> { return query many Item { where: id == id order_by: id sideways } }", "SYN_EXPECTED_ORDER_DIRECTION"),
+            ("route GET /bad { auth: none unknown: true }", "SYN_EXPECTED_ROUTE_ITEM"),
+            ("function bad() -> Bool { type }", "SYN_EXPECTED_STATEMENT"),
+            ("failure MissingKind { code \"missing_kind\" }", "SYN_FAILURE_KIND_REQUIRED"),
+            ("failure MissingCode { kind NotFound }", "SYN_FAILURE_CODE_REQUIRED"),
+            ("import shared.names { Name }\ntype Local = Text {}", "SYN_IMPORT_REQUIRES_MODULE"),
+            ("input Bad { inverse items: many Item via Item.bad }", "SYN_INVERSE_NON_ENTITY"),
+            ("enum Choice { Yes No } function bad(value: Choice) -> Bool { match value { if => {} } return true }", "SYN_MATCH_PATTERN"),
+            ("public route GET /bad { auth: none action: { return true } }", "SYN_ROUTE_EXPORT_INVALID"),
+            ("entity Item { id: Uuid identity } input PatchItem { id: Item.id optional } failure Empty { kind InvalidValue code \"empty\" } failure Missing { kind NotFound code \"missing\" } action bad(id: Item.id, input: PatchItem) -> Item fails Empty, Missing { return update required Item { where: id == id patch: empty: Empty missing: Missing } }", "SYN_EXPECTED_PATCH_INPUT"),
+            ("entity Item { id: Uuid identity } input PatchItem { id: Item.id optional } failure Empty { kind InvalidValue code \"empty\" } failure Missing { kind NotFound code \"missing\" } action bad(id: Item.id, input: PatchItem) -> Item fails Empty, Missing { return update required Item { where: id == id patch: input empty: Empty set: { id: id when return } missing: Missing } }", "SYN_EXPECTED_SUPPLIED_FIELD"),
+            ("entity Item { id: Uuid identity } input PatchItem { id: Item.id optional } failure Empty { kind InvalidValue code \"empty\" } failure Missing { kind NotFound code \"missing\" } action bad(id: Item.id, input: PatchItem) -> Item fails Empty, Missing { return update required Item { where: id == id patch: input empty: Empty set: { id: id when input.id wrong } missing: Missing } }", "SYN_EXPECTED_SUPPLIED"),
+            ("entity Item { id: Uuid identity } failure Missing { kind NotFound code \"missing\" } action bad(id: Item.id) -> Item fails Missing { return update required Item { where: id == id missing: Missing } }", "SYN_EXPECTED_UPDATE_BODY"),
+            ("entity Item { id: Uuid identity } failure Missing { kind NotFound code \"missing\" } action bad(id: Item.id) -> Item fails Missing { return delete required Item { where: id == id missing: Missing } }", "SYN_MUTATION_CONFLICT_REQUIRED"),
+        ];
+
+        for (source, expected) in cases {
+            let parsed = parse(Path::new("specific-parser-error.jadpo"), source);
+            let codes = parsed
+                .diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.code)
+                .collect::<Vec<_>>();
+            assert!(
+                codes.contains(&expected),
+                "{expected}: {codes:#?}\n{source}"
+            );
+        }
+    }
+
     fn collect_sources(path: &Path, output: &mut Vec<PathBuf>) {
         for entry in fs::read_dir(path).expect("fixture directory should be readable") {
             let entry = entry.expect("fixture entry should be readable");

@@ -1790,6 +1790,87 @@ entity Customer { email: Email }
     }
 
     #[test]
+    fn reports_each_invalid_module_relationship() {
+        let parse_file = |name: &str, source: &str| {
+            let parsed = parse(Path::new(name), source);
+            assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+            parsed
+        };
+        let codes = |files: Vec<_>| {
+            build_semantic_graph(&files)
+                .diagnostics
+                .into_iter()
+                .map(|diagnostic| diagnostic.code)
+                .collect::<Vec<_>>()
+        };
+
+        let without_module = codes(vec![parse_file(
+            "public-without-module.jadpo",
+            "public type PublicName = Text {}\ntype LocalName = Text {}\n",
+        )]);
+        assert!(
+            without_module.contains(&"MOD_PUBLIC_REQUIRES_MODULE"),
+            "{without_module:#?}"
+        );
+
+        let duplicate_modules = codes(vec![
+            parse_file(
+                "first.jadpo",
+                "module duplicate.name\ntype First = Text {}\n",
+            ),
+            parse_file(
+                "second.jadpo",
+                "module duplicate.name\ntype Second = Text {}\n",
+            ),
+        ]);
+        assert!(
+            duplicate_modules.contains(&"MOD_DUPLICATE_MODULE"),
+            "{duplicate_modules:#?}"
+        );
+
+        let mixed_modules = codes(vec![
+            parse_file(
+                "explicit.jadpo",
+                "module explicit.name\ntype Named = Text {}\n",
+            ),
+            parse_file("implicit.jadpo", "type Unnamed = Text {}\n"),
+        ]);
+        assert!(
+            mixed_modules.contains(&"MOD_MODULE_REQUIRED"),
+            "{mixed_modules:#?}"
+        );
+
+        let invalid_imports = codes(vec![
+            parse_file(
+                "shared.jadpo",
+                "module shared.names\npublic type Exported = Text {}\npublic type Extra = Text {}\ntype Private = Text {}\n",
+            ),
+            parse_file(
+                "consumer.jadpo",
+                r#"module consumer.names
+import consumer.names { Local }
+import absent.package { Missing }
+import shared.names { Exported, Extra, Extra, Unknown }
+type Exported = Text {}
+type Local = Text {}
+"#,
+            ),
+        ]);
+        for expected in [
+            "MOD_SELF_IMPORT",
+            "MOD_UNKNOWN_MODULE",
+            "MOD_IMPORT_CONFLICT",
+            "MOD_DUPLICATE_IMPORT",
+            "MOD_UNKNOWN_EXPORT",
+        ] {
+            assert!(
+                invalid_imports.contains(&expected),
+                "{expected}: {invalid_imports:#?}"
+            );
+        }
+    }
+
+    #[test]
     fn reports_duplicate_and_unknown_semantic_names() {
         let source = r#"
 entity Customer { id: Missing }
@@ -1906,6 +1987,37 @@ entity Todo {
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "DATA_INVERSE_NOT_OWNING_REFERENCE"));
+    }
+
+    #[test]
+    fn reports_each_invalid_relationship_name_and_target_shape() {
+        let source = r#"
+entity User {
+    id: Uuid identity
+    todos: Text
+    inverse todos: many Todo via Todo.absent_field
+    inverse malformed: many Todo via User.id
+}
+entity Todo {
+    id: Uuid identity
+    owner_id: User.id references User on_delete cascade
+}
+"#;
+        let parsed = parse(Path::new("invalid-relationship-shapes.jadpo"), source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        let graph = build_semantic_graph(&[parsed]);
+        let codes = graph
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>();
+
+        assert!(codes.contains(&"DATA_INVERSE_DUPLICATE_NAME"), "{codes:#?}");
+        assert!(codes.contains(&"DATA_INVERSE_VIA_FIELD"), "{codes:#?}");
+        assert!(
+            codes.contains(&"DATA_RELATIONSHIP_TARGET_FIELD"),
+            "{codes:#?}"
+        );
     }
 
     #[test]
