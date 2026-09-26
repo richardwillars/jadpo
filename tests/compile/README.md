@@ -47,7 +47,7 @@ Diagnostic codes in these fixtures are part of the compiler-facing contract.
 Renaming one requires updating the roadmap, relevant specification, and all
 affected fixture expectations together.
 
-The current ninety-four pairs comprise the original ten type/failure cases plus
+The current ninety-five pairs comprise the original ten type/failure cases plus
 coverage for optional omission, nullable widening, implicit narrowing,
 semantic-to-primitive unwrapping, incomplete records, invariant collections,
 transitive failure propagation, function/action separation, missing failure
@@ -123,6 +123,9 @@ Fixtures 77–80 complete real trigger coverage for the route family: a missing
 behaviour, duplicate typed path binding, duplicate URL placeholder, and invalid
 placeholder spelling. Each remains a single root diagnostic with exact public
 copy rather than a dependent parser cascade.
+Fixture 81 completes the failure-family trigger set with duplicate and unknown
+flat context values at a rejection site. It also fixes the duplicate-field copy
+to describe a value supplied twice rather than a declaration repeated twice.
 
 Expectation files retain established compiler codes as migration aliases. CLI
 and LSP diagnostics expose the canonical lower-dotted `ruleId` alongside those

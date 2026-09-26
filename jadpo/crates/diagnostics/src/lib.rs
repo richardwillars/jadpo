@@ -637,9 +637,9 @@ fn failure_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Give one failure a distinct stable public code",
         ),
         "FAIL_DUPLICATE_CONTEXT_FIELD" => (
-            "Failure context field is declared more than once",
-            "A failure has one flat context object; repeating a field would make construction, disclosure, and serialization ambiguous.",
-            "Keep one declaration of the context field",
+            "Failure context field is supplied more than once",
+            "A rejected failure has one flat context value; assigning a field twice would make its disclosed and internal value ambiguous.",
+            "Keep one value for the repeated context field",
         ),
         "FAIL_DUPLICATE_DECLARATION" => (
             "Problem is repeated in the `fails` set",

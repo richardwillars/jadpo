@@ -135,3 +135,5 @@ render coverage with a real trigger fixture for every code.
 
 The `ROUTE_*` family now has real compile-trigger coverage for every code in
 addition to its all-audience projection coverage.
+
+The `FAIL_*` family now also has real compile-trigger coverage for every code.

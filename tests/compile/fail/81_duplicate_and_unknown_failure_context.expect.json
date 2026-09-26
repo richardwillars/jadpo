@@ -1,0 +1,24 @@
+{
+  "fixture_version": 1,
+  "result": "fail",
+  "diagnostics": [
+    {
+      "code": "FAIL_DUPLICATE_CONTEXT_FIELD",
+      "primary_match": "retryable",
+      "summary": "Failure context field is supplied more than once",
+      "reason_includes": "assigning a field twice",
+      "recommended_title": "Keep one value for the repeated context field",
+      "repair_kind": "guided_choice",
+      "decision_owner": "agent"
+    },
+    {
+      "code": "FAIL_UNKNOWN_CONTEXT_FIELD",
+      "primary_match": "debug",
+      "summary": "Rejected failure contains an unknown context field",
+      "reason_includes": "extra fields have no disclosure classification",
+      "recommended_title": "Remove the extra field or declare it on the failure",
+      "repair_kind": "guided_choice",
+      "decision_owner": "agent"
+    }
+  ]
+}
