@@ -519,6 +519,11 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "An inverse relationship is derived from stored owning references and cannot be declared on value, input, or output records.",
             "Move the inverse relationship to its entity, or remove it",
         ),
+        "SYN_INVALID_ESCAPE" => (
+            "String contains an unsupported escape sequence",
+            "Jadpo strings support escapes for quotes, backslashes, newline, carriage return, and tab; this backslash sequence has no defined value.",
+            "Use a supported string escape or remove the backslash",
+        ),
         "SYN_MATCH_PATTERN" => (
             "Invalid match pattern",
             "A match arm must use a pattern supported by the matched value, such as a variant, Boolean, nullable pattern, or wildcard.",
@@ -543,6 +548,11 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Expected {expected}",
             "Found `{found}` while parsing this construct. Jadpo requires {expected} at this location, so parsing stops rather than guessing the authored structure.",
             "Provide {expected}",
+        ),
+        "SYN_UNEXPECTED_CHARACTER" => (
+            "Character is not valid Jadpo syntax",
+            "This character cannot begin or continue any Jadpo token, so the lexer skipped it rather than guessing the intended source.",
+            "Remove the character or replace it with valid Jadpo syntax",
         ),
         "SYN_UNSUPPORTED_THROW" => (
             "Arbitrary `throw` is not supported",

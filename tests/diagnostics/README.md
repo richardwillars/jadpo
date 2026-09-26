@@ -34,6 +34,11 @@ Coverage is split by responsibility:
   fixture may additionally assert the exact summary, reason fragment, repair
   classification, owner, context, alternatives, replacements, and impact.
 
+Catalogue discovery scans diagnostic identifier tokens rather than naively
+splitting Rust source on quotation marks. Escaped JSON literals therefore
+cannot hide later compiler diagnostics from the conformance suite; the complete
+enumerated catalogue currently contains 310 codes.
+
 `ROUTE_AUTH_VALUE_INVALID` is the first complete golden scenario. Its fixture
 proves one root error over `nonke`, continued parsing of subsequent route items,
 two non-preferred human-owned security choices, and parity across JSON,

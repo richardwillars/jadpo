@@ -94,9 +94,11 @@ fn visit(path: &Path, codes: &mut BTreeSet<String>) {
             println!("cargo:rerun-if-changed={}", entry.display());
             let source = fs::read_to_string(&entry)
                 .unwrap_or_else(|error| panic!("read {}: {error}", entry.display()));
-            for quoted in source.split('"').skip(1).step_by(2) {
-                if is_diagnostic_code(quoted) {
-                    codes.insert(quoted.to_owned());
+            for token in source.split(|character: char| {
+                !(character.is_ascii_uppercase() || character.is_ascii_digit() || character == '_')
+            }) {
+                if is_diagnostic_code(token) {
+                    codes.insert(token.to_owned());
                 }
             }
         }
