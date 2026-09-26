@@ -200,9 +200,9 @@ type AtomicPair = Object {
 }
 
 failure CustomerNotFound {
-    kind NotFound
-    code "customer_not_found"
-    message "Customer not found."
+    kind: NotFound
+    code: "customer_not_found"
+    message: "Customer not found."
 
     internal {
         customer_id: Customer.id
@@ -210,45 +210,45 @@ failure CustomerNotFound {
 }
 
 failure CustomerMutationConflict {
-    kind Conflict
-    code "customer_mutation_conflict"
-    message "The customer could not be changed."
+    kind: Conflict
+    code: "customer_mutation_conflict"
+    message: "The customer could not be changed."
 }
 
 failure AtomicPairConflict {
-    kind Conflict
-    code "atomic_pair_conflict"
-    message "The atomic pair could not be created."
+    kind: Conflict
+    code: "atomic_pair_conflict"
+    message: "The atomic pair could not be created."
 }
 
 failure AccountNotFound {
-    kind NotFound
-    code "account_not_found"
-    message "Account not found."
+    kind: NotFound
+    code: "account_not_found"
+    message: "Account not found."
 }
 
 failure AccountMutationConflict {
-    kind Conflict
-    code "account_mutation_conflict"
-    message "The account could not be changed."
+    kind: Conflict
+    code: "account_mutation_conflict"
+    message: "The account could not be changed."
 }
 
 failure AccountHandleTaken {
-    kind Conflict
-    code "account_handle_taken"
-    message "That account handle is already used."
+    kind: Conflict
+    code: "account_handle_taken"
+    message: "That account handle is already used."
 }
 
 failure AccountTenantOwnerTaken {
-    kind Conflict
-    code "account_tenant_owner_taken"
-    message "That owner already has an account in this tenant."
+    kind: Conflict
+    code: "account_tenant_owner_taken"
+    message: "That owner already has an account in this tenant."
 }
 
 failure UserNotFound {
-    kind NotFound
-    code "user_not_found"
-    message "User not found."
+    kind: NotFound
+    code: "user_not_found"
+    message: "User not found."
 
     internal {
         user_id: User.id
@@ -256,27 +256,27 @@ failure UserNotFound {
 }
 
 failure TodoNotFound {
-    kind NotFound
-    code "todo_not_found"
-    message "Todo not found."
+    kind: NotFound
+    code: "todo_not_found"
+    message: "Todo not found."
 }
 
 failure PatchItemNotFound {
-    kind NotFound
-    code "patch_item_not_found"
-    message "Patch item not found."
+    kind: NotFound
+    code: "patch_item_not_found"
+    message: "Patch item not found."
 }
 
 failure EmptyPatchItem {
-    kind InvalidValue
-    code "empty_patch_item"
-    message "Supply at least one patch field."
+    kind: InvalidValue
+    code: "empty_patch_item"
+    message: "Supply at least one patch field."
 }
 
 failure PatchItemConflict {
-    kind Conflict
-    code "patch_item_conflict"
-    message "The patch item could not be changed."
+    kind: Conflict
+    code: "patch_item_conflict"
+    message: "The patch item could not be changed."
 }
 
 action create_customer(input: CreateCustomer)

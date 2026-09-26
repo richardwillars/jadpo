@@ -897,7 +897,7 @@ mod tests {
         let result = check(
             r#"
 value Result { ok: Bool }
-failure Missing { kind NotFound code "missing" }
+failure Missing { kind: NotFound code: "missing" }
 action find() -> Result fails Missing { reject Missing }
 route GET /result { auth: none output: Result run: find() }
 "#,
@@ -913,7 +913,7 @@ route GET /result { auth: none output: Result run: find() }
         let result = check(
             r#"
 value Result { ok: Bool }
-failure Closed { kind Conflict code "closed" }
+failure Closed { kind: Conflict code: "closed" }
 action register() -> Result { reject Closed }
 "#,
         );
@@ -926,7 +926,7 @@ action register() -> Result { reject Closed }
         let result = check(
             r#"
 entity Account { id: Uuid identity }
-failure Refused { kind Rejected code "refused" }
+failure Refused { kind: Rejected code: "refused" }
 action add(id: Account.id) -> Account fails Refused {
     return attempt create Account { id: id } conflict: Refused
 }
@@ -943,7 +943,7 @@ action add(id: Account.id) -> Account fails Refused {
     fn preferred_attempt_repair_removes_only_the_named_diagnostic() {
         let source = r#"
 value Result { ok: Bool }
-failure Refused { kind Rejected code "refused" }
+failure Refused { kind: Rejected code: "refused" }
 action child() -> Result fails Refused { reject Refused }
 action parent() -> Result fails Refused { return child() }
 "#;
@@ -964,7 +964,7 @@ action parent() -> Result fails Refused { return child() }
     fn preferred_stale_fails_repair_preserves_the_public_failure_contract() {
         let source = r#"
 value Result { ok: Bool }
-failure Refused { kind Rejected code "refused" }
+failure Refused { kind: Rejected code: "refused" }
 action parent() -> Result fails Refused { return Result { ok: true } }
 "#;
         let before = check(source);
@@ -984,8 +984,8 @@ action parent() -> Result fails Refused { return Result { ok: true } }
     fn stale_fails_repair_names_only_the_removed_failure_and_preserves_reachable_ones() {
         let source = r#"
 value Result { ok: Bool }
-failure Refused { kind Rejected code "refused" }
-failure Closed { kind Conflict code "closed" }
+failure Refused { kind: Rejected code: "refused" }
+failure Closed { kind: Conflict code: "closed" }
 action parent() -> Result fails Refused, Closed { reject Refused }
 "#;
         let before = check(source);

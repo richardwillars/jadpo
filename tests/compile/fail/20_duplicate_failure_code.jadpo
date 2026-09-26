@@ -1,9 +1,9 @@
 failure First {
-    kind Conflict
-    code "same"
+    kind: Conflict
+    code: "same"
 }
 
 failure Second {
-    kind Conflict
-    code "same"
+    kind: Conflict
+    code: "same"
 }

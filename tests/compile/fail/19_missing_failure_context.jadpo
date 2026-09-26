@@ -3,8 +3,8 @@ value Result {
 }
 
 failure Missing {
-    kind NotFound
-    code "missing"
+    kind: NotFound
+    code: "missing"
 
     internal {
         lookup: Text

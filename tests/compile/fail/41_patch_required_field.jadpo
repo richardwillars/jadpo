@@ -8,11 +8,11 @@ input PatchCustomer {
 }
 
 failure EmptyCustomerPatch {
-    kind InvalidValue code "empty_customer_patch" }
+    kind: InvalidValue code: "empty_customer_patch" }
 failure CustomerNotFound {
-    kind NotFound code "customer_not_found" }
+    kind: NotFound code: "customer_not_found" }
 failure CustomerConflict {
-    kind Conflict code "customer_conflict" }
+    kind: Conflict code: "customer_conflict" }
 
 action patch_customer(id: Customer.id, input: PatchCustomer) -> Customer
     fails EmptyCustomerPatch, CustomerNotFound, CustomerConflict

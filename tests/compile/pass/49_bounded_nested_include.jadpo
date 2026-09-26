@@ -28,7 +28,7 @@ output TodoOwnerProfile {
 }
 
 failure TodoNotFound {
-    kind NotFound code "todo_not_found" }
+    kind: NotFound code: "todo_not_found" }
 
 action get_todo_owner_profile(input: FindTodo) -> TodoOwnerProfile
     fails TodoNotFound

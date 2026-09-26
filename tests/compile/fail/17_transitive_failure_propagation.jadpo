@@ -3,8 +3,8 @@ value RegistrationResult {
 }
 
 failure RegistrationClosed {
-    kind Conflict
-    code "registration_closed"
+    kind: Conflict
+    code: "registration_closed"
 }
 
 action child(

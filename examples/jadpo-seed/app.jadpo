@@ -26,9 +26,9 @@ type RegistrationAccepted = Object {
 // todo: Lets also explore creating an output for a route where it's a type excluding certain properties
 
 failure InviteCodeRejected {
-    kind Rejected
-    code "invite_code_rejected"
-    message "That invite code cannot be used."
+    kind: Rejected
+    code: "invite_code_rejected"
+    message: "That invite code cannot be used."
 
     internal {
         invite_code: InviteCode

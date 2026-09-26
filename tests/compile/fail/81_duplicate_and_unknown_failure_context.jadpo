@@ -1,6 +1,6 @@
 failure InvalidRegistration {
-    kind InvalidValue
-    code "invalid_registration"
+    kind: InvalidValue
+    code: "invalid_registration"
 
     public {
         retryable: Bool

@@ -415,7 +415,7 @@ mod tests {
         let fixtures = repository_root().join("tests/compile");
         let sources = discover_sources(&fixtures).expect("fixtures should be discoverable");
 
-        assert_eq!(sources.len(), 112);
+        assert_eq!(sources.len(), 113);
     }
 
     #[test]
@@ -900,7 +900,7 @@ mod tests {
             (
                 "fail/20_duplicate_failure_code",
                 vec!["FAIL_DUPLICATE_CODE"],
-                vec!["Second {\n    kind Conflict\n    code \"same\""],
+                vec!["Second {\n    kind: Conflict\n    code: \"same\""],
             ),
             (
                 "fail/25_function_create_effect",

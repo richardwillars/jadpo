@@ -205,9 +205,9 @@ lazy-loading accessors.
 
 ```ebnf
 failure_declaration = "failure", identifier, "{",
-                        "kind", identifier,
-                        "code", string_literal,
-                        [ "message", string_literal ],
+                        "kind", ":", identifier,
+                        "code", ":", string_literal,
+                        [ "message", ":", string_literal ],
                         [ public_schema ],
                         [ internal_schema ],
                       "}" ;

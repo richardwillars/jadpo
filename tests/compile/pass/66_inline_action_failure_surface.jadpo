@@ -3,9 +3,9 @@ value Result {
 }
 
 failure Refused {
-    kind Rejected
-    code "refused"
-    message "Request refused."
+    kind: Rejected
+    code: "refused"
+    message: "Request refused."
 }
 
 route POST /result {

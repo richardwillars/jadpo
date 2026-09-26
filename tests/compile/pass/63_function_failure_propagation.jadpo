@@ -5,8 +5,8 @@ value Result {
 type Allowed = Bool {}
 
 failure Refused {
-    kind Rejected
-    code "refused"
+    kind: Rejected
+    code: "refused"
 }
 
 function validate(allowed: Allowed) -> Result fails Refused {

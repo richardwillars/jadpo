@@ -122,9 +122,9 @@ optional safe message, public payload schema, and internal diagnostic schema:
 
 ```text
 failure CustomerNotFound {
-    kind NotFound
-    code "customer_not_found"
-    message "Customer not found."
+    kind: NotFound
+    code: "customer_not_found"
+    message: "Customer not found."
 
     internal {
         customer_id: Customer.id
@@ -147,9 +147,9 @@ A failure exposes no application data unless its declaration contains a
 
 ```text
 failure QuantityUnavailable {
-    kind Conflict
-    code "quantity_unavailable"
-    message "The requested quantity is unavailable."
+    kind: Conflict
+    code: "quantity_unavailable"
+    message: "The requested quantity is unavailable."
 
     public {
         available: Quantity
@@ -428,9 +428,9 @@ missing resource:
 
 ```text
 failure CustomerNotVisible {
-    kind NotVisible
-    code "customer_not_found"
-    message "Customer not found."
+    kind: NotVisible
+    code: "customer_not_found"
+    message: "Customer not found."
 
     internal {
         customer_id: Customer.id

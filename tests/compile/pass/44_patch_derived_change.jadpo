@@ -9,11 +9,11 @@ input PatchTodo {
 }
 
 failure EmptyTodoPatch {
-    kind InvalidValue code "empty_todo_patch" }
+    kind: InvalidValue code: "empty_todo_patch" }
 failure TodoNotFound {
-    kind NotFound code "todo_not_found" }
+    kind: NotFound code: "todo_not_found" }
 failure TodoConflict {
-    kind Conflict code "todo_conflict" }
+    kind: Conflict code: "todo_conflict" }
 
 action patch_todo(id: Todo.id, input: PatchTodo) -> Todo
     fails EmptyTodoPatch, TodoNotFound, TodoConflict

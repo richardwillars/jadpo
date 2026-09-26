@@ -12,9 +12,9 @@ input CreateMembership {
 }
 
 failure MembershipExists {
-    kind Conflict code "membership_exists" }
+    kind: Conflict code: "membership_exists" }
 failure MembershipConflict {
-    kind Conflict code "membership_conflict" }
+    kind: Conflict code: "membership_conflict" }
 
 action create_membership(input: CreateMembership) -> Membership
     fails MembershipExists, MembershipConflict

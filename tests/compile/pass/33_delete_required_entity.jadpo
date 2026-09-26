@@ -3,13 +3,13 @@ entity Customer {
 }
 
 failure CustomerNotFound {
-    kind NotFound
-    code "customer_not_found"
+    kind: NotFound
+    code: "customer_not_found"
 }
 
 failure CustomerConflict {
-    kind Conflict
-    code "customer_conflict"
+    kind: Conflict
+    code: "customer_conflict"
 }
 
 action delete_customer(id: Customer.id) -> Customer

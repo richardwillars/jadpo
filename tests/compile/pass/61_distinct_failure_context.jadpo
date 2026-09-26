@@ -11,9 +11,9 @@ value RefusalResult {
 }
 
 failure PaymentRefused {
-    kind Rejected
-    code "payment_refused"
-    message "Payment was refused."
+    kind: Rejected
+    code: "payment_refused"
+    message: "Payment was refused."
 
     public {
         reference: PublicReference

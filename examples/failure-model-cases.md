@@ -8,9 +8,9 @@ compiler and runtime must accept or reject
 
 ```text
 failure CustomerNotFound {
-    kind NotFound
-    code "customer_not_found"
-    message "Customer not found."
+    kind: NotFound
+    code: "customer_not_found"
+    message: "Customer not found."
 
     internal {
         customer_id: Customer.id
@@ -18,9 +18,9 @@ failure CustomerNotFound {
 }
 
 failure CustomerNotVisible {
-    kind NotVisible
-    code "customer_not_found"
-    message "Customer not found."
+    kind: NotVisible
+    code: "customer_not_found"
+    message: "Customer not found."
 
     internal {
         customer_id: Customer.id
@@ -29,9 +29,9 @@ failure CustomerNotVisible {
 }
 
 failure EmailAlreadyUsed {
-    kind Conflict
-    code "email_already_used"
-    message "That email cannot be used."
+    kind: Conflict
+    code: "email_already_used"
+    message: "That email cannot be used."
 
     internal {
         email: Email
@@ -39,9 +39,9 @@ failure EmailAlreadyUsed {
 }
 
 failure QuantityUnavailable {
-    kind Conflict
-    code "quantity_unavailable"
-    message "The requested quantity is unavailable."
+    kind: Conflict
+    code: "quantity_unavailable"
+    message: "The requested quantity is unavailable."
 
     public {
         available: Quantity
@@ -54,15 +54,15 @@ failure QuantityUnavailable {
 }
 
 failure PaymentDeclined {
-    kind Rejected
-    code "payment_declined"
-    message "The payment was declined."
+    kind: Rejected
+    code: "payment_declined"
+    message: "The payment was declined."
 }
 
 failure CheckoutUnavailable {
-    kind Unavailable
-    code "checkout_unavailable"
-    message "Checkout is temporarily unavailable."
+    kind: Unavailable
+    code: "checkout_unavailable"
+    message: "Checkout is temporarily unavailable."
 }
 ```
 
@@ -127,7 +127,7 @@ for expected outcomes.
 
 ```text
 failure CustomerMissing {
-    code "customer_missing"
+    code: "customer_missing"
 }
 ```
 
@@ -215,8 +215,8 @@ schema.
 
 ```text
 failure ProviderFailed {
-    kind Unavailable
-    code "provider_failed"
+    kind: Unavailable
+    code: "provider_failed"
 
     public {
         api_key: Secret<Text>
@@ -230,8 +230,8 @@ failure ProviderFailed {
 
 ```text
 failure EmailAlreadyUsed {
-    kind Conflict
-    code "email_already_used"
+    kind: Conflict
+    code: "email_already_used"
 
     internal {
         email: Email
@@ -292,8 +292,8 @@ breaks compilation.
 
 ```text
 failure PaymentFailed {
-    kind Rejected
-    code "payment_failed"
+    kind: Rejected
+    code: "payment_failed"
 
     public {
         provider_message: Text
@@ -404,9 +404,9 @@ construction is validated during compilation.
 
 ```text
 failure InvalidContactEmail {
-    kind InvalidValue
-    code "invalid_contact_email"
-    message "Enter a valid contact email."
+    kind: InvalidValue
+    code: "invalid_contact_email"
+    message: "Enter a valid contact email."
 }
 
 var email = attempt Email(raw_text)

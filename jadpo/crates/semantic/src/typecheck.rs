@@ -2572,7 +2572,7 @@ function email() -> Email { return Email("not-an-email") }
 entity User { id: Uuid identity inverse todos: many Todo via Todo.owner_id }
 entity Todo { id: Uuid identity owner_id: User.id references User.id on_delete cascade }
 output UserTodos { parent: User todos: List<Todo> }
-failure UserNotFound { kind NotFound code "user_not_found" }
+failure UserNotFound { kind: NotFound code: "user_not_found" }
 action load(user_id: User.id) -> UserTodos fails UserNotFound {
     return attempt query required User {
         where: id == user_id
@@ -2596,7 +2596,7 @@ action load(user_id: User.id) -> UserTodos fails UserNotFound {
 entity User { id: Uuid identity inverse todos: many Todo via Todo.owner_id }
 entity Todo { id: Uuid identity owner_id: User.id references User.id on_delete cascade }
 output UserTodos { parent: User todos: List<Todo> }
-failure UserNotFound { kind NotFound code "user_not_found" }
+failure UserNotFound { kind: NotFound code: "user_not_found" }
 action load(user_id: User.id) -> UserTodos fails UserNotFound {
     return attempt query required User {
         where: id == user_id
@@ -2720,8 +2720,8 @@ action create_draft(name: Text) -> Draft {
             ),
             (
                 r#"input Draft { id: Uuid }
-failure DraftAbsent { kind NotFound code "draft_absent" }
-failure Clash { kind Conflict code "clash" }
+failure DraftAbsent { kind: NotFound code: "draft_absent" }
+failure Clash { kind: Conflict code: "clash" }
 action delete_draft(id: Uuid) -> Draft fails DraftAbsent, Clash {
     return delete required Draft {
         where: id == id
@@ -2829,8 +2829,8 @@ function describe(value: Name) -> Bool {
             ),
             (
                 r#"entity Item { id: Uuid identity }
-failure ItemAbsent { kind NotFound code "item_absent" }
-failure ItemConflict { kind Conflict code "item_conflict" }
+failure ItemAbsent { kind: NotFound code: "item_absent" }
+failure ItemConflict { kind: Conflict code: "item_conflict" }
 action change(id: Item.id) -> Item fails ItemAbsent, ItemConflict {
     return update required Item {
         where: id == id
@@ -2843,8 +2843,8 @@ action change(id: Item.id) -> Item fails ItemAbsent, ItemConflict {
             ),
             (
                 r#"input Draft { id: Uuid }
-failure DraftAbsent { kind NotFound code "draft_absent" }
-failure DraftConflict { kind Conflict code "draft_conflict" }
+failure DraftAbsent { kind: NotFound code: "draft_absent" }
+failure DraftConflict { kind: Conflict code: "draft_conflict" }
 action change(id: Uuid) -> Draft fails DraftAbsent, DraftConflict {
     return update required Draft {
         where: id == id
@@ -2857,8 +2857,8 @@ action change(id: Uuid) -> Draft fails DraftAbsent, DraftConflict {
             ),
             (
                 r#"entity Item { id: Uuid identity }
-failure ItemAbsent { kind NotFound code "item_absent" }
-failure ItemConflict { kind Conflict code "item_conflict" }
+failure ItemAbsent { kind: NotFound code: "item_absent" }
+failure ItemConflict { kind: Conflict code: "item_conflict" }
 action change(id: Item.id) -> Item fails ItemAbsent, ItemConflict {
     return update required Item {
         where: id == id
@@ -2871,8 +2871,8 @@ action change(id: Item.id) -> Item fails ItemAbsent, ItemConflict {
             ),
             (
                 r#"entity Item { id: Uuid identity nickname: Text? }
-failure ItemAbsent { kind NotFound code "item_absent" }
-failure ItemConflict { kind Conflict code "item_conflict" }
+failure ItemAbsent { kind: NotFound code: "item_absent" }
+failure ItemConflict { kind: Conflict code: "item_conflict" }
 action change(nickname: Text) -> Item fails ItemAbsent, ItemConflict {
     return update required Item {
         where: nickname == nickname
@@ -2885,8 +2885,8 @@ action change(nickname: Text) -> Item fails ItemAbsent, ItemConflict {
             ),
             (
                 r#"entity Item { id: Uuid identity }
-failure ItemAbsent { kind NotFound code "item_absent" }
-failure ItemConflict { kind Conflict code "item_conflict" }
+failure ItemAbsent { kind: NotFound code: "item_absent" }
+failure ItemConflict { kind: Conflict code: "item_conflict" }
 action change(id: Item.id) -> Item fails ItemAbsent, ItemConflict {
     return update required Item {
         where: unknown_field == id
@@ -2899,8 +2899,8 @@ action change(id: Item.id) -> Item fails ItemAbsent, ItemConflict {
             ),
             (
                 r#"entity Item { id: Uuid identity }
-failure FirstConflict { kind Conflict code "first_conflict" }
-failure SecondConflict { kind Conflict code "second_conflict" }
+failure FirstConflict { kind: Conflict code: "first_conflict" }
+failure SecondConflict { kind: Conflict code: "second_conflict" }
 action create_item(id: Item.id) -> Item fails FirstConflict, SecondConflict {
     return create Item { id: id }
         conflict: FirstConflict
@@ -2911,9 +2911,9 @@ action create_item(id: Item.id) -> Item fails FirstConflict, SecondConflict {
             (
                 r#"entity Item { id: Uuid identity name: Text }
 input PatchItem { name: Text optional }
-failure EmptyPatch { kind InvalidValue code "empty_patch" }
-failure ItemAbsent { kind NotFound code "item_absent" }
-failure ItemConflict { kind Conflict code "item_conflict" }
+failure EmptyPatch { kind: InvalidValue code: "empty_patch" }
+failure ItemAbsent { kind: NotFound code: "item_absent" }
+failure ItemConflict { kind: Conflict code: "item_conflict" }
 action patch_item(id: Item.id, input: PatchItem) -> Item fails EmptyPatch, ItemAbsent, ItemConflict {
     return update required Item {
         where: id == id
@@ -2927,9 +2927,9 @@ action patch_item(id: Item.id, input: PatchItem) -> Item fails EmptyPatch, ItemA
             ),
             (
                 r#"entity Item { id: Uuid identity name: Text }
-failure EmptyPatch { kind InvalidValue code "empty_patch" }
-failure ItemAbsent { kind NotFound code "item_absent" }
-failure ItemConflict { kind Conflict code "item_conflict" }
+failure EmptyPatch { kind: InvalidValue code: "empty_patch" }
+failure ItemAbsent { kind: NotFound code: "item_absent" }
+failure ItemConflict { kind: Conflict code: "item_conflict" }
 action patch_item(id: Item.id, item: Item) -> Item fails EmptyPatch, ItemAbsent, ItemConflict {
     return update required Item {
         where: id == id
@@ -2944,9 +2944,9 @@ action patch_item(id: Item.id, item: Item) -> Item fails EmptyPatch, ItemAbsent,
             (
                 r#"entity Item { id: Uuid identity name: Text }
 input EmptyPatch {}
-failure EmptyChange { kind InvalidValue code "empty_change" }
-failure ItemAbsent { kind NotFound code "item_absent" }
-failure ItemConflict { kind Conflict code "item_conflict" }
+failure EmptyChange { kind: InvalidValue code: "empty_change" }
+failure ItemAbsent { kind: NotFound code: "item_absent" }
+failure ItemConflict { kind: Conflict code: "item_conflict" }
 action patch_item(id: Item.id, input: EmptyPatch) -> Item fails EmptyChange, ItemAbsent, ItemConflict {
     return update required Item {
         where: id == id
@@ -2961,9 +2961,9 @@ action patch_item(id: Item.id, input: EmptyPatch) -> Item fails EmptyChange, Ite
             (
                 r#"entity Item { id: Uuid identity name: Text }
 input PatchItem { name: Text optional }
-failure EmptyChange { kind InvalidValue code "empty_change" }
-failure ItemAbsent { kind NotFound code "item_absent" }
-failure ItemConflict { kind Conflict code "item_conflict" }
+failure EmptyChange { kind: InvalidValue code: "empty_change" }
+failure ItemAbsent { kind: NotFound code: "item_absent" }
+failure ItemConflict { kind: Conflict code: "item_conflict" }
 action patch_item(id: Item.id, input: PatchItem, other: PatchItem) -> Item fails EmptyChange, ItemAbsent, ItemConflict {
     return update required Item {
         where: id == id
@@ -2979,9 +2979,9 @@ action patch_item(id: Item.id, input: PatchItem, other: PatchItem) -> Item fails
             (
                 r#"entity Item { id: Uuid identity name: Text }
 input PatchItem { name: Text optional }
-failure EmptyChange { kind InvalidValue code "empty_change" }
-failure ItemAbsent { kind NotFound code "item_absent" }
-failure ItemConflict { kind Conflict code "item_conflict" }
+failure EmptyChange { kind: InvalidValue code: "empty_change" }
+failure ItemAbsent { kind: NotFound code: "item_absent" }
+failure ItemConflict { kind: Conflict code: "item_conflict" }
 action patch_item(id: Item.id, input: PatchItem) -> Item fails EmptyChange, ItemAbsent, ItemConflict {
     return update required Item {
         where: id == id
@@ -3033,8 +3033,8 @@ output DifferentResult { parent: User todos: List<Todo> }
 input BadProfileResult { parent: User profile: Profile }
 input BadOwnerResult { parent: Todo owner: User? }
 input BadNestedResult { parent: Todo owner: BadProfileResult }
-failure UserAbsent { kind NotFound code "user_absent" }
-failure TodoAbsent { kind NotFound code "todo_absent" }
+failure UserAbsent { kind: NotFound code: "user_absent" }
+failure TodoAbsent { kind: NotFound code: "todo_absent" }
 
 action bad_many() -> BadResult {
     return query optional User {
@@ -3151,7 +3151,7 @@ entity User {
 entity Todo { id: Uuid identity owner_id: User.id references User.id on_delete cascade }
 entity Note { id: Uuid identity owner_id: User.id references User.id on_delete cascade }
 output UserActivity { parent: User todos: List<Todo> notes: List<Note> }
-failure UserNotFound { kind NotFound code "user_not_found" }
+failure UserNotFound { kind: NotFound code: "user_not_found" }
 action load(user_id: User.id) -> UserActivity fails UserNotFound {
     return attempt query required User {
         where: id == user_id

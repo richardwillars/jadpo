@@ -3,9 +3,9 @@ value RegistrationResult {
 }
 
 failure RegistrationClosed {
-    kind Conflict
-    code "registration_closed"
-    message "Registration is closed."
+    kind: Conflict
+    code: "registration_closed"
+    message: "Registration is closed."
 }
 
 action register() -> RegistrationResult {

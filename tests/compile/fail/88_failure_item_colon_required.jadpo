@@ -1,0 +1,4 @@
+failure Missing {
+    kind NotFound
+    code: "missing"
+}

@@ -18,7 +18,7 @@ output UserProfile {
 }
 
 failure UserNotFound {
-    kind NotFound code "user_not_found" }
+    kind: NotFound code: "user_not_found" }
 
 action get_user_profile(input: FindUser) -> UserProfile
     fails UserNotFound

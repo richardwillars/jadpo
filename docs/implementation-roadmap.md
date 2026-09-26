@@ -980,7 +980,7 @@ make them harder to change.
 - Retain the term `failure`; it distinguishes a typed negative outcome from an
   uncatchable compiler/runtime defect.
 - Replace the visually understated `failure Name: Kind` relationship with an
-  explicit `kind Kind` member in the failure body.
+  explicit `kind: Kind` member in the failure body.
 - Define each application failure once and reuse it across callables. Group
   declarations by domain rather than redefining failures per action.
 - Retain an explicit stable public `code` and an optional static safe
@@ -1003,9 +1003,9 @@ The intended declaration shape is:
 
 ```text
 failure CustomerNotFound {
-    kind NotFound
-    code "customer_not_found"
-    message "Customer not found."
+    kind: NotFound
+    code: "customer_not_found"
+    message: "Customer not found."
 
     public {
         customer_id: Customer.id

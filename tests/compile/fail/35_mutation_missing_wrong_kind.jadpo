@@ -1,8 +1,8 @@
 entity Customer { id: Uuid }
 failure WrongMissing {
-    kind Rejected code "wrong_missing" }
+    kind: Rejected code: "wrong_missing" }
 failure CustomerConflict {
-    kind Conflict code "customer_conflict" }
+    kind: Conflict code: "customer_conflict" }
 
 action delete_customer(id: Customer.id) -> Customer
     fails WrongMissing, CustomerConflict

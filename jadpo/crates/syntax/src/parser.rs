@@ -624,15 +624,18 @@ impl<'source> Parser<'source> {
             let before = self.cursor;
             match self.current_kind() {
                 TokenKind::Kind => {
-                    self.bump();
+                    let item = self.bump();
+                    self.expect_failure_item_colon(item);
                     kind = self.expect_name("expected a standard failure kind after `kind`");
                 }
                 TokenKind::Code => {
-                    self.bump();
+                    let item = self.bump();
+                    self.expect_failure_item_colon(item);
                     code = self.parse_literal_of(TokenKind::StringLiteral);
                 }
                 TokenKind::Message => {
-                    self.bump();
+                    let item = self.bump();
+                    self.expect_failure_item_colon(item);
                     message = self.parse_literal_of(TokenKind::StringLiteral);
                 }
                 TokenKind::Public => {
@@ -2618,6 +2621,24 @@ impl<'source> Parser<'source> {
         item_range.end
     }
 
+    fn expect_failure_item_colon(&mut self, item: Token) {
+        if self.at(TokenKind::Colon) {
+            self.bump();
+            return;
+        }
+        let name = item.text(self.source).to_owned();
+        let mut diagnostic = Diagnostic::error("SYN_FAILURE_ITEM_COLON_REQUIRED")
+            .with_fact(DiagnosticFact::Name(name.clone()))
+            .with_edit(TextEdit {
+                source: self.source_name.clone(),
+                start: item.range.end,
+                end: item.range.end,
+                replacement: ":".to_owned(),
+            });
+        diagnostic.recommended_next_step.title = format!("Insert `:` after `{name}`");
+        self.diagnostic_at(diagnostic, item.range);
+    }
+
     fn error_at(&mut self, code: &'static str, range: TextRange) {
         self.diagnostic_at(Diagnostic::error(code), range);
     }
@@ -3016,7 +3037,7 @@ route POST /registrations {
 
     #[test]
     fn mutations_require_colon_separated_items() {
-        let source = "entity Customer { id: Uuid } failure Missing { kind NotFound code \"missing\" } failure Clashed { kind Conflict code \"clashed\" } action change(id: Customer.id) -> Customer fails Missing, Clashed { return update required Customer { where: id == id set { id: id } missing: Missing conflict: Clashed } }";
+        let source = "entity Customer { id: Uuid } failure Missing { kind: NotFound code: \"missing\" } failure Clashed { kind: Conflict code: \"clashed\" } action change(id: Customer.id) -> Customer fails Missing, Clashed { return update required Customer { where: id == id set { id: id } missing: Missing conflict: Clashed } }";
         let parsed = parse(Path::new("mutation.jadpo"), source);
 
         assert!(parsed.diagnostics.iter().any(|diagnostic| {
@@ -3050,7 +3071,7 @@ route POST /registrations {
 
     #[test]
     fn parses_named_compound_constraints_and_precise_conflicts() {
-        let source = "entity Membership { id: Uuid identity tenant: Text email: Text constraint tenant_email: unique(tenant, email) } failure Exists { kind Conflict code \"exists\" } action add(id: Membership.id, tenant: Membership.tenant, email: Membership.email) -> Membership fails Exists { return create Membership { id: id tenant: tenant email: email } conflict Membership.tenant_email: Exists }";
+        let source = "entity Membership { id: Uuid identity tenant: Text email: Text constraint tenant_email: unique(tenant, email) } failure Exists { kind: Conflict code: \"exists\" } action add(id: Membership.id, tenant: Membership.tenant, email: Membership.email) -> Membership fails Exists { return create Membership { id: id tenant: tenant email: email } conflict Membership.tenant_email: Exists }";
         let parsed = parse(Path::new("compound-constraint.jadpo"), source);
 
         assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
@@ -3090,7 +3111,7 @@ route POST /registrations {
 
     #[test]
     fn parses_a_colon_separated_create_conflict_binding() {
-        let source = "entity Account { id: Uuid identity } failure AccountConflict { kind Conflict code \"account_conflict\" } action add(id: Account.id) -> Account fails AccountConflict { return create Account { id: id } conflict: AccountConflict }";
+        let source = "entity Account { id: Uuid identity } failure AccountConflict { kind: Conflict code: \"account_conflict\" } action add(id: Account.id) -> Account fails AccountConflict { return create Account { id: id } conflict: AccountConflict }";
         let parsed = parse(Path::new("create-conflict.jadpo"), source);
 
         assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
@@ -3174,7 +3195,7 @@ entity User {
 entity Todo { id: Uuid identity owner_id: User.id references User.id on_delete cascade }
 entity Note { id: Uuid identity owner_id: User.id references User.id on_delete cascade }
 output UserActivity { parent: User todos: List<Todo> notes: List<Note> }
-failure UserNotFound { kind NotFound code "user_not_found" }
+failure UserNotFound { kind: NotFound code: "user_not_found" }
 action load(user_id: User.id) -> UserActivity fails UserNotFound {
     return query required User {
         where: id == user_id
@@ -3374,17 +3395,17 @@ value Result {
             ("entity Item { id: Uuid identity } action list() -> List<Item> { return query many Item { where: id == id order_by: id sideways } }", "SYN_EXPECTED_ORDER_DIRECTION"),
             ("route GET /bad { auth: none unknown: true }", "SYN_EXPECTED_ROUTE_ITEM"),
             ("function bad() -> Bool { type }", "SYN_EXPECTED_STATEMENT"),
-            ("failure MissingKind { code \"missing_kind\" }", "SYN_FAILURE_KIND_REQUIRED"),
-            ("failure MissingCode { kind NotFound }", "SYN_FAILURE_CODE_REQUIRED"),
+            ("failure MissingKind { code: \"missing_kind\" }", "SYN_FAILURE_KIND_REQUIRED"),
+            ("failure MissingCode { kind: NotFound }", "SYN_FAILURE_CODE_REQUIRED"),
             ("import shared.names { Name }\ntype Local = Text {}", "SYN_IMPORT_REQUIRES_MODULE"),
             ("input Bad { inverse items: many Item via Item.bad }", "SYN_INVERSE_NON_ENTITY"),
             ("enum Choice { Yes No } function bad(value: Choice) -> Bool { match value { if => {} } return true }", "SYN_MATCH_PATTERN"),
             ("public route GET /bad { auth: none action: { return true } }", "SYN_ROUTE_EXPORT_INVALID"),
-            ("entity Item { id: Uuid identity } input PatchItem { id: Item.id optional } failure Empty { kind InvalidValue code \"empty\" } failure Missing { kind NotFound code \"missing\" } action bad(id: Item.id, input: PatchItem) -> Item fails Empty, Missing { return update required Item { where: id == id patch: empty: Empty missing: Missing } }", "SYN_EXPECTED_PATCH_INPUT"),
-            ("entity Item { id: Uuid identity } input PatchItem { id: Item.id optional } failure Empty { kind InvalidValue code \"empty\" } failure Missing { kind NotFound code \"missing\" } action bad(id: Item.id, input: PatchItem) -> Item fails Empty, Missing { return update required Item { where: id == id patch: input empty: Empty set: { id: id when return } missing: Missing } }", "SYN_EXPECTED_SUPPLIED_FIELD"),
-            ("entity Item { id: Uuid identity } input PatchItem { id: Item.id optional } failure Empty { kind InvalidValue code \"empty\" } failure Missing { kind NotFound code \"missing\" } action bad(id: Item.id, input: PatchItem) -> Item fails Empty, Missing { return update required Item { where: id == id patch: input empty: Empty set: { id: id when input.id wrong } missing: Missing } }", "SYN_EXPECTED_SUPPLIED"),
-            ("entity Item { id: Uuid identity } failure Missing { kind NotFound code \"missing\" } action bad(id: Item.id) -> Item fails Missing { return update required Item { where: id == id missing: Missing } }", "SYN_EXPECTED_UPDATE_BODY"),
-            ("entity Item { id: Uuid identity } failure Missing { kind NotFound code \"missing\" } action bad(id: Item.id) -> Item fails Missing { return delete required Item { where: id == id missing: Missing } }", "SYN_MUTATION_CONFLICT_REQUIRED"),
+            ("entity Item { id: Uuid identity } input PatchItem { id: Item.id optional } failure Empty { kind: InvalidValue code: \"empty\" } failure Missing { kind: NotFound code: \"missing\" } action bad(id: Item.id, input: PatchItem) -> Item fails Empty, Missing { return update required Item { where: id == id patch: empty: Empty missing: Missing } }", "SYN_EXPECTED_PATCH_INPUT"),
+            ("entity Item { id: Uuid identity } input PatchItem { id: Item.id optional } failure Empty { kind: InvalidValue code: \"empty\" } failure Missing { kind: NotFound code: \"missing\" } action bad(id: Item.id, input: PatchItem) -> Item fails Empty, Missing { return update required Item { where: id == id patch: input empty: Empty set: { id: id when return } missing: Missing } }", "SYN_EXPECTED_SUPPLIED_FIELD"),
+            ("entity Item { id: Uuid identity } input PatchItem { id: Item.id optional } failure Empty { kind: InvalidValue code: \"empty\" } failure Missing { kind: NotFound code: \"missing\" } action bad(id: Item.id, input: PatchItem) -> Item fails Empty, Missing { return update required Item { where: id == id patch: input empty: Empty set: { id: id when input.id wrong } missing: Missing } }", "SYN_EXPECTED_SUPPLIED"),
+            ("entity Item { id: Uuid identity } failure Missing { kind: NotFound code: \"missing\" } action bad(id: Item.id) -> Item fails Missing { return update required Item { where: id == id missing: Missing } }", "SYN_EXPECTED_UPDATE_BODY"),
+            ("entity Item { id: Uuid identity } failure Missing { kind: NotFound code: \"missing\" } action bad(id: Item.id) -> Item fails Missing { return delete required Item { where: id == id missing: Missing } }", "SYN_MUTATION_CONFLICT_REQUIRED"),
         ];
 
         for (source, expected) in cases {
@@ -3445,6 +3466,26 @@ value Result {
             .diagnostics
             .iter()
             .all(|diagnostic| diagnostic.code == "SYN_CONSTRAINT_COLON_REQUIRED"));
+        assert!(parsed.diagnostics.iter().all(|diagnostic| {
+            diagnostic.recommended_next_step.edits.len() == 1
+                && diagnostic.recommended_next_step.edits[0].replacement == ":"
+        }));
+    }
+
+    #[test]
+    fn requires_colons_after_failure_member_names() {
+        let source = r#"failure Missing {
+    kind NotFound
+    code "missing"
+    message "Missing."
+}"#;
+        let parsed = parse(Path::new("legacy-failure-members.jadpo"), source);
+
+        assert_eq!(parsed.diagnostics.len(), 3, "{:#?}", parsed.diagnostics);
+        assert!(parsed
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == "SYN_FAILURE_ITEM_COLON_REQUIRED"));
         assert!(parsed.diagnostics.iter().all(|diagnostic| {
             diagnostic.recommended_next_step.edits.len() == 1
                 && diagnostic.recommended_next_step.edits[0].replacement == ":"

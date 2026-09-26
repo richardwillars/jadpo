@@ -3,8 +3,8 @@ value Result {
 }
 
 failure Refused {
-    kind Rejected
-    code "refused"
+    kind: Rejected
+    code: "refused"
 }
 
 action child( ) -> Result fails Refused {

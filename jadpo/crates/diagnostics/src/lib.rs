@@ -848,6 +848,11 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Object and field blocks contain `name: Type` declarations. The current source cannot begin a field and is not a valid block terminator.",
             "Write a `name: Type` field or remove the stray source",
         ),
+        "SYN_FAILURE_ITEM_COLON_REQUIRED" => (
+            "Failure member requires a `:` separator",
+            "Failure metadata uses the same explicit `name: value` form as other named settings, such as `kind: NotFound` and `code: \"customer_not_found\"`.",
+            "Insert `:` after the failure member name",
+        ),
         "SYN_EXPECTED_FIELD_INITIALISER" => (
             "Expected a field value",
             "A constructor or object body assigns fields with `name: expression`; each item needs a field name before its value.",
@@ -1068,22 +1073,22 @@ fn failure_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         "FAIL_MUTATION_CONFLICT_NOT_CONFLICT" => (
             "`conflict:` must use a `Conflict` failure",
             "A uniqueness or write conflict needs a failure declared with the predefined `Conflict` category.",
-            "Bind the conflict to a failure declared with `kind Conflict`",
+            "Bind the conflict to a failure declared with `kind: Conflict`",
         ),
         "FAIL_PATCH_EMPTY_NOT_INVALID_VALUE" => (
             "`empty:` must use an `InvalidValue` failure",
             "A patch with no supplied changes is invalid input, so its failure must use the predefined `InvalidValue` category.",
-            "Bind `empty:` to a failure declared with `kind InvalidValue`",
+            "Bind `empty:` to a failure declared with `kind: InvalidValue`",
         ),
         "FAIL_REQUIRED_MUTATION_NOT_NOT_FOUND" => (
             "`missing:` must use a `NotFound` failure",
             "When a required update or delete finds no entity, its failure must use the predefined `NotFound` category.",
-            "Bind `missing:` to a failure declared with `kind NotFound`",
+            "Bind `missing:` to a failure declared with `kind: NotFound`",
         ),
         "FAIL_REQUIRED_QUERY_NOT_NOT_FOUND" => (
             "`missing:` must use a `NotFound` failure",
             "When a required query finds no entity, its failure must use the predefined `NotFound` category.",
-            "Bind `missing:` to a failure declared with `kind NotFound`",
+            "Bind `missing:` to a failure declared with `kind: NotFound`",
         ),
         "FAIL_STALE_DECLARATION" => (
             "A listed failure can never happen",
@@ -2539,6 +2544,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             | "FAIL_STALE_DECLARATION"
             | "ROUTE_ITEM_COLON_REQUIRED"
             | "SYN_CONSTRAINT_COLON_REQUIRED"
+            | "SYN_FAILURE_ITEM_COLON_REQUIRED"
     );
     let (repair_kind, decision_owner, recommended_title) = if human_owned {
         (
@@ -2562,6 +2568,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
                 "FAIL_STALE_DECLARATION" => "Remove the stale `fails` entry",
                 "ROUTE_ITEM_COLON_REQUIRED" => "Insert `:` after the route item name",
                 "SYN_CONSTRAINT_COLON_REQUIRED" => "Insert `:` after the constraint name",
+                "SYN_FAILURE_ITEM_COLON_REQUIRED" => "Insert `:` after the failure member name",
                 _ => "Apply the compiler-verified edit",
             }
             .to_owned(),
@@ -2737,6 +2744,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             "TYPE_INVALID_LITERAL" => vec!["subject", "constraint"],
             "SYN_EXPECTED_DECLARATION" => vec!["found"],
             "SYN_CONSTRAINT_COLON_REQUIRED" => vec!["name"],
+            "SYN_FAILURE_ITEM_COLON_REQUIRED" => vec!["name"],
             "SYN_UNEXPECTED_TOKEN" => vec!["expected", "found"],
             _ => Vec::new(),
         },

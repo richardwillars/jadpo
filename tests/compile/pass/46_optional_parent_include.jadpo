@@ -18,7 +18,7 @@ output PatchItemReviewer {
 }
 
 failure PatchItemNotFound {
-    kind NotFound code "patch_item_not_found" }
+    kind: NotFound code: "patch_item_not_found" }
 
 action get_patch_item_reviewer(input: FindPatchItem) -> PatchItemReviewer
     fails PatchItemNotFound

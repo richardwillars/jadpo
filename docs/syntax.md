@@ -1290,15 +1290,15 @@ raised with `reject`.
 
 ```text
 failure NotOwner {
-    kind NotPermitted
-    code "not_owner"
-    message "You cannot modify this order."
+    kind: NotPermitted
+    code: "not_owner"
+    message: "You cannot modify this order."
 }
 
 failure AlreadyShipped {
-    kind Conflict
-    code "order_already_shipped"
-    message "A shipped order cannot be cancelled."
+    kind: Conflict
+    code: "order_already_shipped"
+    message: "A shipped order cannot be cancelled."
 }
 
 action cancel_order(order: Order)
@@ -1754,15 +1754,15 @@ persist Order {
 }
 
 failure EmptyBasket {
-    kind InvalidValue
-    code "empty_basket"
-    message "Add at least one item."
+    kind: InvalidValue
+    code: "empty_basket"
+    message: "Add at least one item."
 }
 
 failure CreditLimitExceeded {
-    kind Conflict
-    code "credit_limit_exceeded"
-    message "The order exceeds the available credit limit."
+    kind: Conflict
+    code: "credit_limit_exceeded"
+    message: "The order exceeds the available credit limit."
 }
 
 action place_order(input: CreateOrder)

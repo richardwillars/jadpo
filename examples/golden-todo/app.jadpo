@@ -184,9 +184,9 @@ type ReminderReceipt = Object {
 }
 
 failure TodoNotFound {
-    kind NotFound
-    code "todo_not_found"
-    message "Todo not found."
+    kind: NotFound
+    code: "todo_not_found"
+    message: "Todo not found."
 
     internal {
         todo_id: Todo.id
@@ -194,9 +194,9 @@ failure TodoNotFound {
 }
 
 failure UserNotFound {
-    kind NotFound
-    code "user_not_found"
-    message "User not found."
+    kind: NotFound
+    code: "user_not_found"
+    message: "User not found."
 
     internal {
         user_id: User.id
@@ -204,39 +204,39 @@ failure UserNotFound {
 }
 
 failure UserDisabled {
-    kind NotPermitted
-    code "user_disabled"
-    message "This account is not available."
+    kind: NotPermitted
+    code: "user_disabled"
+    message: "This account is not available."
 }
 
 failure EmptyPatch {
-    kind InvalidValue
-    code "empty_patch"
-    message "Supply at least one field to change."
+    kind: InvalidValue
+    code: "empty_patch"
+    message: "Supply at least one field to change."
 }
 
 failure DueDateInPast {
-    kind InvalidValue
-    code "due_date_in_past"
-    message "The due date must be in the future."
+    kind: InvalidValue
+    code: "due_date_in_past"
+    message: "The due date must be in the future."
 }
 
 failure TodoMutationConflict {
-    kind Conflict
-    code "todo_mutation_conflict"
-    message "The todo could not be changed."
+    kind: Conflict
+    code: "todo_mutation_conflict"
+    message: "The todo could not be changed."
 }
 
 failure ReminderRecipientRejected {
-    kind Rejected
-    code "reminder_recipient_rejected"
-    message "The reminder recipient was rejected."
+    kind: Rejected
+    code: "reminder_recipient_rejected"
+    message: "The reminder recipient was rejected."
 }
 
 failure ReminderTemporarilyUnavailable {
-    kind Unavailable
-    code "reminder_temporarily_unavailable"
-    message "Reminder delivery is temporarily unavailable."
+    kind: Unavailable
+    code: "reminder_temporarily_unavailable"
+    message: "Reminder delivery is temporarily unavailable."
 }
 
 service ReminderMail {

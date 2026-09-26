@@ -3,8 +3,8 @@ type Reference = Text {
 }
 
 failure PaymentRefused {
-    kind Rejected
-    code "payment_refused"
+    kind: Rejected
+    code: "payment_refused"
 
     public {
         reference: Reference

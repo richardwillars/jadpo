@@ -11,8 +11,8 @@ value Result {
 }
 
 failure CustomerRejected {
-    kind Rejected
-    code "customer_rejected"
+    kind: Rejected
+    code: "customer_rejected"
 
     internal {
         email: Customer.email

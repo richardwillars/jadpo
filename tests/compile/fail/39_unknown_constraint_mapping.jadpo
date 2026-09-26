@@ -6,7 +6,7 @@ entity Membership {
 }
 
 failure MembershipConflict {
-    kind Conflict code "membership_conflict" }
+    kind: Conflict code: "membership_conflict" }
 
 action create_membership(id: Membership.id, tenant: Membership.tenant, email: Membership.email) -> Membership
     fails MembershipConflict

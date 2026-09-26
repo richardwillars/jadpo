@@ -1,6 +1,6 @@
 failure KnownFailure {
-    kind InvalidValue
-    code "known_failure"
+    kind: InvalidValue
+    code: "known_failure"
 }
 
 action invalid_calls() -> Unit {
