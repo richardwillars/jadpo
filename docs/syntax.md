@@ -1569,10 +1569,10 @@ decorators, parameter annotations, or indentation-sensitive nesting.
 **Open:** exact query/header/body binding fields, pagination, streaming, file
 bodies, content negotiation, redirects, and route composition.
 
-The compiler grammar and fixtures still describe the implemented v0.1 route
-surface, including its former public-override spelling. They remain the current
-implementation contract until P10.6 lands; this section records the accepted
-replacement design rather than claiming it is already executable.
+The compiler grammar and fixtures implement the accepted P10.6 route surface,
+including `name: value` route items, inline `action:` blocks, named `run:`
+invocations, and `auth: none`. The remaining open binding, pagination,
+streaming, and composition questions above are not executable syntax.
 
 ## 14. Policies
 

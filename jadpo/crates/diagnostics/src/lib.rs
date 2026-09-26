@@ -1975,9 +1975,9 @@ fn toolchain_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Restore read access to the source file and retry",
         ),
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED" => (
-            "Protected route cannot be generated yet",
-            "The current target runtime can generate explicitly public `auth: none` routes, but no accepted authentication provider boundary exists for protected routes, so generation stops rather than weakening access control.",
-            "Choose and implement the authentication boundary before generating this protected route",
+            "Protected route `{route}` cannot be generated yet",
+            "The current target runtime can generate explicitly public `auth: none` routes, but no accepted authentication provider boundary exists for `{route}`, so generation stops rather than weakening access control.",
+            "Choose and implement the authentication boundary for `{route}`",
         ),
         "JADPO_TARGET_DEPENDENCY_MANIFEST" => (
             "Generated target attempted to add a dependency manifest",
@@ -2695,6 +2695,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
                 vec!["callable", "declared", "reachable", "failures"]
             }
             "CLI_INCIDENT_REVISION_MISMATCH" => vec!["eventRevision", "localRevision"],
+            "JADPO_TARGET_AUTH_NOT_IMPLEMENTED" => vec!["route"],
             "ROUTE_AUTH_VALUE_INVALID" => vec!["route", "found"],
             "SEM_DUPLICATE_DECLARATION" => vec!["name"],
             "SEM_UNKNOWN_NAME" | "SEM_WRONG_NAME_KIND" => vec![

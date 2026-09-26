@@ -12,7 +12,7 @@ type InviteCode = Text {
 }
 
 entity Customer {
-    id: Uuid
+    id: Uuid identity
     email: Email
 }
 

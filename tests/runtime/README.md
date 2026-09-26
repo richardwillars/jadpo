@@ -7,6 +7,7 @@ cd jadpo
 cargo run -p jadpo-cli -- build ../examples/jadpo-seed
 cd ..
 bun --no-install test tests/runtime/jadpo-seed.test.ts
+bun --no-install test tests/runtime/startup-failure.test.ts
 bun --no-install test tests/runtime/persistence-seed.test.ts
 DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres \
   bun --no-install test tests/runtime/persistence-postgres.test.ts
@@ -18,7 +19,8 @@ tests must run without package resolution, a dependency manifest, or a
 
 The suite uses a real ephemeral TCP listener and covers valid input, semantic
 boundary rejection, unknown-field rejection, automatic domain-failure mapping,
-and internal-context non-disclosure.
+internal-context non-disclosure, and secret-safe structured startup failure when
+the configured database cannot be reached.
 
 The persistence suites prove the same behavior against a temporary SQLite
 database and a caller-supplied fresh PostgreSQL database: invalid boundary

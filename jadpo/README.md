@@ -207,6 +207,7 @@ Run the generated seed and its real HTTP acceptance suite with:
 PORT=3000 bun --no-install ../examples/jadpo-seed/build/target/app.ts
 cd ..
 bun --no-install test tests/runtime/jadpo-seed.test.ts
+bun --no-install test tests/runtime/startup-failure.test.ts
 bun --no-install test tests/runtime/persistence-seed.test.ts
 DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres \
   bun --no-install test tests/runtime/persistence-postgres.test.ts

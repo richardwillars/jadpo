@@ -979,4 +979,34 @@ action parent() -> Result fails Refused { return Result { ok: true } }
         assert!(after.diagnostics.is_empty(), "{:#?}", after.diagnostics);
         assert_eq!(before.contracts, after.contracts);
     }
+
+    #[test]
+    fn stale_fails_repair_names_only_the_removed_failure_and_preserves_reachable_ones() {
+        let source = r#"
+value Result { ok: Bool }
+failure Refused { kind Rejected code "refused" }
+failure Closed { kind Conflict code "closed" }
+action parent() -> Result fails Refused, Closed { reject Refused }
+"#;
+        let before = check(source);
+        let diagnostic = before
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == "FAIL_STALE_DECLARATION")
+            .expect("stale failure should be diagnosed");
+
+        assert_eq!(diagnostic.message, "`Closed` can never leave `parent`");
+        assert_eq!(
+            diagnostic.recommended_next_step.title,
+            "Remove `Closed` from `parent`'s `fails` list"
+        );
+        assert_eq!(
+            diagnostic.recommended_next_step.edits[0].replacement,
+            "fails Refused"
+        );
+
+        let repaired = apply_preferred_edit(source, diagnostic);
+        assert!(repaired.contains("action parent() -> Result fails Refused {"));
+        assert!(check(&repaired).diagnostics.is_empty());
+    }
 }

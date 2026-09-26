@@ -221,11 +221,15 @@ pub fn render_help(style: RenderStyle) -> String {
         format!(
             "{}  {}\n{}\n",
             paint("Jadpo", "1;32", style.color),
-            paint("one language for the whole web", "2", style.color),
+            paint(
+                "a programming environment for coding agents",
+                "2",
+                style.color
+            ),
             paint("https://jadpo.dev/", "4;36", style.color),
         )
     } else {
-        "Jadpo - one language for the whole web\nhttps://jadpo.dev/\n".to_owned()
+        "Jadpo - a programming environment for coding agents\nhttps://jadpo.dev/\n".to_owned()
     };
 
     format!(
@@ -807,6 +811,8 @@ mod tests {
         let lifecycle = render_lifecycle("watch", "build", 7, "passed", false, style);
 
         assert!(help.contains("CORE COMMANDS"));
+        assert!(help.contains("a programming environment for coding agents"));
+        assert!(!help.contains("one language for the whole web"));
         assert!(help.contains("Diagnostic JSON is available for check, watch, and dev"));
         assert_eq!(success, "done\n");
         assert_eq!(

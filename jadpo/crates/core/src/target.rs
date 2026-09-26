@@ -1,5 +1,5 @@
 use crate::{checked_source_revision, AnalyzedProject, GeneratedArtifact};
-use jadpo_diagnostics::Diagnostic;
+use jadpo_diagnostics::{Diagnostic, DiagnosticFact, SourceSpan};
 use jadpo_syntax::{
     BinaryOperator, Block, CallableDeclaration, Constraint, ConstraintKind, Declaration,
     EnumDeclaration, Expression, FieldDeclaration, FieldInitialiser, HttpMethod, LiteralKind,
@@ -163,7 +163,16 @@ impl<'project> TargetGenerator<'project> {
                         failures.insert(declaration.name.text.clone(), declaration);
                     }
                     Declaration::Route(route) if !route.public => {
-                        return Err(Diagnostic::error("JADPO_TARGET_AUTH_NOT_IMPLEMENTED"));
+                        let route_name = format!("{} {}", method_name(route.method), route.path);
+                        let mut diagnostic = Diagnostic::error("JADPO_TARGET_AUTH_NOT_IMPLEMENTED")
+                            .with_fact(DiagnosticFact::Route(route_name.clone()))
+                            .with_impact(route_name);
+                        diagnostic.primary = Some(SourceSpan {
+                            source: source.source_name.clone(),
+                            start: route.range.start,
+                            end: route.path_range.end,
+                        });
+                        return Err(diagnostic);
                     }
                     Declaration::Route(_) => {}
                 }
@@ -1132,19 +1141,52 @@ impl<'project> TargetGenerator<'project> {
         line(&mut output, "");
         line(
             &mut output,
+            "function reportPersistenceStartupFault(error: unknown): void {",
+        );
+        line(&mut output, "  console.error(JSON.stringify({");
+        line(&mut output, "    schemaVersion: 1,");
+        line(&mut output, "    kind: \"operational_log_event\",");
+        line(&mut output, "    eventName: \"operation.failed\",");
+        line(
+            &mut output,
+            "    classification: \"RUNTIME_STARTUP_FAILED\",",
+        );
+        line(&mut output, "    requestId: \"startup\",");
+        line(&mut output, "    traceId: null,");
+        line(&mut output, "    semanticOperationId: \"runtime:start\",");
+        line(
+            &mut output,
+            &format!(
+                "    sourceRevision: {},",
+                ts_string(&self.source_revision())
+            ),
+        );
+        line(&mut output, "    attributes: {},");
+        line(&mut output, "  }));");
+        line(
+            &mut output,
+            "  if (Bun.env.JADPO_DEBUG_TARGET_STACKS === \"1\") console.error(error);",
+        );
+        line(&mut output, "}");
+        line(&mut output, "");
+        line(
+            &mut output,
             "const localPath = decodeURIComponent(new URL(\"../local.sqlite\", import.meta.url).pathname);",
         );
+        line(&mut output, "let postgres: SQL | null = null;");
+        line(&mut output, "let sqlite: Database | null = null;");
+        line(&mut output, "try {");
         line(
             &mut output,
-            "const postgres = Bun.env.DATABASE_URL ? persistenceSync(\"database.open\", () => new SQL({ url: Bun.env.DATABASE_URL!, prepare: false })) : null;",
+            "  postgres = Bun.env.DATABASE_URL ? persistenceSync(\"database.open\", () => new SQL({ url: Bun.env.DATABASE_URL!, prepare: false })) : null;",
         );
         line(
             &mut output,
-            "const sqlite = postgres === null ? persistenceSync(\"database.open\", () => new Database(Bun.env.SQLITE_PATH ?? localPath, { create: true, strict: true })) : null;",
+            "  sqlite = postgres === null ? persistenceSync(\"database.open\", () => new Database(Bun.env.SQLITE_PATH ?? localPath, { create: true, strict: true })) : null;",
         );
         line(
             &mut output,
-            "if (sqlite !== null) persistenceSync(\"database.foreign_keys\", () => sqlite.exec(\"PRAGMA foreign_keys = ON\"));",
+            "  if (sqlite !== null) persistenceSync(\"database.foreign_keys\", () => sqlite!.exec(\"PRAGMA foreign_keys = ON\"));",
         );
         for (name, entity) in self.schema_entities() {
             let table = sql_identifier(&snake_case(name));
@@ -1153,13 +1195,13 @@ impl<'project> TargetGenerator<'project> {
             line(
                 &mut output,
                 &format!(
-                    "if (postgres !== null) await persistenceAsync(\"schema.{name}\", () => postgres`CREATE TABLE IF NOT EXISTS {table} ({postgres_columns})`);"
+                    "  if (postgres !== null) await persistenceAsync(\"schema.{name}\", () => postgres!`CREATE TABLE IF NOT EXISTS {table} ({postgres_columns})`);"
                 ),
             );
             line(
                 &mut output,
                 &format!(
-                    "else persistenceSync(\"schema.{name}\", () => sqlite!.exec({}));",
+                    "  else persistenceSync(\"schema.{name}\", () => sqlite!.exec({}));",
                     ts_string(&format!(
                         "CREATE TABLE IF NOT EXISTS {table} ({sqlite_columns})"
                     ))
@@ -1169,18 +1211,22 @@ impl<'project> TargetGenerator<'project> {
                 line(
                     &mut output,
                     &format!(
-                        "if (postgres !== null) await persistenceAsync(\"schema.{name}.index\", () => postgres`{statement}`);"
+                        "  if (postgres !== null) await persistenceAsync(\"schema.{name}.index\", () => postgres!`{statement}`);"
                     ),
                 );
                 line(
                     &mut output,
                     &format!(
-                        "else persistenceSync(\"schema.{name}.index\", () => sqlite!.exec({}));",
+                        "  else persistenceSync(\"schema.{name}.index\", () => sqlite!.exec({}));",
                         ts_string(&statement)
                     ),
                 );
             }
         }
+        line(&mut output, "} catch (error) {");
+        line(&mut output, "  reportPersistenceStartupFault(error);");
+        line(&mut output, "  process.exit(1);");
+        line(&mut output, "}");
         line(&mut output, "");
         line(
             &mut output,
@@ -5154,6 +5200,45 @@ mod tests {
             "an authored health route should replace the compiler default"
         );
         fs::remove_dir_all(root).expect("temporary scaffold should be removable");
+    }
+
+    #[test]
+    fn protected_route_generation_names_and_locates_the_route() {
+        let root = std::env::temp_dir().join(format!(
+            "jadpo-target-protected-route-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).expect("fixture directory should be created");
+        let source_path = root.join("app.jadpo");
+        fs::write(
+            &source_path,
+            "output Health { ready: Bool }\nroute GET /health { output: Health action: { return Health { ready: true } } }\n",
+        )
+        .expect("fixture should be written");
+        let analyzed = analyze_project(&root).expect("protected route should analyze");
+
+        let diagnostic =
+            derive_target(&root, &analyzed).expect_err("protected route must block generation");
+
+        assert_eq!(diagnostic.code, "JADPO_TARGET_AUTH_NOT_IMPLEMENTED");
+        assert_eq!(
+            diagnostic.message,
+            "Protected route `GET /health` cannot be generated yet"
+        );
+        assert_eq!(
+            diagnostic.context,
+            vec![("route".to_owned(), "GET /health".to_owned())]
+        );
+        let primary = diagnostic
+            .primary
+            .expect("route should have a source location");
+        assert_eq!(primary.source, source_path.to_string_lossy());
+        assert_eq!(
+            &fs::read_to_string(&source_path).expect("fixture should remain")
+                [primary.start..primary.end],
+            "route GET /health"
+        );
+        fs::remove_dir_all(root).expect("fixture should be removable");
     }
 
     #[test]

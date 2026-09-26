@@ -68,15 +68,14 @@ fn scaffold_files(name: &str) -> Vec<ScaffoldFile> {
                 "output Health {\n",
                 "    ready: Bool\n",
                 "}\n\n",
-                "action health() -> Health {\n",
-                "    return Health {\n",
-                "        ready: true\n",
-                "    }\n",
-                "}\n\n",
                 "route GET /health {\n",
                 "    auth: none\n",
                 "    output: Health\n",
-                "    run: health()\n",
+                "    action: {\n",
+                "        return Health {\n",
+                "            ready: true\n",
+                "        }\n",
+                "    }\n",
                 "}\n"
             )
             .to_owned(),
@@ -122,6 +121,12 @@ mod tests {
         assert!(analyzed.typing.diagnostics.is_empty());
         assert!(analyzed.failures.diagnostics.is_empty());
         assert_eq!(derive_artifacts(&project, &analyzed).len(), 9);
+        let application = files
+            .iter()
+            .find(|file| file.relative_path == "app.jadpo")
+            .expect("scaffold should include an application source");
+        assert!(application.contents.contains("    action: {"));
+        assert!(!application.contents.contains("    run:"));
         assert!(files.iter().all(|file| !matches!(
             file.relative_path,
             "package.json" | "bun.lock" | "bun.lockb"
