@@ -1,4 +1,4 @@
-use jadpo_diagnostics::{Diagnostic, Severity};
+use jadpo_diagnostics::{diagnostic_help_url, Diagnostic, Severity};
 use std::env;
 use std::fs;
 use std::io::{self, IsTerminal};
@@ -340,7 +340,9 @@ fn render_plain_diagnostic(diagnostic: &Diagnostic) -> String {
     }
     output.push_str(&format!(
         "  rule: {} (legacy: {})\n  help: {}\n",
-        diagnostic.rule_id, diagnostic.code, diagnostic.help_id
+        diagnostic.rule_id,
+        diagnostic.code,
+        diagnostic_help_url(&diagnostic.help_id)
     ));
     for note in &diagnostic.notes {
         output.push_str(&format!("  note: {note}\n"));
@@ -521,7 +523,7 @@ fn render_rich_diagnostic(diagnostic: &Diagnostic, style: RenderStyle) -> String
             separator(style),
             diagnostic.code,
             separator(style),
-            diagnostic.help_id
+            diagnostic_help_url(&diagnostic.help_id)
         ),
         style,
     );

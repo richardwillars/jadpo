@@ -60,6 +60,11 @@ pub enum DiagnosticFact {
     Route(String),
     FoundValue(String),
     Expected(String),
+    Name(String),
+    ActualKind(String),
+    Examples(String),
+    SuggestedName(String),
+    Usage(String),
 }
 
 impl DiagnosticFact {
@@ -73,6 +78,11 @@ impl DiagnosticFact {
             Self::Route(value) => ("route", value),
             Self::FoundValue(value) => ("found", value),
             Self::Expected(value) => ("expected", value),
+            Self::Name(value) => ("name", value),
+            Self::ActualKind(value) => ("actualKind", value),
+            Self::Examples(value) => ("examples", value),
+            Self::SuggestedName(value) => ("suggestedName", value),
+            Self::Usage(value) => ("usage", value),
         }
     }
 }
@@ -154,6 +164,10 @@ pub struct CompilerDiagnostic {
 
 /// Compatibility name used by the existing compiler crates.
 pub type Diagnostic = CompilerDiagnostic;
+
+pub fn diagnostic_help_url(help_id: &str) -> String {
+    format!("https://jadpo.dev/docs/{help_id}")
+}
 
 impl CompilerDiagnostic {
     pub fn error(code: &'static str) -> Self {
@@ -249,6 +263,67 @@ impl CompilerDiagnostic {
         self.reason = render_catalogue_text(&definition.reason, &self.context);
         self.recommended_next_step.title =
             render_catalogue_text(&definition.recommended_title, &self.context);
+        self.recommended_next_step.reason = self.reason.clone();
+        self.refresh_semantic_name_copy();
+    }
+
+    fn refresh_semantic_name_copy(&mut self) {
+        let value = |key: &str| {
+            self.context
+                .iter()
+                .find_map(|(candidate, value)| (candidate == key).then_some(value.as_str()))
+        };
+        let Some(name) = value("name") else {
+            return;
+        };
+        let expected = value("expected").unwrap_or("declaration");
+        let suggestion = value("suggestedName");
+        let examples = value("examples");
+        let usage = value("usage");
+
+        match self.code {
+            "SEM_DUPLICATE_DECLARATION" => {
+                self.message = format!("`{name}` is already defined");
+                self.reason = format!(
+                    "There is already a visible declaration named `{name}`, so references would not know which one to use."
+                );
+                self.recommended_next_step.title =
+                    "Rename this declaration or remove the duplicate".to_owned();
+            }
+            "SEM_UNKNOWN_NAME" => {
+                self.message = format!("`{name}` isn't defined");
+                self.reason = semantic_expected_reason(expected, examples, suggestion, usage);
+                self.recommended_next_step.title =
+                    semantic_unknown_name_guidance(name, expected, suggestion);
+            }
+            "SEM_WRONG_NAME_KIND" => {
+                self.message = format!("`{name}` can't be used here");
+                self.reason = semantic_expected_reason(expected, examples, None, usage);
+                self.recommended_next_step.title = semantic_replacement_guidance(expected);
+            }
+            "SEM_UNKNOWN_CALLEE" => {
+                self.message = format!("`{name}` isn't defined");
+                self.reason =
+                    semantic_expected_reason("function or action", None, suggestion, usage);
+                self.recommended_next_step.title = suggestion.map_or_else(
+                    || format!("Define `{name}` as a function or action, or import it"),
+                    |suggested| {
+                        format!(
+                            "Use `{suggested}`, define `{name}` as a function or action, or import it"
+                        )
+                    },
+                );
+            }
+            "SEM_NOT_CALLABLE" => {
+                self.message = format!("`{name}` can't be called");
+                self.reason =
+                    "Only a function or action can be followed by parentheses and called."
+                        .to_owned();
+                self.recommended_next_step.title =
+                    "Call a function or action instead, or remove the parentheses".to_owned();
+            }
+            _ => return,
+        }
         self.recommended_next_step.reason = self.reason.clone();
     }
 
@@ -2267,6 +2342,17 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             "FAIL_STALE_DECLARATION" => vec!["callable", "declared", "reachable"],
             "CLI_INCIDENT_REVISION_MISMATCH" => vec!["eventRevision", "localRevision"],
             "ROUTE_AUTH_VALUE_INVALID" => vec!["route", "found"],
+            "SEM_DUPLICATE_DECLARATION" => vec!["name"],
+            "SEM_UNKNOWN_NAME" | "SEM_WRONG_NAME_KIND" => vec![
+                "name",
+                "expected",
+                "actualKind",
+                "examples",
+                "suggestedName",
+                "usage",
+            ],
+            "SEM_UNKNOWN_CALLEE" => vec!["name", "expected", "suggestedName", "usage"],
+            "SEM_NOT_CALLABLE" => vec!["name", "expected", "actualKind"],
             "SYN_EXPECTED_DECLARATION" => vec!["found"],
             "SYN_UNEXPECTED_TOKEN" => vec!["expected", "found"],
             _ => Vec::new(),
@@ -2282,6 +2368,53 @@ fn render_catalogue_text(template: &str, context: &[(String, String)]) -> String
         .fold(template.to_owned(), |rendered, (key, value)| {
             rendered.replace(&format!("{{{key}}}"), value)
         })
+}
+
+fn semantic_expected_reason(
+    expected: &str,
+    examples: Option<&str>,
+    suggestion: Option<&str>,
+    usage: Option<&str>,
+) -> String {
+    let mut reason = match expected {
+        "predefined category" => examples.map_or_else(
+            || "`kind` must be a predefined category.".to_owned(),
+            |values| format!("`kind` must be a predefined category, such as {values}."),
+        ),
+        other => usage.map_or_else(
+            || format!("Jadpo expected a {other} here."),
+            |usage| format!("This {usage} needs a {other}."),
+        ),
+    };
+    if let Some(suggestion) = suggestion {
+        reason.push_str(&format!(" Did you mean `{suggestion}`?"));
+    }
+    reason
+}
+
+fn semantic_unknown_name_guidance(name: &str, expected: &str, suggestion: Option<&str>) -> String {
+    match expected {
+        "type" => suggestion.map_or_else(
+            || format!("Define `{name}` as a type or import the type"),
+            |suggested| format!("Use `{suggested}`, define `{name}` as a type, or import the type"),
+        ),
+        "declared failure" => suggestion.map_or_else(
+            || format!("Declare `{name}` as a failure or import the failure"),
+            |suggested| format!("Use `{suggested}`, declare `{name}` as a failure, or import it"),
+        ),
+        "predefined category" => "Use one of Jadpo's predefined categories".to_owned(),
+        _ => format!("Define `{name}` as a {expected} or import it"),
+    }
+}
+
+fn semantic_replacement_guidance(expected: &str) -> String {
+    match expected {
+        "predefined category" => "Use one of Jadpo's predefined categories".to_owned(),
+        "type" => "Use a type here".to_owned(),
+        "declared failure" => "Use a declared failure here".to_owned(),
+        "function or action" => "Use a function or action here".to_owned(),
+        other => format!("Use a {other} here"),
+    }
 }
 
 fn sentence_case_identifier(value: &str) -> String {
@@ -2623,9 +2756,10 @@ impl fmt::Display for CompilerDiagnostic {
 #[cfg(test)]
 mod tests {
     use super::{
-        catalogue_definition, catalogue_manifest_json, json_string, DecisionOwner, Diagnostic,
-        OperationalLogEvent, OperationalValue, PublicFailureResponse, PublicFailureValue,
-        RepairKind, SafeIdentifier, Secret, SourceSpan, CATALOGUE_CODES,
+        catalogue_definition, catalogue_manifest_json, diagnostic_help_url, json_string,
+        DecisionOwner, Diagnostic, DiagnosticFact, OperationalLogEvent, OperationalValue,
+        PublicFailureResponse, PublicFailureValue, RepairKind, SafeIdentifier, Secret, SourceSpan,
+        CATALOGUE_CODES,
     };
     use serde_json::Value;
     use std::collections::BTreeSet;
@@ -2707,6 +2841,29 @@ mod tests {
         let diagnostic = Diagnostic::error("ROUTE_PATH_BINDING_MISSING");
         assert_eq!(diagnostic.alternatives.len(), 1);
         assert!(diagnostic.to_json().contains("\"alternatives\":[{"));
+    }
+
+    #[test]
+    fn semantic_name_errors_explain_the_authored_source_in_plain_language() {
+        let diagnostic = Diagnostic::error("SEM_UNKNOWN_NAME")
+            .with_fact(DiagnosticFact::Name("CustomerID".to_owned()))
+            .with_fact(DiagnosticFact::Expected("type".to_owned()))
+            .with_fact(DiagnosticFact::SuggestedName("CustomerId".to_owned()))
+            .with_fact(DiagnosticFact::Usage("field".to_owned()));
+
+        assert_eq!(diagnostic.message, "`CustomerID` isn't defined");
+        assert_eq!(
+            diagnostic.reason,
+            "This field needs a type. Did you mean `CustomerId`?"
+        );
+        assert_eq!(
+            diagnostic.recommended_next_step.title,
+            "Use `CustomerId`, define `CustomerID` as a type, or import the type"
+        );
+        assert_eq!(
+            diagnostic_help_url(&diagnostic.help_id),
+            "https://jadpo.dev/docs/diagnostics/semantic.unknown_name"
+        );
     }
 
     #[test]

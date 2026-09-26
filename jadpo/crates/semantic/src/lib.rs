@@ -1,4 +1,4 @@
-use jadpo_diagnostics::{Diagnostic, SourceSpan};
+use jadpo_diagnostics::{Diagnostic, DiagnosticFact, SourceSpan};
 use jadpo_syntax::{
     Block, CallableKind, Declaration, Expression, HttpMethod, ParsedSyntax, PersistenceModifier,
     RecordKind, ReferenceDeleteAction, Statement, TextRange, TypeReference,
@@ -72,6 +72,27 @@ impl NodeKind {
                 | Self::Output
                 | Self::Field
         )
+    }
+
+    const fn user_name(self) -> &'static str {
+        match self {
+            Self::PreludeType | Self::Type => "type",
+            Self::StandardFailure => "predefined category",
+            Self::Enum => "enum",
+            Self::EnumVariant => "enum variant",
+            Self::Entity => "entity",
+            Self::Value => "value",
+            Self::Input => "input",
+            Self::Output => "output",
+            Self::Field => "field",
+            Self::Relationship => "relationship",
+            Self::PersistenceConstraint => "persistence constraint",
+            Self::Failure => "failure",
+            Self::Function => "function",
+            Self::Action => "action",
+            Self::Test => "test",
+            Self::Route => "route",
+        }
     }
 }
 
@@ -315,11 +336,70 @@ enum ReferenceKind {
     StandardFailure,
 }
 
+impl ReferenceKind {
+    const fn user_name(self) -> &'static str {
+        match self {
+            Self::Type => "type",
+            Self::Failure => "declared failure",
+            Self::StandardFailure => "predefined category",
+        }
+    }
+
+    const fn examples(self) -> Option<&'static str> {
+        match self {
+            Self::StandardFailure => {
+                Some("`InvalidValue`, `NotFound`, `Conflict`, or `Unavailable`")
+            }
+            Self::Type | Self::Failure => None,
+        }
+    }
+
+    const fn accepts(self, kind: NodeKind) -> bool {
+        match self {
+            Self::Type => kind.is_type(),
+            Self::Failure => matches!(kind, NodeKind::Failure | NodeKind::StandardFailure),
+            Self::StandardFailure => matches!(kind, NodeKind::StandardFailure),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ReferenceUsage {
+    TypeDefinition,
+    Field,
+    Relationship,
+    InverseRelationship,
+    FailureKind,
+    FailsEntry,
+    Parameter,
+    ReturnValue,
+    RouteInput,
+    RouteOutput,
+}
+
+impl ReferenceUsage {
+    const fn user_name(self) -> &'static str {
+        match self {
+            Self::TypeDefinition => "type definition",
+            Self::Field => "field",
+            Self::Relationship => "relationship",
+            Self::InverseRelationship => "inverse relationship",
+            Self::FailureKind => "failure's `kind`",
+            Self::FailsEntry => "`fails` entry",
+            Self::Parameter => "parameter",
+            Self::ReturnValue => "return value",
+            Self::RouteInput => "route input",
+            Self::RouteOutput => "route output",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct PendingReference {
     refined: Option<String>,
     target: String,
     expected: ReferenceKind,
+    usage: ReferenceUsage,
     source: String,
     range: TextRange,
 }
@@ -614,6 +694,7 @@ impl GraphBuilder {
                         Some(declaration.name.text.clone()),
                         &declaration.parent,
                         &file.source_name,
+                        ReferenceUsage::TypeDefinition,
                     );
                 }
                 Declaration::Enum(declaration) => {
@@ -652,6 +733,7 @@ impl GraphBuilder {
                                 Some(field_name),
                                 &field.field_type,
                                 &file.source_name,
+                                ReferenceUsage::Field,
                             );
                         }
                     }
@@ -712,9 +794,15 @@ impl GraphBuilder {
                             Some(field_name),
                             &field.field_type,
                             &file.source_name,
+                            ReferenceUsage::Field,
                         );
                         if let Some(reference) = &field.reference {
-                            self.add_type_reference(None, &reference.target, &file.source_name);
+                            self.add_type_reference(
+                                None,
+                                &reference.target,
+                                &file.source_name,
+                                ReferenceUsage::Relationship,
+                            );
                             if let Some(relationship) = &reference.relationship {
                                 self.add_authored_node(
                                     NodeKind::Relationship,
@@ -738,10 +826,16 @@ impl GraphBuilder {
                             refined: None,
                             target: inverse.target.text.clone(),
                             expected: ReferenceKind::Type,
+                            usage: ReferenceUsage::InverseRelationship,
                             source: file.source_name.clone(),
                             range: inverse.target.range,
                         });
-                        self.add_type_reference(None, &inverse.via, &file.source_name);
+                        self.add_type_reference(
+                            None,
+                            &inverse.via,
+                            &file.source_name,
+                            ReferenceUsage::InverseRelationship,
+                        );
                     }
                     let fields = declaration
                         .fields
@@ -815,6 +909,7 @@ impl GraphBuilder {
                         refined: None,
                         target: declaration.kind.text.clone(),
                         expected: ReferenceKind::StandardFailure,
+                        usage: ReferenceUsage::FailureKind,
                         source: file.source_name.clone(),
                         range: declaration.kind.range,
                     });
@@ -835,6 +930,7 @@ impl GraphBuilder {
                                 Some(field_name),
                                 &field.field_type,
                                 &file.source_name,
+                                ReferenceUsage::Field,
                             );
                         }
                     }
@@ -852,14 +948,25 @@ impl GraphBuilder {
                         declaration.name.range,
                     );
                     for parameter in &declaration.parameters {
-                        self.add_type_reference(None, &parameter.parameter_type, &file.source_name);
+                        self.add_type_reference(
+                            None,
+                            &parameter.parameter_type,
+                            &file.source_name,
+                            ReferenceUsage::Parameter,
+                        );
                     }
-                    self.add_type_reference(None, &declaration.return_type, &file.source_name);
+                    self.add_type_reference(
+                        None,
+                        &declaration.return_type,
+                        &file.source_name,
+                        ReferenceUsage::ReturnValue,
+                    );
                     for failure in &declaration.failures {
                         self.references.push(PendingReference {
                             refined: None,
                             target: failure.text.clone(),
                             expected: ReferenceKind::Failure,
+                            usage: ReferenceUsage::FailsEntry,
                             source: file.source_name.clone(),
                             range: failure.range,
                         });
@@ -889,10 +996,20 @@ impl GraphBuilder {
                         declaration.range,
                     );
                     if let Some(input) = &declaration.input {
-                        self.add_type_reference(None, input, &file.source_name);
+                        self.add_type_reference(
+                            None,
+                            input,
+                            &file.source_name,
+                            ReferenceUsage::RouteInput,
+                        );
                     }
                     if let Some(output) = &declaration.output {
-                        self.add_type_reference(None, output, &file.source_name);
+                        self.add_type_reference(
+                            None,
+                            output,
+                            &file.source_name,
+                            ReferenceUsage::RouteOutput,
+                        );
                     }
                     if let Some(run) = &declaration.run {
                         self.calls.push(PendingCall {
@@ -1115,10 +1232,12 @@ impl GraphBuilder {
 
     fn add_node(&mut self, node: PendingNode) {
         if let Some(previous) = self.nodes.get(&node.name) {
-            let diagnostic = Diagnostic::error("SEM_DUPLICATE_DECLARATION").with_note(format!(
-                "first declaration is at {}:{}..{}",
-                previous.source, previous.range.start, previous.range.end
-            ));
+            let diagnostic = Diagnostic::error("SEM_DUPLICATE_DECLARATION")
+                .with_fact(DiagnosticFact::Name(node.name.clone()))
+                .with_note(format!(
+                    "first declaration is at {}:{}..{}",
+                    previous.source, previous.range.start, previous.range.end
+                ));
             self.diagnostics
                 .push(with_span(diagnostic, &node.source, node.range));
             return;
@@ -1140,16 +1259,18 @@ impl GraphBuilder {
         refined: Option<String>,
         reference: &TypeReference,
         source: &str,
+        usage: ReferenceUsage,
     ) {
         self.references.push(PendingReference {
             refined,
             target: name_expression(&reference.path),
             expected: ReferenceKind::Type,
+            usage,
             source: source.to_owned(),
             range: reference.range,
         });
         for argument in &reference.arguments {
-            self.add_type_reference(None, argument, source);
+            self.add_type_reference(None, argument, source, usage);
         }
     }
 
@@ -1304,7 +1425,27 @@ impl GraphBuilder {
 
         for reference in self.references {
             let Some(target) = ids.get(&reference.target).copied() else {
-                let diagnostic = Diagnostic::error("SEM_UNKNOWN_NAME");
+                let mut diagnostic = Diagnostic::error("SEM_UNKNOWN_NAME")
+                    .with_fact(DiagnosticFact::Name(reference.target.clone()))
+                    .with_fact(DiagnosticFact::Expected(
+                        reference.expected.user_name().to_owned(),
+                    ))
+                    .with_fact(DiagnosticFact::Usage(
+                        reference.usage.user_name().to_owned(),
+                    ));
+                if let Some(examples) = reference.expected.examples() {
+                    diagnostic =
+                        diagnostic.with_fact(DiagnosticFact::Examples(examples.to_owned()));
+                }
+                if let Some(suggestion) = closest_semantic_name(
+                    &reference.target,
+                    nodes
+                        .iter()
+                        .filter(|node| reference.expected.accepts(node.kind))
+                        .map(|node| node.name.as_str()),
+                ) {
+                    diagnostic = diagnostic.with_fact(DiagnosticFact::SuggestedName(suggestion));
+                }
                 self.diagnostics
                     .push(with_span(diagnostic, &reference.source, reference.range));
                 continue;
@@ -1328,7 +1469,21 @@ impl GraphBuilder {
                 ReferenceKind::StandardFailure => target_kind == NodeKind::StandardFailure,
             };
             if !kind_matches {
-                let diagnostic = Diagnostic::error("SEM_WRONG_NAME_KIND");
+                let mut diagnostic = Diagnostic::error("SEM_WRONG_NAME_KIND")
+                    .with_fact(DiagnosticFact::Name(reference.target.clone()))
+                    .with_fact(DiagnosticFact::Expected(
+                        reference.expected.user_name().to_owned(),
+                    ))
+                    .with_fact(DiagnosticFact::ActualKind(
+                        target_kind.user_name().to_owned(),
+                    ))
+                    .with_fact(DiagnosticFact::Usage(
+                        reference.usage.user_name().to_owned(),
+                    ));
+                if let Some(examples) = reference.expected.examples() {
+                    diagnostic =
+                        diagnostic.with_fact(DiagnosticFact::Examples(examples.to_owned()));
+                }
                 self.diagnostics
                     .push(with_span(diagnostic, &reference.source, reference.range));
                 continue;
@@ -1350,7 +1505,19 @@ impl GraphBuilder {
                 continue;
             };
             let Some(callee) = ids.get(&call.callee).copied() else {
-                let diagnostic = Diagnostic::error("SEM_UNKNOWN_CALLEE");
+                let mut diagnostic = Diagnostic::error("SEM_UNKNOWN_CALLEE")
+                    .with_fact(DiagnosticFact::Name(call.callee.clone()))
+                    .with_fact(DiagnosticFact::Expected("function or action".to_owned()))
+                    .with_fact(DiagnosticFact::Usage("call".to_owned()));
+                if let Some(suggestion) = closest_semantic_name(
+                    &call.callee,
+                    nodes
+                        .iter()
+                        .filter(|node| matches!(node.kind, NodeKind::Function | NodeKind::Action))
+                        .map(|node| node.name.as_str()),
+                ) {
+                    diagnostic = diagnostic.with_fact(DiagnosticFact::SuggestedName(suggestion));
+                }
                 self.diagnostics
                     .push(with_span(diagnostic, &call.source, call.range));
                 continue;
@@ -1368,8 +1535,11 @@ impl GraphBuilder {
             match kinds[&call.callee] {
                 NodeKind::Function | NodeKind::Action => calls.push(CallEdge { caller, callee }),
                 kind if kind.is_type() => {}
-                _other => {
-                    let diagnostic = Diagnostic::error("SEM_NOT_CALLABLE");
+                actual => {
+                    let diagnostic = Diagnostic::error("SEM_NOT_CALLABLE")
+                        .with_fact(DiagnosticFact::Name(call.callee.clone()))
+                        .with_fact(DiagnosticFact::Expected("function or action".to_owned()))
+                        .with_fact(DiagnosticFact::ActualKind(actual.user_name().to_owned()));
                     self.diagnostics
                         .push(with_span(diagnostic, &call.source, call.range));
                 }
@@ -1430,6 +1600,39 @@ fn name_expression(path: &[jadpo_syntax::Name]) -> String {
         .map(|name| name.text.as_str())
         .collect::<Vec<_>>()
         .join(".")
+}
+
+fn closest_semantic_name<'a>(
+    requested: &str,
+    candidates: impl Iterator<Item = &'a str>,
+) -> Option<String> {
+    let requested_lower = requested.to_ascii_lowercase();
+    candidates
+        .filter(|candidate| *candidate != requested)
+        .filter_map(|candidate| {
+            let distance = edit_distance(&requested_lower, &candidate.to_ascii_lowercase());
+            (distance <= 3).then_some((distance, candidate))
+        })
+        .min_by(|left, right| left.cmp(right))
+        .map(|(_, candidate)| candidate.to_owned())
+}
+
+fn edit_distance(left: &str, right: &str) -> usize {
+    let mut previous = (0..=right.chars().count()).collect::<Vec<_>>();
+    for (left_index, left_character) in left.chars().enumerate() {
+        let mut current = vec![left_index + 1];
+        for (right_index, right_character) in right.chars().enumerate() {
+            current.push(
+                (previous[right_index + 1] + 1).min(
+                    (current[right_index] + 1).min(
+                        previous[right_index] + usize::from(left_character != right_character),
+                    ),
+                ),
+            );
+        }
+        previous = current;
+    }
+    previous.last().copied().unwrap_or_default()
 }
 
 fn http_method_name(method: HttpMethod) -> &'static str {

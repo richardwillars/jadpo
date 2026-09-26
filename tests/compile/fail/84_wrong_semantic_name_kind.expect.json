@@ -5,11 +5,18 @@
     {
       "code": "SEM_WRONG_NAME_KIND",
       "primary_match": "NotAProblem",
-      "summary": "Name resolves to the wrong kind of declaration",
-      "reason_includes": "requires a specific semantic declaration kind",
-      "recommended_title": "Use a declaration of the required kind at this location",
+      "summary": "`NotAProblem` can't be used here",
+      "reason_includes": "`kind` must be a predefined category, such as `InvalidValue`, `NotFound`, `Conflict`, or `Unavailable`.",
+      "recommended_title": "Use one of Jadpo's predefined categories",
       "repair_kind": "guided_choice",
-      "decision_owner": "agent"
+      "decision_owner": "agent",
+      "diagnostic_context": {
+        "name": "NotAProblem",
+        "expected": "predefined category",
+        "actualKind": "type",
+        "examples": "`InvalidValue`, `NotFound`, `Conflict`, or `Unavailable`",
+        "usage": "failure's `kind`"
+      }
     }
   ]
 }

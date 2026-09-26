@@ -231,7 +231,7 @@ mod tests {
         let fixtures = repository_root().join("tests/compile");
         let sources = discover_sources(&fixtures).expect("fixtures should be discoverable");
 
-        assert_eq!(sources.len(), 88);
+        assert_eq!(sources.len(), 99);
     }
 
     #[test]
@@ -397,7 +397,12 @@ mod tests {
         let root = repository_root().join("tests/compile");
         for source in discover_sources(&root).expect("fixtures should be discoverable") {
             let project = analyze_project(&source.path).expect("fixture should be analyzable");
-            if project.syntax.diagnostics().count() == 0 {
+            if source
+                .path
+                .components()
+                .any(|component| component.as_os_str() == "pass")
+                && project.syntax.diagnostics().count() == 0
+            {
                 assert!(
                     project.semantics.diagnostics.is_empty(),
                     "{}: {:#?}",

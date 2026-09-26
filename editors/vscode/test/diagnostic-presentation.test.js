@@ -72,6 +72,8 @@ test("Details preserves the complete shared repair protocol", () => {
     data.sourceRevision,
   ]) assert.ok(html.includes(required), `missing ${required}`);
   assert.ok(html.includes("&lt;delete&gt;"));
+  assert.ok(html.includes(`href="https://jadpo.dev/docs/${data.helpId}"`));
+  assert.ok(html.includes("View full guidance"));
 });
 
 test("Details escapes every compiler-supplied field", () => {

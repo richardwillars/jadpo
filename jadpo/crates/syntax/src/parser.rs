@@ -2900,7 +2900,7 @@ function choose(initial: Choice, replacement: Choice) -> Choice {
     }
 
     #[test]
-    fn parses_semantic_fixtures_and_preserves_the_throw_diagnostic() {
+    fn parses_passing_fixtures_and_preserves_selected_parser_diagnostics() {
         let root = repository_root().join("tests/compile");
         let mut paths = Vec::new();
         collect_sources(&root, &mut paths);
@@ -2975,7 +2975,16 @@ function choose(initial: Choice, replacement: Choice) -> Choice {
                     parsed.diagnostics[0].message,
                     "Expected `:` after field name"
                 );
-            } else {
+            } else if file_name == "75_invalid_string_escape.jadpo" {
+                assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
+                assert_eq!(parsed.diagnostics[0].code, "SYN_INVALID_ESCAPE");
+            } else if file_name == "76_unexpected_character.jadpo" {
+                assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
+                assert_eq!(parsed.diagnostics[0].code, "SYN_UNEXPECTED_CHARACTER");
+            } else if path
+                .components()
+                .any(|component| component.as_os_str() == "pass")
+            {
                 assert!(
                     parsed.diagnostics.is_empty(),
                     "{}: {:#?}",

@@ -5,20 +5,30 @@
     {
       "code": "SEM_UNKNOWN_CALLEE",
       "primary_match": "missing_callable",
-      "summary": "Called function or action cannot be found",
-      "reason_includes": "no callable with this name is available",
-      "recommended_title": "Correct, declare, or import the function or action being called",
+      "summary": "`missing_callable` isn't defined",
+      "reason_includes": "This call needs a function or action.",
+      "recommended_title": "Define `missing_callable` as a function or action, or import it",
       "repair_kind": "guided_choice",
-      "decision_owner": "agent"
+      "decision_owner": "agent",
+      "diagnostic_context": {
+        "name": "missing_callable",
+        "expected": "function or action",
+        "usage": "call"
+      }
     },
     {
       "code": "SEM_NOT_CALLABLE",
       "primary_match": "KnownFailure",
-      "summary": "Resolved name cannot be called",
-      "reason_includes": "other non-callable declaration",
-      "recommended_title": "Use a function or action name, or remove the invocation parentheses",
+      "summary": "`KnownFailure` can't be called",
+      "reason_includes": "Only a function or action can be followed by parentheses and called.",
+      "recommended_title": "Call a function or action instead, or remove the parentheses",
       "repair_kind": "guided_choice",
-      "decision_owner": "agent"
+      "decision_owner": "agent",
+      "diagnostic_context": {
+        "name": "KnownFailure",
+        "expected": "function or action",
+        "actualKind": "failure"
+      }
     }
   ]
 }

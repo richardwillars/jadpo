@@ -27,7 +27,11 @@ function diagnosticDetailsHtml(data = {}, fallbackSummary = "Jadpo diagnostic") 
     + `<h2>Impact</h2><p><strong>Behavior:</strong> ${escapeHtml(impact.behavioral || "")}</p><p><strong>Public contract:</strong> ${escapeHtml(impact.publicContract || "")}</p>`
     + (affected ? `<p><strong>Affected:</strong></p><ul>${affected}</ul>` : "")
     + (context ? `<h2>Context</h2><ul>${context}</ul>` : "")
-    + `<p class="meta">Rule <code>${escapeHtml(data.ruleId || "")}</code> · Help <code>${escapeHtml(data.helpId || "")}</code> · Revision <code>${escapeHtml(data.sourceRevision || "")}</code></p>`;
+    + `<p class="meta">Rule <code>${escapeHtml(data.ruleId || "")}</code> · <a href="${escapeHtml(diagnosticHelpUrl(data.helpId))}">View full guidance</a> · Revision <code>${escapeHtml(data.sourceRevision || "")}</code></p>`;
+}
+
+function diagnosticHelpUrl(helpId) {
+  return `https://jadpo.dev/docs/${String(helpId || "")}`;
 }
 
 function repairPreviewHtml(repair = {}) {

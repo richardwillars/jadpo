@@ -4,12 +4,18 @@
   "diagnostics": [
     {
       "code": "SEM_UNKNOWN_NAME",
-      "primary_match": "MissingId",
-      "summary": "Name does not resolve in this scope",
-      "reason_includes": "not a local binding, visible declaration",
-      "recommended_title": "Correct the name, declare it, or import it from its module",
+      "primary_match": "CustomerID",
+      "summary": "`CustomerID` isn't defined",
+      "reason_includes": "Did you mean `CustomerId`?",
+      "recommended_title": "Use `CustomerId`, define `CustomerID` as a type, or import the type",
       "repair_kind": "guided_choice",
-      "decision_owner": "agent"
+      "decision_owner": "agent",
+      "diagnostic_context": {
+        "name": "CustomerID",
+        "expected": "type",
+        "suggestedName": "CustomerId",
+        "usage": "field"
+      }
     }
   ]
 }

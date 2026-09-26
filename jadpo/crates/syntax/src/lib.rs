@@ -562,17 +562,31 @@ mod tests {
     }
 
     #[test]
-    fn lexes_all_fixtures_without_lexical_diagnostics() {
+    fn lexes_all_fixtures_with_only_the_expected_lexical_diagnostics() {
         let root = repository_root().join("tests/compile");
         let mut paths = Vec::new();
         collect_sources(&root, &mut paths);
 
-        assert_eq!(paths.len(), 88);
+        assert_eq!(paths.len(), 99);
         for path in paths {
             let source = fs::read_to_string(&path).expect("fixture should be readable");
             let result = lex(&path, &source);
-            assert!(
-                result.diagnostics.is_empty(),
+            let file_name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+            let expected = match file_name {
+                "75_invalid_string_escape.jadpo" => &["SYN_INVALID_ESCAPE"][..],
+                "76_unexpected_character.jadpo" => &["SYN_UNEXPECTED_CHARACTER"][..],
+                _ => &[],
+            };
+            assert_eq!(
+                result
+                    .diagnostics
+                    .iter()
+                    .map(|diagnostic| diagnostic.code)
+                    .collect::<Vec<_>>(),
+                expected,
                 "{}: {:#?}",
                 path.display(),
                 result.diagnostics

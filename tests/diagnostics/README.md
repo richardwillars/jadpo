@@ -66,9 +66,16 @@ the concrete grammar rule and a usable next step; the general parser expectation
 also carries the bounded `expected` and `found` facts supplied by the parser.
 Real trigger-fixture coverage is still tracked independently by the strict gate.
 
-The `SEM_*` name-resolution family is also fully authored: duplicate names,
-unresolved names and callees, wrong declaration kinds, and non-callable names
-now explain resolution scope and the concrete declaration change required.
+The `SEM_*` name-resolution family is also fully authored and contextual.
+Diagnostics name the source spelling, say what that field, parameter, return,
+route item, call, or `fails` entry needs, suggest the nearest compatible name,
+and use concrete advice such as “define `CustomerID` as a type.” A failure
+`kind` mistake describes the accepted predefined categories instead of asking
+the reader to understand compiler declaration classes.
+
+Human terminal and IDE projections turn the stable `helpId` into a full
+`https://jadpo.dev/docs/diagnostics/...` guidance link. Agent JSON retains the
+stable relative identifier required by the versioned schema.
 
 The `EFFECT_*` and `FAIL_*` families are fully authored and mostly backed by
 existing compiler fixtures. Their copy explains the function/action purity

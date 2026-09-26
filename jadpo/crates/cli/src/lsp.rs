@@ -3,7 +3,7 @@ use jadpo_core::{
     index_recommendation_count, validate_schema_identities, AnalyzedProject, LanguageIndex,
     LanguageSymbol,
 };
-use jadpo_diagnostics::{Diagnostic, RepairKind, Severity, TextEdit};
+use jadpo_diagnostics::{diagnostic_help_url, Diagnostic, RepairKind, Severity, TextEdit};
 use jadpo_syntax::{Declaration, SourceFile, TextRange, TokenKind, TypeReference};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -741,10 +741,10 @@ fn diagnostic_hover_markdown(diagnostic: &Diagnostic) -> String {
         ));
     }
     sections.push(format!(
-        "Owner: `{}` · Rule: `{}` · Help: `{}`",
+        "Owner: `{}` · Rule: `{}` · [View full guidance]({})",
         diagnostic.decision_owner.as_str(),
         diagnostic.rule_id,
-        diagnostic.help_id
+        diagnostic_help_url(&diagnostic.help_id)
     ));
     sections.join("\n\n")
 }

@@ -1,3 +1,5 @@
+type CustomerId = Uuid {}
+
 value Customer {
-    id: MissingId
+    id: CustomerID
 }

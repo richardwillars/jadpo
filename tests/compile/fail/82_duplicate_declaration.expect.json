@@ -5,11 +5,14 @@
     {
       "code": "SEM_DUPLICATE_DECLARATION",
       "primary_match": "CustomerId",
-      "summary": "Declaration name is already in use",
-      "reason_includes": "same visible namespace cannot share a name",
-      "recommended_title": "Rename one declaration or remove the duplicate",
+      "summary": "`CustomerId` is already defined",
+      "reason_includes": "already a visible declaration named `CustomerId`",
+      "recommended_title": "Rename this declaration or remove the duplicate",
       "repair_kind": "guided_choice",
-      "decision_owner": "agent"
+      "decision_owner": "agent",
+      "diagnostic_context": {
+        "name": "CustomerId"
+      }
     }
   ]
 }
