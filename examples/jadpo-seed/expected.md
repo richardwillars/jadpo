@@ -66,13 +66,13 @@ No edge is inferred merely from matching representation or structure.
 
 ```text
 Email:
-  format email
-  max_length 254
+  compiler-owned `Email` validation
+  maximum length 254
 
 InviteCode:
-  min_length 6
-  max_length 32
-  pattern "[a-z0-9_]+"
+  min_length: 6
+  max_length: 32
+  pattern: "[a-z0-9_]+"
 ```
 
 `InviteCode("reserved")` is validated during compilation and bound as the

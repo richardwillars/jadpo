@@ -15,7 +15,27 @@ pub struct SyntaxFile {
     pub module: Option<ModuleDeclaration>,
     pub imports: Vec<ImportDeclaration>,
     pub exports: Vec<Name>,
+    pub persistence: Vec<PersistenceDeclaration>,
     pub declarations: Vec<Declaration>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PersistenceDeclaration {
+    pub target: Name,
+    pub identities: Vec<Name>,
+    pub uniques: Vec<Name>,
+    pub indexes: Vec<Name>,
+    pub constraints: Vec<PersistenceConstraintDeclaration>,
+    pub references: Vec<PersistenceReferenceDeclaration>,
+    pub inverses: Vec<InverseDeclaration>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PersistenceReferenceDeclaration {
+    pub field: Name,
+    pub reference: ReferenceDeclaration,
     pub range: TextRange,
 }
 

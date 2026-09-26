@@ -99,6 +99,37 @@ pub fn check_types(files: &[ParsedSyntax], graph: &SemanticGraph) -> TypeCheckRe
 impl Catalogue {
     fn from_files(files: &[ParsedSyntax]) -> Self {
         let mut catalogue = Self::default();
+        for (name, format) in [
+            ("Email", "email"),
+            ("Url", "url"),
+            ("IpAddress", "ip_address"),
+        ] {
+            catalogue.constraints.insert(
+                name.to_owned(),
+                vec![Constraint {
+                    kind: ConstraintKind::Format,
+                    value: Literal {
+                        kind: LiteralKind::String,
+                        text: format.to_owned(),
+                        range: TextRange::new(0, 0),
+                    },
+                    range: TextRange::new(0, 0),
+                }],
+            );
+        }
+        catalogue
+            .constraints
+            .entry("Email".to_owned())
+            .or_default()
+            .push(Constraint {
+                kind: ConstraintKind::MaxLength,
+                value: Literal {
+                    kind: LiteralKind::Integer,
+                    text: "254".to_owned(),
+                    range: TextRange::new(0, 0),
+                },
+                range: TextRange::new(0, 0),
+            });
         for file in files {
             for declaration in &file.file.declarations {
                 match declaration {
@@ -287,6 +318,20 @@ impl Catalogue {
             }
         }
         catalogue
+    }
+
+    fn is_projection_object(&self, name: &str) -> bool {
+        matches!(
+            self.record_kinds.get(name),
+            Some(jadpo_syntax::RecordKind::Value | jadpo_syntax::RecordKind::Output)
+        )
+    }
+
+    fn is_patch_object(&self, name: &str) -> bool {
+        matches!(
+            self.record_kinds.get(name),
+            Some(jadpo_syntax::RecordKind::Value | jadpo_syntax::RecordKind::Input)
+        )
     }
 }
 
@@ -968,9 +1013,7 @@ impl TypeChecker<'_> {
                         );
                         return Some(simple_type(&result_name));
                     };
-                    if self.catalogue.record_kinds.get(&result_name)
-                        != Some(&jadpo_syntax::RecordKind::Output)
-                    {
+                    if !self.catalogue.is_projection_object(&result_name) {
                         self.push_diagnostic(
                             "TYPE_INCLUDE_RESULT_NOT_OUTPUT",
                             source,
@@ -990,10 +1033,9 @@ impl TypeChecker<'_> {
                             !field_type.nullable && field_type.arguments.is_empty()
                         })
                         .map(|field_type| field_type.name.clone());
-                    let inner_output_ok = inner_name.as_ref().is_some_and(|name| {
-                        self.catalogue.record_kinds.get(name)
-                            == Some(&jadpo_syntax::RecordKind::Output)
-                    });
+                    let inner_output_ok = inner_name
+                        .as_ref()
+                        .is_some_and(|name| self.catalogue.is_projection_object(name));
                     let inner_shape = inner_name
                         .as_ref()
                         .and_then(|name| self.catalogue.records.get(name));
@@ -1058,9 +1100,7 @@ impl TypeChecker<'_> {
                             first_include.range,
                         );
                     }
-                    if self.catalogue.record_kinds.get(&result_name)
-                        != Some(&jadpo_syntax::RecordKind::Output)
-                    {
+                    if !self.catalogue.is_projection_object(&result_name) {
                         self.push_diagnostic(
                             "TYPE_INCLUDE_RESULT_NOT_OUTPUT",
                             source,
@@ -1130,9 +1170,7 @@ impl TypeChecker<'_> {
                                 first_include.range,
                             );
                         }
-                        if self.catalogue.record_kinds.get(&result_name)
-                            != Some(&jadpo_syntax::RecordKind::Output)
-                        {
+                        if !self.catalogue.is_projection_object(&result_name) {
                             self.push_diagnostic(
                                 "TYPE_INCLUDE_RESULT_NOT_OUTPUT",
                                 source,
@@ -1263,9 +1301,7 @@ impl TypeChecker<'_> {
                                 }
                                 included_children.push((include, inverse));
                             }
-                            if self.catalogue.record_kinds.get(&result_name)
-                                != Some(&jadpo_syntax::RecordKind::Output)
-                            {
+                            if !self.catalogue.is_projection_object(&result_name) {
                                 self.push_diagnostic(
                                     "TYPE_INCLUDE_RESULT_NOT_OUTPUT",
                                     source,
@@ -1418,9 +1454,7 @@ impl TypeChecker<'_> {
                     if let Some(received) =
                         self.infer_expression(&patch_expression, environment, source)
                     {
-                        if self.catalogue.record_kinds.get(&received.name)
-                            != Some(&jadpo_syntax::RecordKind::Input)
-                        {
+                        if !self.catalogue.is_patch_object(&received.name) {
                             self.push_diagnostic("TYPE_PATCH_NOT_INPUT", source, patch.range);
                         } else if let Some(patch_fields) =
                             self.catalogue.records.get(&received.name).cloned()
@@ -2268,7 +2302,12 @@ impl TypeChecker<'_> {
                 ConstraintKind::Max => numeric_literal(literal)
                     .zip(numeric_constraint(constraint))
                     .is_some_and(|(value, maximum)| value > maximum),
-                ConstraintKind::Format => constraint.value.text == "email" && !valid_email(&text),
+                ConstraintKind::Format => match constraint.value.text.as_str() {
+                    "email" => !valid_email(&text),
+                    "url" => !valid_url(&text),
+                    "ip_address" => !valid_ip_address(&text),
+                    _ => false,
+                },
                 ConstraintKind::Pattern => {
                     !matches_core_pattern(&text, &unquote(&constraint.value.text))
                 }
@@ -2441,6 +2480,24 @@ fn valid_email(value: &str) -> bool {
         && !value.chars().any(char::is_whitespace)
 }
 
+fn valid_url(value: &str) -> bool {
+    let Some((scheme, remainder)) = value.split_once("://") else {
+        return false;
+    };
+    matches!(scheme, "http" | "https")
+        && !remainder.is_empty()
+        && !remainder.starts_with('.')
+        && !remainder.chars().any(char::is_whitespace)
+        && remainder
+            .split(['/', '?', '#'])
+            .next()
+            .is_some_and(|host| host.contains('.') || host == "localhost")
+}
+
+fn valid_ip_address(value: &str) -> bool {
+    value.parse::<std::net::IpAddr>().is_ok()
+}
+
 fn matches_core_pattern(value: &str, pattern: &str) -> bool {
     match pattern {
         "[a-z0-9_]+" => {
@@ -2487,7 +2544,6 @@ mod tests {
     fn widens_fields_but_rejects_siblings() {
         let result = check(
             r#"
-type Email = Text { format email }
 entity Customer { email: Email }
 entity Supplier { email: Email }
 function receipt(email: Customer.email) -> Customer.email { return email }
@@ -2502,7 +2558,6 @@ function misuse(supplier: Supplier) -> Customer.email { return receipt(supplier.
     fn validates_constant_constructors() {
         let result = check(
             r#"
-type Email = Text { format email }
 function email() -> Email { return Email("not-an-email") }
 "#,
         );

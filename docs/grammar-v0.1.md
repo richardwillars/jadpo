@@ -19,7 +19,8 @@ document controls spelling for the core compiler slice.
 - The core compiler has one application-wide namespace.
 - Declaration order and file order do not affect name resolution.
 - Duplicate names in the same namespace are errors.
-- Modules, imports, visibility, and packages are deferred under `MOD-001`.
+- The bounded module extension supports one logical module per file, selective
+  imports, and private-by-default declarations. Packages remain deferred.
 
 ## 2. Lexical grammar
 
@@ -61,28 +62,29 @@ Naming shape is checked semantically rather than encoded into token kinds:
 The lexer emits one `identifier` token so a misspelt case can receive a targeted
 naming diagnostic rather than a confusing parse error.
 
-`input`, `output`, and `value` are contextual in name positions. They retain
-their keyword tokens for declaration dispatch but may be used as parameter,
-binding, field, or expression names. The seed's `input: RegisterCustomer` is the
-canonical example. This is a parser rule, not implicit string rewriting.
+`input`, `output`, and `value` are contextual in name positions. The former
+declaration spellings remain readable only for migration fixtures; canonical
+source declares every shape with `type`. These words may still be used as
+parameter, binding, field, or expression names. The seed's
+`input: RegisterCustomer` is the canonical boundary-role example. This is a
+parser rule, not implicit string rewriting.
 
 ## 4. Compilation unit
 
 ```ebnf
-source_file         = { declaration } ;
+source_file         = [ module_declaration ], { import_declaration },
+                      { [ "public" ], declaration } ;
 
 declaration         = type_declaration
-                    | entity_declaration
-                    | value_declaration
-                    | input_declaration
-                    | output_declaration
+                    | persistence_declaration
                     | failure_declaration
                     | function_declaration
                     | action_declaration
                     | route_declaration ;
 ```
 
-The first slice has no `app` wrapper or import declarations.
+There is no `app` wrapper. The bounded module/import extension is specified in
+section 14.
 
 ## 5. Type expressions
 
@@ -91,21 +93,22 @@ type_expression     = primary_type, [ "?" ] ;
 
 primary_type        = named_type
                     | field_type
-                    | generic_type ;
+                    | generic_type
+                    | inline_object_type ;
 
 named_type          = identifier ;
 field_type          = identifier, ".", identifier ;
 generic_type        = identifier, "<", type_expression,
                       { ",", type_expression }, ">" ;
+inline_object_type  = "Object", object_body ;
 ```
 
 `Customer.email` is parsed as a field type in type position and as member access
 in expression position. Name resolution determines whether the owner declaration
 and field exist.
 
-The parser accepts generic type shape so built-in `List<T>`, `Set<T>`, and
-`Map<K, V>` can be represented later. The first semantic slice may diagnose them
-as unsupported under `TYPE-002`.
+The parser and runtime support the prelude containers `List<T>`, `Set<T>`, and
+`Map<K, V>`. User-defined generic declarations remain unsupported.
 
 Applying `?` to an already nullable field type is a redundant-nullability
 diagnostic rather than nested optionality.
@@ -113,68 +116,74 @@ diagnostic rather than nested optionality.
 ## 6. Type and constraint declarations
 
 ```ebnf
-type_declaration    = "type", identifier, "=", type_expression,
-                      constraint_block ;
+type_declaration    = "type", identifier, "=",
+                      ( scalar_type_body | object_type_body | enum_type_body ) ;
+
+scalar_type_body    = type_expression, constraint_block ;
+object_type_body    = "Object", object_body ;
+enum_type_body      = "Enum", "{", enum_variant, { enum_variant }, "}" ;
+enum_variant        = identifier, [ object_body ] ;
 
 constraint_block    = "{", { constraint }, "}" ;
 
-constraint          = "min", number_literal
-                    | "max", number_literal
-                    | "min_length", integer_literal
-                    | "max_length", integer_literal
-                    | "pattern", string_literal
-                    | "format", identifier ;
+constraint          = "min", ":", number_literal
+                    | "max", ":", number_literal
+                    | "min_length", ":", integer_literal
+                    | "max_length", ":", integer_literal
+                    | "pattern", ":", string_literal
+                    | "format", ":", identifier ;
 
 number_literal      = integer_literal | decimal_literal ;
 ```
 
 The core constraint vocabulary is `min`, `max`, `min_length`, `max_length`,
-`pattern`, and `format email`. Unknown constraints are errors rather than
+`pattern`, and `format: email`. Unknown constraints are errors rather than
 arbitrary callbacks.
 
 Every `type` declaration creates a new nominal type. The syntax never means a
 transparent alias.
 
-## 7. Record declarations
+## 7. Object types and persistence
 
 ```ebnf
-entity_declaration  = "entity", identifier, record_body ;
-value_declaration   = "value", identifier, record_body ;
-input_declaration   = "input", identifier, record_body ;
-output_declaration  = "output", identifier, record_body ;
-
-record_body         = "{", { field_declaration | inverse_declaration }, "}" ;
+object_body         = "{", { field_declaration }, "}" ;
 
 field_declaration   = identifier, ":", type_expression,
-                      [ constraint_block ],
-                      { persistence_modifier },
-                      [ reference_clause ], [ "optional" ] ;
+                      [ constraint_block ], [ "optional" ] ;
 
-persistence_modifier = "identity" | "unique" | "index" ;
-reference_clause    = "references", qualified_name, [ "as", identifier ],
-                      "on_delete", reference_delete_action ;
+persistence_declaration = "persist", identifier, "{",
+                            { persistence_item },
+                          "}" ;
+persistence_item    = "identity", ":", identifier
+                    | "unique", ":", identifier
+                    | "index", ":", identifier
+                    | reference_item
+                    | inverse_declaration ;
+reference_item      = "references", identifier, ":", qualified_name,
+                      [ "as", ":", identifier ],
+                      "on_delete", ":", reference_delete_action ;
 reference_delete_action = "restrict" | "cascade" | "set_null" ;
 inverse_declaration = "inverse", identifier, ":", inverse_cardinality, identifier,
-                      "via", qualified_name ;
+                      "via", ":", qualified_name ;
 inverse_cardinality = "many" | "optional" ;
 ```
 
-`optional` is valid only on input fields in the core. It is postfix and means
-the field may be omitted from the input shape. It is distinct from `?`, which
+`optional` is meaningful when an object is used as route input. It means the
+field may be omitted from that boundary shape and is distinct from `?`, which
 means a supplied value may be `none`.
 
 Every field declaration creates a nominal field type refining the written type.
 Field constraints, if present, further refine intrinsic value validation.
 
-`identity`, `unique`, and `index` are accepted only on entity fields. An entity
-may declare at most one non-nullable `identity`; it becomes the generated
-primary key. `unique` creates a stable named unique constraint, while `index`
-creates a stable named non-unique index. These are storage properties and do
-not become part of the field's nominal value type. Defaults, compound
-constraints remain later P10 grammar extensions.
+`persist Name { ... }` is the only storage opt-in. A persisted object may
+declare at most one non-nullable `identity`; it becomes the generated primary
+key. `unique` creates a stable named unique constraint, while `index` creates a
+stable named non-unique index. These are storage properties and do not become
+part of the field's nominal value type. Without `persist`, an object type is
+ordinary non-persistent application data.
 
-An owning entity field may declare
-`references User.id as owner on_delete cascade` (or
+An owning field on a persisted object may declare
+`references owner_id: User.id as: owner on_delete: cascade` (or
 `restrict`/`set_null`). `as owner` explicitly separates the logical traversal
 name from a stored field such as `owner_id`; when it is omitted, the field name
 is also the relationship name. The compiler never infers a name by stripping
@@ -182,10 +191,10 @@ an `_id` suffix. The referenced field must be a non-nullable identity or unique
 field, and the owning field's nominal type must be that exact field type.
 `set_null` additionally requires a nullable owner field. The compiler generates
 a foreign key and lookup index, orders fresh-schema table creation by
-dependency, and diagnoses cross-entity dependency cycles it cannot emit.
-An entity may declare an inverse collection as
-`inverse todos: many Todo via Todo.owner_id`, or a zero-or-one inverse as
-`inverse profile: optional Profile via Profile.user_id`. The `via` field must
+dependency, and diagnoses cross-object dependency cycles it cannot emit.
+A persisted object may declare an inverse collection as
+`inverse todos: many Todo via: Todo.owner_id`, or a zero-or-one inverse as
+`inverse profile: optional Profile via: Profile.user_id`. The `via` field must
 be an owning reference on the named child entity that points back to the
 declaring parent. An optional inverse additionally requires that field to be
 `identity` or `unique`, making the at-most-one claim enforceable in storage.
@@ -221,11 +230,10 @@ need it.
 
 ```ebnf
 function_declaration = "function", identifier, parameter_list,
-                       "->", type_expression, block ;
+                       [ fails_clause ], "->", type_expression, block ;
 
 action_declaration   = "action", identifier, parameter_list,
-                       "->", type_expression,
-                       [ fails_clause ], block ;
+                       [ fails_clause ], "->", type_expression, block ;
 
 parameter_list       = "(", [ parameter,
                          { ",", parameter } ], ")" ;
@@ -505,10 +513,9 @@ and derived `set:`. The generated adapter preflights
 cardinality and mutates inside the inferred action transaction, so multiple
 matches or constraint failures leave no partially committed fields.
 
-An entity may declare compound uniqueness with
-`constraint name: unique(field_a, field_b)`. The name becomes the stable source
-identity used by precise conflict mappings. Compound fields must be known,
-distinct, and non-nullable; duplicate field sets are rejected.
+The exact colon-delimited spelling for named compound uniqueness remains open.
+The former call-shaped `constraint name: unique(field_a, field_b)` spelling is
+not canonical and must not be copied into new source.
 
 The first expression grammar supports equality because the seed uses it.
 Arithmetic, ordering, boolean operators, exhaustive `match`, and richer
@@ -576,6 +583,18 @@ Decimal
 Text
 Bytes
 Uuid
+Date
+Time
+DateTime
+Duration
+Unit
+Object
+List<T>
+Set<T>
+Map<K, V>
+Email
+Url
+IpAddress
 ```
 
 It also recognises the initial standard failure kinds, including
@@ -627,9 +646,8 @@ for:
 
 - import aliases, re-exports, relative imports, multi-file modules, same-name
   declarations in separate modules, and external packages;
-- enums and `match`;
 - loops and recursion;
-- arbitrary assignment;
+- assignment outside a bare, fixed-type `var mut` local;
 - local failure-handler arms and failure mapping after `attempt`;
 - compound many-result predicates and general patch-condition expressions;
 - services, events, and jobs;
@@ -643,8 +661,7 @@ for:
 - transparent aliases;
 - macros, reflection, and escape hatches.
 
-Enums remain outside this grammar slice. Their future grammar must preserve the
-accepted reference rule: variants use qualified dot syntax such as
+Enum variants use qualified dot syntax such as
 `InviteStatus.blocked`; `InviteStatus("blocked")` and dynamic call-style enum
 construction are invalid.
 
@@ -656,8 +673,8 @@ the implementation without a specification and fixture.
 The [Jadpo seed](../examples/jadpo-seed/app.jadpo) exercises:
 
 - constrained nominal types;
-- an entity and field type references;
-- input and output record declarations;
+- an object type, a separate persistence declaration, and field type references;
+- route input and output roles using ordinary object types;
 - field refinement chains;
 - a standard-kind domain failure with flat rejection context and a declaration-
   owned internal field;

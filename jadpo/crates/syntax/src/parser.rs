@@ -17,6 +17,9 @@ struct Parser<'source> {
     tokens: Vec<Token>,
     cursor: usize,
     diagnostics: Vec<Diagnostic>,
+    synthetic_records: Vec<RecordDeclaration>,
+    field_owners: Vec<String>,
+    inline_type_counter: usize,
 }
 
 struct ParsedRecordBody {
@@ -39,6 +42,9 @@ impl<'source> Parser<'source> {
             tokens,
             cursor: 0,
             diagnostics,
+            synthetic_records: Vec::new(),
+            field_owners: Vec::new(),
+            inline_type_counter: 0,
         };
         parser.skip_trivia();
         parser
@@ -61,10 +67,20 @@ impl<'source> Parser<'source> {
         }
         let mut declarations = Vec::new();
         let mut exports = Vec::new();
+        let mut persistence = Vec::new();
 
         while !self.at(TokenKind::Eof) {
             let before = self.cursor;
             let diagnostics_before = self.diagnostics.len();
+            if self.at(TokenKind::Persist) {
+                if let Some(declaration) = self.parse_persistence_declaration() {
+                    persistence.push(declaration);
+                }
+                if self.cursor == before {
+                    self.bump();
+                }
+                continue;
+            }
             let public = if self.at(TokenKind::Public) {
                 self.bump();
                 true
@@ -98,6 +114,12 @@ impl<'source> Parser<'source> {
             }
         }
 
+        declarations.extend(
+            std::mem::take(&mut self.synthetic_records)
+                .into_iter()
+                .map(Declaration::Record),
+        );
+
         ParseResult {
             source_name: self.source_name,
             source_text: self.source.to_owned(),
@@ -105,6 +127,7 @@ impl<'source> Parser<'source> {
                 module,
                 imports,
                 exports,
+                persistence,
                 declarations,
                 range: TextRange::new(0, self.source.len()),
             },
@@ -161,7 +184,7 @@ impl<'source> Parser<'source> {
 
     fn parse_declaration(&mut self) -> Option<Declaration> {
         match self.current_kind() {
-            TokenKind::Type => self.parse_type_declaration().map(Declaration::Type),
+            TokenKind::Type => self.parse_type_declaration(),
             TokenKind::Enum => self.parse_enum_declaration().map(Declaration::Enum),
             TokenKind::Entity => self
                 .parse_record_declaration(RecordKind::Entity)
@@ -188,6 +211,139 @@ impl<'source> Parser<'source> {
         }
     }
 
+    fn parse_persistence_declaration(&mut self) -> Option<PersistenceDeclaration> {
+        let start = self
+            .expect(TokenKind::Persist, "expected `persist`")?
+            .range
+            .start;
+        let target = self.expect_name("expected a type name after `persist`")?;
+        self.expect(
+            TokenKind::LeftBrace,
+            "expected `{` before persistence settings",
+        )?;
+        let mut identities = Vec::new();
+        let mut uniques = Vec::new();
+        let mut indexes = Vec::new();
+        let mut constraints = Vec::new();
+        let mut references = Vec::new();
+        let mut inverses = Vec::new();
+
+        while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
+            let before = self.cursor;
+            match self.current_kind() {
+                TokenKind::Identity | TokenKind::Index => {
+                    let setting = self.bump().kind;
+                    self.expect(TokenKind::Colon, "expected `:` after persistence setting")?;
+                    let field = self.expect_contextual_name("expected persisted field name")?;
+                    if setting == TokenKind::Identity {
+                        identities.push(field);
+                    } else {
+                        indexes.push(field);
+                    }
+                }
+                TokenKind::Unique => {
+                    self.bump();
+                    self.expect(TokenKind::Colon, "expected `:` after `unique`")?;
+                    uniques.push(self.expect_contextual_name("expected unique field name")?);
+                }
+                TokenKind::Constraint => {
+                    constraints.push(self.parse_persistence_constraint()?);
+                }
+                TokenKind::References => {
+                    let reference_start = self.bump().range.start;
+                    let field = self.expect_contextual_name("expected referencing field name")?;
+                    self.expect(TokenKind::Colon, "expected `:` after referencing field")?;
+                    let target = self.parse_type_reference()?;
+                    let relationship = if self.at(TokenKind::As) {
+                        self.bump();
+                        self.expect(TokenKind::Colon, "expected `:` after `as`")?;
+                        Some(self.expect_contextual_name("expected relationship name")?)
+                    } else {
+                        None
+                    };
+                    self.expect(TokenKind::OnDelete, "expected `on_delete` for reference")?;
+                    self.expect(TokenKind::Colon, "expected `:` after `on_delete`")?;
+                    let on_delete = self.parse_reference_delete_action()?;
+                    let end = self.previous_significant_end();
+                    references.push(PersistenceReferenceDeclaration {
+                        field,
+                        reference: ReferenceDeclaration {
+                            target,
+                            relationship,
+                            on_delete,
+                            range: TextRange::new(reference_start, end),
+                        },
+                        range: TextRange::new(reference_start, end),
+                    });
+                }
+                TokenKind::Inverse => {
+                    inverses.push(self.parse_persisted_inverse_declaration()?);
+                }
+                _ => {
+                    self.error_current("SYN_UNEXPECTED_TOKEN");
+                    self.recover_until(&[TokenKind::RightBrace]);
+                }
+            }
+            if self.cursor == before {
+                self.bump();
+            }
+        }
+        let end = self
+            .expect(
+                TokenKind::RightBrace,
+                "expected `}` after persistence settings",
+            )?
+            .range
+            .end;
+        Some(PersistenceDeclaration {
+            target,
+            identities,
+            uniques,
+            indexes,
+            constraints,
+            references,
+            inverses,
+            range: TextRange::new(start, end),
+        })
+    }
+
+    fn parse_persisted_inverse_declaration(&mut self) -> Option<InverseDeclaration> {
+        let start = self
+            .expect(TokenKind::Inverse, "expected `inverse`")?
+            .range
+            .start;
+        let name = self.expect_contextual_name("expected inverse relationship name")?;
+        self.expect(
+            TokenKind::Colon,
+            "expected `:` after inverse relationship name",
+        )?;
+        let cardinality = match self.current_kind() {
+            TokenKind::Many => {
+                self.bump();
+                InverseCardinality::Many
+            }
+            TokenKind::Optional => {
+                self.bump();
+                InverseCardinality::Optional
+            }
+            _ => {
+                self.error_current("SYN_EXPECTED_INVERSE_CARDINALITY");
+                return None;
+            }
+        };
+        let target = self.expect_name("expected child type after inverse cardinality")?;
+        self.expect(TokenKind::Via, "expected `via` after inverse target")?;
+        self.expect(TokenKind::Colon, "expected `:` after `via`")?;
+        let via = self.parse_type_reference()?;
+        Some(InverseDeclaration {
+            name,
+            cardinality,
+            target,
+            range: TextRange::new(start, via.range.end),
+            via,
+        })
+    }
+
     fn parse_test_declaration(&mut self) -> Option<TestDeclaration> {
         let start = self.expect(TokenKind::Test, "expected `test`")?.range.start;
         let name = self.parse_literal_of(TokenKind::StringLiteral)?;
@@ -202,6 +358,10 @@ impl<'source> Parser<'source> {
     fn parse_enum_declaration(&mut self) -> Option<EnumDeclaration> {
         let start = self.expect(TokenKind::Enum, "expected `enum`")?.range.start;
         let name = self.expect_name("expected an enum name")?;
+        self.parse_enum_body(start, name)
+    }
+
+    fn parse_enum_body(&mut self, start: usize, name: Name) -> Option<EnumDeclaration> {
         self.expect(TokenKind::LeftBrace, "expected `{` before enum variants")?;
         let mut variants = Vec::new();
         while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
@@ -239,13 +399,29 @@ impl<'source> Parser<'source> {
         })
     }
 
-    fn parse_type_declaration(&mut self) -> Option<TypeDeclaration> {
+    fn parse_type_declaration(&mut self) -> Option<Declaration> {
         let start = self.expect(TokenKind::Type, "expected `type`")?.range.start;
         let name = self.expect_name("expected a type name")?;
         self.expect(TokenKind::Equal, "expected `=` after type name")?;
+        if self.current().text(self.source) == "Object" {
+            self.bump();
+            let body = self.parse_record_body(RecordKind::Value, &name.text)?;
+            return Some(Declaration::Record(RecordDeclaration {
+                kind: RecordKind::Value,
+                name,
+                fields: body.fields,
+                inverses: body.inverses,
+                persistence_constraints: body.persistence_constraints,
+                range: TextRange::new(start, body.end),
+            }));
+        }
+        if self.current().text(self.source) == "Enum" {
+            self.bump();
+            return self.parse_enum_body(start, name).map(Declaration::Enum);
+        }
         if self.at(TokenKind::LeftBrace) {
             let diagnostic = Diagnostic::error("SYN_TYPE_PARENT_REQUIRED").with_note(
-                "use `type User = Text { ... }`, or use `entity User { ... }` for fields",
+                "use `type User = Text { ... }` for a scalar or `type User = Object { ... }` for fields",
             );
             self.diagnostic_at(diagnostic, self.current().range);
             return None;
@@ -253,12 +429,12 @@ impl<'source> Parser<'source> {
         let parent = self.parse_type_reference()?;
         let (constraints, end) = self.parse_constraint_block()?;
 
-        Some(TypeDeclaration {
+        Some(Declaration::Type(TypeDeclaration {
             name,
             parent,
             constraints,
             range: TextRange::new(start, end),
-        })
+        }))
     }
 
     fn parse_record_declaration(&mut self, kind: RecordKind) -> Option<RecordDeclaration> {
@@ -273,7 +449,7 @@ impl<'source> Parser<'source> {
             .range
             .start;
         let name = self.expect_name("expected a record name")?;
-        let body = self.parse_record_body(kind)?;
+        let body = self.parse_record_body(kind, &name.text)?;
 
         Some(RecordDeclaration {
             kind,
@@ -285,8 +461,9 @@ impl<'source> Parser<'source> {
         })
     }
 
-    fn parse_record_body(&mut self, kind: RecordKind) -> Option<ParsedRecordBody> {
+    fn parse_record_body(&mut self, kind: RecordKind, owner: &str) -> Option<ParsedRecordBody> {
         self.expect(TokenKind::LeftBrace, "expected `{` before fields")?;
+        self.field_owners.push(owner.to_owned());
         let mut fields = Vec::new();
         let mut inverses = Vec::new();
         let mut persistence_constraints = Vec::new();
@@ -321,6 +498,7 @@ impl<'source> Parser<'source> {
             .expect(TokenKind::RightBrace, "expected `}` after fields")?
             .range
             .end;
+        self.field_owners.pop();
         Some(ParsedRecordBody {
             fields,
             inverses,
@@ -500,6 +678,8 @@ impl<'source> Parser<'source> {
             .start;
         let name = self.expect_name("expected a callable name")?;
         let parameters = self.parse_parameters()?;
+
+        let (mut failures, mut failures_range) = self.parse_callable_failures();
         let return_start = self
             .expect(TokenKind::Arrow, "expected `->` and a return type")?
             .range
@@ -507,6 +687,29 @@ impl<'source> Parser<'source> {
         let return_type = self.parse_type_reference()?;
         let return_annotation_range = TextRange::new(return_start, return_type.range.end);
 
+        // Keep reading the former position while the repository fixtures are
+        // migrated. The formatter and documentation only emit the canonical
+        // pre-arrow form.
+        if failures.is_empty() {
+            (failures, failures_range) = self.parse_callable_failures();
+        }
+
+        let body = self.parse_block()?;
+        let end = body.range.end;
+        Some(CallableDeclaration {
+            kind,
+            name,
+            parameters,
+            return_type,
+            return_annotation_range,
+            failures,
+            failures_range,
+            body,
+            range: TextRange::new(start, end),
+        })
+    }
+
+    fn parse_callable_failures(&mut self) -> (Vec<Name>, Option<TextRange>) {
         let mut failures = Vec::new();
         let mut failures_range = None;
         if self.at(TokenKind::Fails) {
@@ -524,20 +727,7 @@ impl<'source> Parser<'source> {
                 .last()
                 .map(|failure| TextRange::new(failures_start, failure.range.end));
         }
-
-        let body = self.parse_block()?;
-        let end = body.range.end;
-        Some(CallableDeclaration {
-            kind,
-            name,
-            parameters,
-            return_type,
-            return_annotation_range,
-            failures,
-            failures_range,
-            body,
-            range: TextRange::new(start, end),
-        })
+        (failures, failures_range)
     }
 
     fn parse_parameters(&mut self) -> Option<Vec<Parameter>> {
@@ -1641,6 +1831,54 @@ impl<'source> Parser<'source> {
     fn parse_type_reference(&mut self) -> Option<TypeReference> {
         let path = self.parse_qualified_name()?;
         let start = path.first()?.range.start;
+        if path.len() == 1 && path[0].text == "Object" && self.at(TokenKind::LeftBrace) {
+            self.inline_type_counter += 1;
+            let owner = self
+                .field_owners
+                .last()
+                .map(String::as_str)
+                .unwrap_or("Object");
+            let synthetic_name = format!(
+                "__jadpo_{}_{}",
+                owner
+                    .chars()
+                    .map(|character| if character.is_ascii_alphanumeric() {
+                        character
+                    } else {
+                        '_'
+                    })
+                    .collect::<String>(),
+                self.inline_type_counter
+            );
+            let body = self.parse_record_body(RecordKind::Value, &synthetic_name)?;
+            let end = body.end;
+            self.synthetic_records.push(RecordDeclaration {
+                kind: RecordKind::Value,
+                name: Name {
+                    text: synthetic_name.clone(),
+                    range: path[0].range,
+                },
+                fields: body.fields,
+                inverses: body.inverses,
+                persistence_constraints: body.persistence_constraints,
+                range: TextRange::new(start, end),
+            });
+            let nullable = if self.at(TokenKind::Question) {
+                self.bump();
+                true
+            } else {
+                false
+            };
+            return Some(TypeReference {
+                path: vec![Name {
+                    text: synthetic_name,
+                    range: path[0].range,
+                }],
+                arguments: Vec::new(),
+                nullable,
+                range: TextRange::new(start, self.previous_significant_end()),
+            });
+        }
         let mut arguments = Vec::new();
 
         if self.at(TokenKind::LeftAngle) {
@@ -1708,7 +1946,13 @@ impl<'source> Parser<'source> {
         let start = self.current().range.start;
         let name = self.expect_contextual_name("expected field name")?;
         self.expect(TokenKind::Colon, "expected `:` after field name")?;
+        let owner = self.field_owners.last().map_or_else(
+            || name.text.clone(),
+            |owner| format!("{owner}_{}", name.text),
+        );
+        self.field_owners.push(owner);
         let field_type = self.parse_type_reference()?;
+        self.field_owners.pop();
         let constraints = if self.at(TokenKind::LeftBrace) {
             self.parse_constraint_block()?.0
         } else {
@@ -1742,16 +1986,8 @@ impl<'source> Parser<'source> {
                 TokenKind::OnDelete,
                 "expected `on_delete` after relationship target",
             )?;
-            let on_delete = match self.current_kind() {
-                TokenKind::Restrict => ReferenceDeleteAction::Restrict,
-                TokenKind::Cascade => ReferenceDeleteAction::Cascade,
-                TokenKind::SetNull => ReferenceDeleteAction::SetNull,
-                _ => {
-                    self.error_current("SYN_EXPECTED_DELETE_ACTION");
-                    return None;
-                }
-            };
-            let reference_end = self.bump().range.end;
+            let on_delete = self.parse_reference_delete_action()?;
+            let reference_end = self.previous_significant_end();
             Some(ReferenceDeclaration {
                 target,
                 relationship,
@@ -1778,6 +2014,20 @@ impl<'source> Parser<'source> {
             optional,
             range: TextRange::new(start, end),
         })
+    }
+
+    fn parse_reference_delete_action(&mut self) -> Option<ReferenceDeleteAction> {
+        let action = match self.current_kind() {
+            TokenKind::Restrict => ReferenceDeleteAction::Restrict,
+            TokenKind::Cascade => ReferenceDeleteAction::Cascade,
+            TokenKind::SetNull => ReferenceDeleteAction::SetNull,
+            _ => {
+                self.error_current("SYN_EXPECTED_DELETE_ACTION");
+                return None;
+            }
+        };
+        self.bump();
+        Some(action)
     }
 
     fn parse_constraint_block(&mut self) -> Option<(Vec<Constraint>, usize)> {
@@ -1824,6 +2074,12 @@ impl<'source> Parser<'source> {
             _ => return None,
         };
         self.bump();
+        // Constraint settings use the same `key: value` shape as the rest of
+        // the language. The temporary optionality keeps existing fixtures
+        // readable while they are mechanically migrated in this phase.
+        if self.at(TokenKind::Colon) {
+            self.bump();
+        }
 
         let value = match kind {
             ConstraintKind::Min | ConstraintKind::Max => self.parse_number_literal(),
@@ -2470,11 +2726,10 @@ mod tests {
         assert_eq!(
             outline,
             vec![
-                "type Email",
                 "type InviteCode",
-                "entity Customer",
-                "input RegisterCustomer",
-                "output RegistrationAccepted",
+                "value Customer",
+                "value RegisterCustomer",
+                "value RegistrationAccepted",
                 "failure InviteCodeRejected",
                 "action register_customer",
                 "route POST /registrations",
@@ -2491,7 +2746,7 @@ mod tests {
         assert_eq!(parsed.diagnostics.len(), 1);
         assert_eq!(parsed.diagnostics[0].code, "SYN_TYPE_PARENT_REQUIRED");
         assert_eq!(parsed.diagnostics[0].primary.as_ref().unwrap().start, 12);
-        assert!(parsed.diagnostics[0].notes[0].contains("entity User"));
+        assert!(parsed.diagnostics[0].notes[0].contains("type User = Object"));
     }
 
     #[test]
@@ -2927,7 +3182,7 @@ function choose(initial: Choice, replacement: Choice) -> Choice {
             if file_name == "10_arbitrary_exception.jadpo" {
                 assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
                 assert_eq!(parsed.diagnostics[0].code, "SYN_UNSUPPORTED_THROW");
-                let Declaration::Callable(callable) = &parsed.file.declarations[1] else {
+                let Declaration::Callable(callable) = &parsed.file.declarations[0] else {
                     panic!("expected function declaration");
                 };
                 assert!(matches!(

@@ -163,8 +163,8 @@ undeclared or missing fields. If `customer` has type `Customer`, every field in
 
 ### 5.2 Primitive and domain types
 
-**Provisional:** the standard library should contain a deliberately small set of
-general types and useful backend-domain types.
+**Accepted and implemented:** the prelude contains a deliberately small set of
+representation, time, container, and broadly unambiguous semantic types.
 
 ```text
 Bool
@@ -172,32 +172,30 @@ Int
 Decimal
 Text
 Bytes
-
-Id
-Email
-Url
 Uuid
-Money
-Percentage
 Date
+Time
 DateTime
 Duration
-Phone
-CountryCode
+Unit
+Object
+List<T>
+Set<T>
+Map<K, V>
+Email
+Url
 IpAddress
 ```
 
-Domain types are not aliases for unvalidated strings or numbers. They carry
-runtime validation at trust boundaries and may participate in type-aware
-operations. For example, adding a `Percentage` directly to `Money` is invalid;
-applying a percentage to money may be valid.
+`Email`, `Url`, and `IpAddress` carry compiler-owned validation at trust
+boundaries. Policy-dependent concepts such as `Username`, `Slug`, `Phone`,
+`Postcode`, `Money`, and `CountryCode` remain authored domain types rather than
+built-ins whose meaning would be too vague.
 
 **Accepted:** semantic types are nominal. Sharing a representation does not
 make two types interchangeable. A `Username`, `Email`, and raw `Text` remain
 different types even when all three are represented as text at runtime. There
 is no implicit conversion merely because their underlying primitive matches.
-
-The final spelling and exact built-in set remain provisional.
 
 ### 5.3 Constrained types
 
@@ -205,18 +203,18 @@ The final spelling and exact built-in set remain provisional.
 
 ```text
 type Username = Text {
-    min_length 3
-    max_length 30
-    pattern "[a-z0-9_]+"
+    min_length: 3
+    max_length: 30
+    pattern: "[a-z0-9_]+"
 }
 
 type StockLevel = Int {
-    min 0
+    min: 0
 }
 
 type VatRate = Decimal {
-    min 0
-    max 1
+    min: 0
+    max: 1
 }
 ```
 
@@ -278,7 +276,7 @@ explicit in source and metadata.
 payloads, and matches over them are exhaustive.
 
 ```text
-enum OrderStatus {
+type OrderStatus = Enum {
     pending
     paid
     shipped
@@ -293,7 +291,7 @@ every now-incomplete `match` to fail compilation.
 Enums may carry variant-specific data:
 
 ```text
-enum PaymentOutcome {
+type PaymentOutcome = Enum {
     pending {
         started_at: DateTime
     }
@@ -351,7 +349,7 @@ constrained text or numeric values. **Accepted:** authored source always
 references a variant with qualified dot syntax:
 
 ```text
-enum InviteStatus {
+type InviteStatus = Enum {
     active
     blocked
     used
@@ -466,7 +464,7 @@ used as a boolean.
 shape, not a third runtime value stored inside `T?`.
 
 ```text
-input UpdateCustomer {
+type UpdateCustomer = Object {
     name: Text optional
     middle_name: Text? optional
 }
@@ -508,22 +506,19 @@ one canonical default.
 
 ## 7. Structured values, inputs, and outputs
 
-**Superseded spelling:** the separate `input`, `output`, and `value`
-declarations below record the earlier design. The accepted canonical spelling
-uses `type Name = Object { ... }` for all three. `input:` and `output:` remain
-route roles and may reference any declared type. Boundary use derives the
-closed decoder or serializer; it does not change type identity.
+Every structured data shape uses `type Name = Object { ... }`. `input:` and
+`output:` are route roles and may reference any declared type. Boundary use
+derives the closed decoder or serializer; it does not change type identity.
 
 ### 7.1 Input types
 
-`input` declares data entering a trust boundary. It produces both a static type
-and a runtime validator.
+Using a type as route input produces a runtime decoder and validator.
 
 ```text
-input CreateUser {
+type CreateUser = Object {
     email: Email
     age: Int {
-        min 18
+        min: 18
     }
 }
 ```
@@ -533,11 +528,10 @@ been validated. Code should not repeat boundary validation defensively.
 
 ### 7.2 Output types
 
-`output` declares the exact data shape leaving a public boundary. It produces a
-static type, a runtime validator, and a closed serializer.
+Using a type as route output produces a runtime validator and closed serializer.
 
 ```text
-output RegistrationAccepted {
+type RegistrationAccepted = Object {
     email: Customer.email
 }
 ```
@@ -547,10 +541,8 @@ compiler must prove a safe projection or reject the result.
 
 ### 7.3 Value types
 
-**Provisional:** non-persistent structured domain values use `value`.
-
 ```text
-value Address {
+type Address = Object {
     line_1: Text
     line_2: Text?
     city: Text
@@ -558,9 +550,8 @@ value Address {
 }
 ```
 
-`value` appeared in the proposed primitive vocabulary but was not fully
-explored. Its identity, equality, copying, and serialisation semantics remain
-open.
+Object types may be reused as domain data and at either boundary. Nested closed
+objects are supported directly, including `List<Object { ... }>` fields.
 
 ### 7.4 Field and object syntax
 
@@ -580,59 +571,66 @@ removes the earlier inconsistency between `field = value` and `field: value`.
 
 ## 8. Entities and persistence
 
-**Superseded spelling:** the embedded-storage `entity` examples below record the
-earlier design. Canonical source declares `type Name = Object { ... }` and opts
-into storage separately with `persist Name { ... }`. A type without `persist`
-is ordinary constructible application data and has no generated database
-operations.
+Canonical source declares `type Name = Object { ... }` and opts into storage
+separately with `persist Name { ... }`. A type without `persist` is ordinary
+constructible application data and has no generated database operations.
 
 ### 8.1 Entity declaration
 
-`entity` declares persistent data. Postgres is the opinionated initial database
-target.
+`persist` declares storage metadata for an existing object type. Postgres is
+the opinionated initial database target.
 
 ```text
-entity Customer {
-    id: Id identity
-    email: Email unique
+type Customer = Object {
+    id: Uuid
+    email: Email
     middle_name: Text?
-    last_seen_at: DateTime? index
-    created_at: DateTime default now
+    last_seen_at: DateTime?
 }
 
-entity Order {
-    id: Id identity
-    owner_id: Customer.id references Customer.id as owner on_delete restrict
-    status: OrderStatus default pending
+persist Customer {
+    identity: id
+    unique: email
+    index: last_seen_at
+}
+
+type Order = Object {
+    id: Uuid
+    owner_id: Customer.id
+    status: OrderStatus
     total: Money
-    created_at: DateTime default now
+}
+
+persist Order {
+    identity: id
+    references owner_id: Customer.id as: owner on_delete: restrict
 }
 ```
 
 **Accepted:** fields are non-nullable by default. A field is nullable only when
 its type uses `?`.
 
-**Accepted:** the single-field persistence modifiers `identity`, `unique`, and
-`index` follow the field type. An entity may have at most one non-nullable
-identity field. The compiler emits that field as the primary key, emits stable
-named unique constraints and indexes, and records all three in persistence
-metadata. Persistence modifiers are rejected on values, inputs, outputs, and
-failure-context fields. They describe storage behavior and do not widen or
-narrow the field's nominal value type.
+**Accepted:** `identity:`, `unique:`, and `index:` belong inside `persist`. A
+persisted type may have at most one non-nullable identity field. They describe
+storage behavior and do not widen or narrow the field's nominal value type.
 
-Named compound uniqueness is accepted as
-`constraint name: unique(field_a, field_b)`. Its fields must be known,
-distinct, and non-nullable. Defaults, generated values, compound non-unique
-indexes, and migration identity remain provisional.
+The exact colon-delimited spelling for named compound uniqueness remains open.
+The former call-shaped spelling is not canonical. Defaults, generated values,
+compound non-unique indexes, and migration identity remain provisional.
 
 **Accepted:** an owning entity field declares a stored relationship explicitly:
 
 ```text
-entity Todo {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete cascade
+type Todo = Object {
+    id: Uuid
+    owner_id: User.id
     title: Text
     completed: Bool
+}
+
+persist Todo {
+    identity: id
+    references owner_id: User.id as: owner on_delete: cascade
 }
 ```
 
@@ -642,7 +640,7 @@ The optional `as owner` clause declares the logical relationship name used by
 includes and nested outputs while `owner_id` remains the stored field. If `as`
 is absent, the field name is used for both roles. The compiler does not derive
 relationship names from `_id` or another naming convention.
-`on_delete` is mandatory and accepts `restrict`, `cascade`, or `set_null`;
+`on_delete:` is mandatory and accepts `restrict`, `cascade`, or `set_null`;
 `set_null` requires a nullable owner field. SQLite and PostgreSQL receive a
 named foreign key and an automatically generated lookup index.
 
@@ -650,9 +648,9 @@ named foreign key and an automatically generated lookup index.
 one-to-many inverse over an existing owning reference:
 
 ```text
-entity User {
-    id: Uuid identity
-    inverse todos: many Todo via Todo.owner_id
+persist User {
+    identity: id
+    inverse todos: many Todo via: Todo.owner_id
 }
 ```
 
@@ -664,14 +662,15 @@ does not load `todos`.
 A parent can also declare an enforceable zero-or-one inverse:
 
 ```text
-entity User {
-    id: Uuid identity
-    inverse profile: optional Profile via Profile.user_id
+persist User {
+    identity: id
+    inverse profile: optional Profile via: Profile.user_id
 }
 
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
+persist Profile {
+    identity: id
+    unique: user_id
+    references user_id: User.id on_delete: cascade
 }
 ```
 
@@ -686,7 +685,7 @@ ordinary entity access remains non-loading.
 A required query opts into the relationship and a named nested output shape:
 
 ```text
-output UserTodos {
+type UserTodos = Object {
     parent: User
     todos: List<Todo>
 }
@@ -725,7 +724,7 @@ has many children.
 An owning reference may be traversed from one required child to its parent:
 
 ```text
-output PatchItemReviewer {
+type PatchItemReviewer = Object {
     parent: PatchItem
     reviewer_id: User?
 }
@@ -750,7 +749,7 @@ The bounded nested form composes one non-nullable owning-parent hop with one
 unique-backed optional inverse:
 
 ```text
-output TodoOwnerProfile {
+type TodoOwnerProfile = Object {
     parent: Todo
     owner: UserProfile
 }
@@ -776,7 +775,7 @@ outputs, events, and other declarations whose fields participate in the type
 system.
 
 ```text
-input CreateOrder {
+type CreateOrder = Object {
     customer_id: Customer.id
     receipt_email: Customer.email
 }
@@ -799,8 +798,9 @@ actor may use it. Those stateful checks happen when application code loads the
 entity under policy:
 
 ```text
-action place_order(input: CreateOrder) -> Order
+action place_order(input: CreateOrder)
     fails CustomerNotFound, NotPermitted
+    -> Order
 {
     var customer = attempt query required Customer {
         where: id == input.customer_id
@@ -837,16 +837,11 @@ When several fields are deliberately interchangeable, give them a shared named
 semantic type and accept that type rather than one entity's field type:
 
 ```text
-type Email = Text {
-    format email
-    max_length 254
-}
-
-entity Customer {
+type Customer = Object {
     email: Email
 }
 
-entity Supplier {
+type Supplier = Object {
     email: Email
 }
 
@@ -985,8 +980,9 @@ The first mutation slice makes both affected-row cardinality and expected
 database failures explicit:
 
 ```text
-action update_customer(input: UpdateCustomer) -> Customer
+action update_customer(input: UpdateCustomer)
     fails CustomerNotFound, CustomerMutationConflict
+    -> Customer
 {
     return attempt update required Customer {
         where: id == input.id
@@ -1011,13 +1007,14 @@ Omission-aware updates name a direct patch-input binding and an explicit empty
 patch failure:
 
 ```text
-input CustomerChanges {
+type CustomerChanges = Object {
     name: Customer.name optional
     middle_name: Customer.middle_name optional
 }
 
-action patch_customer(id: Customer.id, changes: CustomerChanges) -> Customer
+action patch_customer(id: Customer.id, changes: CustomerChanges)
     fails EmptyCustomerPatch, CustomerNotFound, CustomerMutationConflict
+    -> Customer
 {
     return attempt update required Customer {
         where: id == id
@@ -1144,8 +1141,9 @@ to need one, is open.
 read or mutate persistent state, emit events, or call declared services.
 
 ```text
-action place_order(input: CreateOrder) -> Order
+action place_order(input: CreateOrder)
     fails EmptyBasket, CreditLimitExceeded
+    -> Order
 {
     if count(input.items) == 0 {
         reject EmptyBasket
@@ -1303,8 +1301,9 @@ failure AlreadyShipped {
     message "A shipped order cannot be cancelled."
 }
 
-action cancel_order(order: Order) -> Order
+action cancel_order(order: Order)
     fails NotOwner, AlreadyShipped
+    -> Order
 {
     if order.owner != current_user {
         reject NotOwner
@@ -1338,8 +1337,9 @@ stale extra declarations are compile errors; the compiler reports the inferred
 difference but never silently edits the contract.
 
 ```text
-action cancel_order_by_id(id: Order.id) -> Order
+action cancel_order_by_id(id: Order.id)
     fails OrderNotFound, NotOwner, AlreadyShipped, Unavailable
+    -> Order
 {
     var order = attempt load_order(id)
     return attempt cancel_order(order)
@@ -1439,8 +1439,9 @@ service Stripe {
 Use in an action remains concise:
 
 ```text
-action take_payment(order: Order) -> Payment
+action take_payment(order: Order)
     fails PaymentDeclined, PaymentTemporarilyUnavailable
+    -> Payment
 {
     var payment = Stripe.create_payment {
         amount: order.total
@@ -1564,8 +1565,9 @@ Reusable behaviour, a stable domain command, or behaviour that deserves its own
 testing, policy, or transaction boundary is extracted to a named action:
 
 ```text
-action create_todo(input: CreateTodo, actor: Actor) -> Todo
+action create_todo(input: CreateTodo, actor: Actor)
     fails Unavailable
+    -> Todo
 {
     return attempt create Todo {
         owner: actor
@@ -1728,23 +1730,27 @@ This example demonstrates the current direction without pretending to solve all
 open design questions.
 
 ```text
-enum OrderStatus {
+type OrderStatus = Enum {
     pending
     paid
     cancelled
 }
 
-input CreateOrder {
+type CreateOrder = Object {
     items: List<CreateOrderItem>
 }
 
-entity Order {
+type Order = Object {
     id: Id
     owner: Customer
     items: List<OrderItem>
     total: Money
-    status: OrderStatus default pending
-    created_at: DateTime default now
+    status: OrderStatus
+    created_at: DateTime
+}
+
+persist Order {
+    identity: id
 }
 
 failure EmptyBasket {
@@ -1759,8 +1765,9 @@ failure CreditLimitExceeded {
     message "The order exceeds the available credit limit."
 }
 
-action place_order(input: CreateOrder) -> Order
+action place_order(input: CreateOrder)
     fails EmptyBasket, CreditLimitExceeded
+    -> Order
 {
     if count(input.items) == 0 {
         reject EmptyBasket

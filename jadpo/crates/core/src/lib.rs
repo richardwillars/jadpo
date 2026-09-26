@@ -2,12 +2,15 @@
 // every `Result` error would spread transport concerns through the core API.
 #![allow(clippy::result_large_err)]
 
-use jadpo_diagnostics::Diagnostic;
+use jadpo_diagnostics::{Diagnostic, DiagnosticFact, SourceSpan};
 use jadpo_semantic::{
     build_semantic_graph, check_failures, check_types, FailureCheckResult, ScaffoldManifest,
     SemanticGraph, TypeCheckResult,
 };
-use jadpo_syntax::{parse, ParsedSyntax, SourceFile};
+use jadpo_syntax::{
+    parse, ConstraintKind, Declaration, ParsedSyntax, PersistenceModifier, RecordKind, SourceFile,
+};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -142,10 +145,12 @@ pub fn scaffold_manifest(project: &Path) -> Result<ScaffoldManifest, Diagnostic>
 
 pub fn parse_project(project: &Path) -> Result<ParsedProject, Diagnostic> {
     let sources = discover_sources(project)?;
-    let sources = sources
+    let mut sources = sources
         .into_iter()
         .map(|source| parse(&source.path, &source.text))
-        .collect();
+        .collect::<Vec<_>>();
+    apply_builtin_compatibility(&mut sources);
+    apply_persistence_declarations(&mut sources);
 
     Ok(ParsedProject { sources })
 }
@@ -156,11 +161,14 @@ pub fn analyze_project(project: &Path) -> Result<AnalyzedProject, Diagnostic> {
 
 pub fn analyze_sources(mut sources: Vec<SourceFile>) -> Result<AnalyzedProject, Diagnostic> {
     sources.sort_by(|left, right| left.path.cmp(&right.path));
+    let mut parsed_sources = sources
+        .into_iter()
+        .map(|source| parse(&source.path, &source.text))
+        .collect::<Vec<_>>();
+    apply_builtin_compatibility(&mut parsed_sources);
+    apply_persistence_declarations(&mut parsed_sources);
     let syntax = ParsedProject {
-        sources: sources
-            .into_iter()
-            .map(|source| parse(&source.path, &source.text))
-            .collect(),
+        sources: parsed_sources,
     };
     if syntax.declaration_count() == 0 && syntax.diagnostics().next().is_none() {
         return Err(Diagnostic::error("JADPO_EMPTY_PROJECT")
@@ -175,6 +183,178 @@ pub fn analyze_sources(mut sources: Vec<SourceFile>) -> Result<AnalyzedProject, 
         typing,
         failures,
     })
+}
+
+fn apply_builtin_compatibility(sources: &mut [ParsedSyntax]) {
+    for source in sources {
+        source.file.declarations.retain(|declaration| {
+            let Declaration::Type(declaration) = declaration else {
+                return true;
+            };
+            if declaration.name.text != "Email"
+                || declaration.parent.path.len() != 1
+                || declaration.parent.path[0].text != "Text"
+            {
+                return true;
+            }
+            !(declaration.constraints.iter().any(|constraint| {
+                constraint.kind == ConstraintKind::Format && constraint.value.text == "email"
+            }) && declaration
+                .constraints
+                .iter()
+                .all(|constraint| match constraint.kind {
+                    ConstraintKind::Format => constraint.value.text == "email",
+                    ConstraintKind::MaxLength => constraint.value.text == "254",
+                    _ => false,
+                }))
+        });
+    }
+}
+
+fn apply_persistence_declarations(sources: &mut [ParsedSyntax]) {
+    let records = sources
+        .iter()
+        .enumerate()
+        .flat_map(|(source_index, source)| {
+            source.file.declarations.iter().enumerate().filter_map(
+                move |(declaration_index, declaration)| match declaration {
+                    Declaration::Record(record) => {
+                        Some((record.name.text.clone(), (source_index, declaration_index)))
+                    }
+                    _ => None,
+                },
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let declaration_kinds = sources
+        .iter()
+        .flat_map(|source| source.file.declarations.iter())
+        .filter_map(|declaration| match declaration {
+            Declaration::Type(value) => Some((value.name.text.clone(), "scalar type")),
+            Declaration::Enum(value) => Some((value.name.text.clone(), "enum type")),
+            Declaration::Failure(value) => Some((value.name.text.clone(), "failure")),
+            Declaration::Callable(value) => Some((value.name.text.clone(), "callable")),
+            Declaration::Record(_) | Declaration::Test(_) | Declaration::Route(_) => None,
+        })
+        .collect::<BTreeMap<_, _>>();
+    let persistence = sources
+        .iter()
+        .enumerate()
+        .flat_map(|(source_index, source)| {
+            source
+                .file
+                .persistence
+                .iter()
+                .cloned()
+                .map(move |declaration| (source_index, declaration))
+        })
+        .collect::<Vec<_>>();
+
+    for (persistence_source, specification) in persistence {
+        let Some(&(record_source, record_declaration)) = records.get(&specification.target.text)
+        else {
+            let diagnostic =
+                if let Some(actual_kind) = declaration_kinds.get(&specification.target.text) {
+                    Diagnostic::error("SEM_WRONG_NAME_KIND")
+                        .with_fact(DiagnosticFact::Name(specification.target.text.clone()))
+                        .with_fact(DiagnosticFact::Expected("object type".to_owned()))
+                        .with_fact(DiagnosticFact::ActualKind((*actual_kind).to_owned()))
+                        .with_fact(DiagnosticFact::Usage("persistence declaration".to_owned()))
+                } else {
+                    Diagnostic::error("SEM_UNKNOWN_NAME")
+                        .with_fact(DiagnosticFact::Name(specification.target.text.clone()))
+                        .with_fact(DiagnosticFact::Expected("object type".to_owned()))
+                        .with_fact(DiagnosticFact::Usage("persistence declaration".to_owned()))
+                };
+            push_persistence_diagnostic(
+                sources,
+                persistence_source,
+                diagnostic,
+                specification.target.range,
+            );
+            continue;
+        };
+
+        let mut missing_fields = Vec::new();
+        {
+            let Declaration::Record(record) =
+                &mut sources[record_source].file.declarations[record_declaration]
+            else {
+                unreachable!("record index was collected from a record declaration")
+            };
+            record.kind = RecordKind::Entity;
+
+            for (names, modifier) in [
+                (&specification.identities, PersistenceModifier::Identity),
+                (&specification.uniques, PersistenceModifier::Unique),
+                (&specification.indexes, PersistenceModifier::Index),
+            ] {
+                for name in names {
+                    if let Some(field) = record
+                        .fields
+                        .iter_mut()
+                        .find(|field| field.name.text == name.text)
+                    {
+                        if !field.persistence.contains(&modifier) {
+                            field.persistence.push(modifier);
+                        }
+                    } else {
+                        missing_fields.push(name.clone());
+                    }
+                }
+            }
+            for reference in &specification.references {
+                if let Some(field) = record
+                    .fields
+                    .iter_mut()
+                    .find(|field| field.name.text == reference.field.text)
+                {
+                    field.reference = Some(reference.reference.clone());
+                } else {
+                    missing_fields.push(reference.field.clone());
+                }
+            }
+            record
+                .persistence_constraints
+                .extend(specification.constraints.clone());
+            record.inverses.extend(specification.inverses.clone());
+        }
+        for field in &missing_fields {
+            push_unknown_persistence_field(
+                sources,
+                persistence_source,
+                &specification.target.text,
+                field,
+            );
+        }
+    }
+}
+
+fn push_unknown_persistence_field(
+    sources: &mut [ParsedSyntax],
+    source_index: usize,
+    target: &str,
+    field: &jadpo_syntax::Name,
+) {
+    let diagnostic = Diagnostic::error("SEM_UNKNOWN_NAME")
+        .with_fact(DiagnosticFact::Name(field.text.clone()))
+        .with_fact(DiagnosticFact::Expected("field".to_owned()))
+        .with_fact(DiagnosticFact::Usage(format!("`persist {target}` setting")));
+    push_persistence_diagnostic(sources, source_index, diagnostic, field.range);
+}
+
+fn push_persistence_diagnostic(
+    sources: &mut [ParsedSyntax],
+    source_index: usize,
+    mut diagnostic: Diagnostic,
+    range: jadpo_syntax::TextRange,
+) {
+    diagnostic.primary = Some(SourceSpan {
+        source: sources[source_index].source_name.clone(),
+        start: range.start,
+        end: range.end,
+    });
+    sources[source_index].diagnostics.push(diagnostic);
 }
 
 fn collect_source_paths(path: &Path, output: &mut Vec<PathBuf>) -> Result<(), Diagnostic> {
@@ -235,7 +415,7 @@ mod tests {
         let fixtures = repository_root().join("tests/compile");
         let sources = discover_sources(&fixtures).expect("fixtures should be discoverable");
 
-        assert_eq!(sources.len(), 107);
+        assert_eq!(sources.len(), 110);
     }
 
     #[test]
@@ -274,7 +454,7 @@ mod tests {
         let project = parse_project(&seed).expect("seed should be readable");
 
         assert_eq!(project.sources.len(), 1);
-        assert_eq!(project.declaration_count(), 9);
+        assert_eq!(project.declaration_count(), 8);
         assert_eq!(project.diagnostics().count(), 0);
     }
 

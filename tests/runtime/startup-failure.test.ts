@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 const generatedApplication = join(
   import.meta.dir,
-  "../../examples/jadpo-seed/build/target/app.ts",
+  "../../examples/persistence-seed/build/target/app.ts",
 );
 
 describe("generated runtime startup failures", () => {

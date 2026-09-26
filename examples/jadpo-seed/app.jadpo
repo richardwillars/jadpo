@@ -1,27 +1,26 @@
 // Canonical source for the first compiler slice.
 
-type Email = Text {
-    format email
-    max_length 254
-}
-
 type InviteCode = Text {
-    min_length 6
-    max_length 32
-    pattern "[a-z0-9_]+"
+    min_length: 6
+    max_length: 32
+    pattern: "[a-z0-9_]+"
 }
 
-entity Customer {
-    id: Uuid identity
+type Customer = Object {
+    id: Uuid
     email: Email
 }
 
-input RegisterCustomer {
+persist Customer {
+    identity: id
+}
+
+type RegisterCustomer = Object {
     email: Customer.email
     invite_code: InviteCode
 }
 
-output RegistrationAccepted {
+type RegistrationAccepted = Object {
     email: Customer.email
 }
 // todo: Lets also explore creating an output for a route where it's a type excluding certain properties
@@ -38,14 +37,15 @@ failure InviteCodeRejected {
 
 action register_customer(
     input: RegisterCustomer
-) -> RegistrationAccepted
+)
     fails InviteCodeRejected
+    -> RegistrationAccepted
 {
     var reserved_invite_code = InviteCode("reserved")
 
     if (input.invite_code == reserved_invite_code) {
         reject InviteCodeRejected {
-                invite_code: input.invite_code
+            invite_code: input.invite_code
         }
     }
 

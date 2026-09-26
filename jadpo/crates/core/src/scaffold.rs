@@ -65,7 +65,7 @@ fn scaffold_files(name: &str) -> Vec<ScaffoldFile> {
         ScaffoldFile {
             relative_path: "app.jadpo",
             contents: concat!(
-                "output Health {\n",
+                "type Health = Object {\n",
                 "    ready: Bool\n",
                 "}\n\n",
                 "route GET /health {\n",

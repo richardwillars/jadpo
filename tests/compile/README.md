@@ -47,7 +47,7 @@ Diagnostic codes in these fixtures are part of the compiler-facing contract.
 Renaming one requires updating the roadmap, relevant specification, and all
 affected fixture expectations together.
 
-The current 107 pairs comprise the original ten type/failure cases plus
+The current 110 pairs comprise the original ten type/failure cases plus
 coverage for optional omission, nullable widening, implicit narrowing,
 semantic-to-primitive unwrapping, incomplete records, invariant collections,
 transitive failure propagation, function/action separation, missing failure
@@ -129,6 +129,14 @@ to describe a value supplied twice rather than a declaration repeated twice.
 Fixtures 82–85 complete semantic-name trigger coverage: duplicate declaration,
 unknown reference, wrong declaration kind, unknown callable, and a resolved but
 non-callable failure name.
+
+Fixture 108 establishes the unified authored data model: object shapes and
+their nested object/list fields use `type`, standard `Email` is available from
+the prelude, persistence is declared separately with `persist`, and callable
+failures appear before the return arrow. Its negative companion requires an
+unknown persisted field to produce one contextual `SEM_UNKNOWN_NAME` error.
+Fixture 109 proves that the prelude-owned `Url` and `IpAddress` constructors
+reject invalid constants at compile time.
 
 Expectation files retain established compiler codes as migration aliases. CLI
 and LSP diagnostics expose the canonical lower-dotted `ruleId` alongside those

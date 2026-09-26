@@ -481,8 +481,8 @@ impl CompilerDiagnostic {
                     return;
                 };
                 self.message = format!("`{received}` values have no `{field}` field");
-                self.reason = format!("`{received}` is not a record with named fields.");
-                "Use a record value before `.`, or remove the field access"
+                self.reason = format!("`{received}` is not an object with named fields.");
+                "Use an object value before `.`, or remove the field access"
                     .clone_into(&mut self.recommended_next_step.title);
             }
             "TYPE_NULLABLE_SELECTION" => {
@@ -789,9 +789,9 @@ struct AuthoredCopy {
 fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     let (summary, reason, next) = match code {
         "SYN_CONSTRAINT_NON_ENTITY" => (
-            "Persistence constraints are only valid on entities",
-            "`constraint` describes a storage identity or index and therefore needs an `entity` declaration; value, input, and output records have no persistence boundary.",
-            "Move the constraint to its owning entity, or remove it from this record",
+            "Persistence constraints require a persisted object",
+            "This constraint describes stored data, so its object type needs a separate `persist Type { ... }` declaration.",
+            "Move the constraint into the object's `persist` declaration, or remove it",
         ),
         "SYN_DUPLICATE_FIELD_MODIFIER" => (
             "Field modifier is repeated",
@@ -820,13 +820,13 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "SYN_EXPECTED_DECLARATION" => (
             "`{found}` cannot start a top-level declaration",
-            "Jadpo files accept `type`, `enum`, `entity`, `value`, `input`, `output`, `failure`, `function`, `action`, `test`, and `route` declarations at the top level. Route items such as `path:` belong inside a `route` block, so `{found}` cannot be parsed here.",
+            "Jadpo files accept `type`, `persist`, `failure`, `function`, `action`, `test`, and `route` declarations at the top level. Optional `module` and `import` headers come before those declarations. Route items such as `path:` belong inside a `route` block, so `{found}` cannot be parsed here.",
             "Move `{found}` into its owning declaration, or replace it with a top-level declaration",
         ),
         "SYN_EXPECTED_DELETE_ACTION" => (
-            "Delete requires an entity target",
-            "A `delete required` expression must name the entity whose stored record will be removed before its predicate and failure bindings can be parsed.",
-            "Add the entity name after `delete required`",
+            "Delete requires a persisted object type",
+            "A `delete required` expression must name the persisted object whose stored row will be removed before its predicate and failure bindings can be parsed.",
+            "Add the persisted object type after `delete required`",
         ),
         "SYN_EXPECTED_EXPRESSION" => (
             "Expected an expression",
@@ -840,7 +840,7 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "SYN_EXPECTED_FIELD" => (
             "Expected a field declaration",
-            "Record and field blocks contain `name: Type` declarations. The current source cannot begin a field and is not a valid block terminator.",
+            "Object and field blocks contain `name: Type` declarations. The current source cannot begin a field and is not a valid block terminator.",
             "Write a `name: Type` field or remove the stray source",
         ),
         "SYN_EXPECTED_FIELD_INITIALISER" => (
@@ -879,9 +879,9 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Add `asc` or `desc` after the ordering field",
         ),
         "SYN_EXPECTED_PATCH_INPUT" => (
-            "Patch update requires an input value",
-            "The `patch:` item must name the input record whose present fields will be applied to the entity.",
-            "Add the patch input name after `patch:`",
+            "Patch update requires an omission-aware object",
+            "The `patch:` item must name the input value whose supplied fields will be applied to the persisted object.",
+            "Add the patch input value after `patch:`",
         ),
         "SYN_EXPECTED_ROUTE_ITEM" => (
             "Unsupported item inside route",
@@ -924,9 +924,9 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Add a `module` header before the imports",
         ),
         "SYN_INVERSE_NON_ENTITY" => (
-            "Inverse relationships are only valid on entities",
-            "An inverse relationship is derived from stored owning references and cannot be declared on value, input, or output records.",
-            "Move the inverse relationship to its entity, or remove it",
+            "Inverse relationships require a persisted object",
+            "An inverse relationship is derived from stored owning references, so it belongs in the object's `persist` declaration.",
+            "Move the inverse relationship into `persist`, or remove it",
         ),
         "SYN_INVALID_ESCAPE" => (
             "String contains an unsupported escape sequence",
@@ -1189,28 +1189,28 @@ fn data_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "DATA_CONSTRAINT_UNKNOWN_FIELD" => (
             "Compound constraint names an unknown field",
-            "Every member of a compound constraint must resolve to a stored field on the same entity.",
-            "Correct the field name or add the missing entity field",
+            "Every member of a compound constraint must resolve to a stored field on the same persisted object.",
+            "Correct the field name or add the missing object field",
         ),
         "DATA_DUPLICATE_CONSTRAINT_SHAPE" => (
-            "Entity repeats the same constraint field set",
+            "Persisted object repeats the same constraint field set",
             "Two persistence constraints over the same fields would create duplicate or conflicting database rules.",
             "Keep one constraint for this field set",
         ),
         "DATA_IDENTITY_NULLABLE" => (
-            "Entity identity field cannot be nullable",
-            "Every stored entity instance needs a present, stable identity. A nullable identity could not address or reference every record.",
+            "Persisted object identity cannot be nullable",
+            "Every stored object needs a present, stable identity. A nullable identity could not address or reference every stored row.",
             "Make the identity field non-nullable",
         ),
         "DATA_INVERSE_DUPLICATE_NAME" => (
             "Inverse relationship name is already in use",
-            "Fields and inverse relationships share an entity member namespace so selection and generated output paths resolve unambiguously.",
+            "Fields and inverse relationships share an object member namespace so selection and generated output paths resolve unambiguously.",
             "Rename the inverse relationship or conflicting field",
         ),
         "DATA_INVERSE_NOT_OWNING_REFERENCE" => (
             "Inverse relationship does not target an owning reference",
-            "An inverse is derived from a stored reference field on the related entity; the named `via` field must be that owning reference.",
-            "Point `via` at the related entity's owning reference field",
+            "An inverse is derived from a stored reference field on the related persisted object; the named `via` field must be that owning reference.",
+            "Point `via` at the related object's owning reference field",
         ),
         "DATA_INVERSE_OPTIONAL_NOT_UNIQUE" => (
             "Optional inverse relationship is not unique",
@@ -1219,17 +1219,17 @@ fn data_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "DATA_INVERSE_VIA_FIELD" => (
             "Inverse relationship names an unknown `via` field",
-            "The `via` member must resolve to a stored field on the related entity before the compiler can derive the reverse relationship.",
+            "The `via` member must resolve to a stored field on the related object before the compiler can derive the reverse relationship.",
             "Correct the `via` field name on the inverse relationship",
         ),
         "DATA_MODIFIER_NON_ENTITY" => (
-            "Persistence modifier is only valid on entity fields",
-            "Identity, uniqueness, indexing, and reference modifiers describe stored columns and have no meaning on value, input, or output records.",
-            "Move the modifier to an entity field, or remove it",
+            "Persistence setting requires a persisted object",
+            "Identity, uniqueness, indexing, and references describe stored columns and belong in `persist Type { ... }`.",
+            "Move the setting into the object's `persist` declaration, or remove it",
         ),
         "DATA_MULTIPLE_IDENTITIES" => (
-            "Entity declares more than one identity",
-            "An entity has one identity used by references, stored records, and generated identifiers.",
+            "Persisted object declares more than one identity",
+            "A persisted object has one identity used by references, stored rows, and generated identifiers.",
             "Keep one identity field or one named identity constraint",
         ),
         "DATA_RELATIONSHIP_CYCLE" => (
@@ -1244,7 +1244,7 @@ fn data_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "DATA_RELATIONSHIP_TARGET_FIELD" => (
             "Reference target field does not exist",
-            "A stored reference must name a field that is actually declared on the target entity.",
+            "A stored reference must name a field that is actually declared on the target object.",
             "Correct the referenced target field",
         ),
         "DATA_RELATIONSHIP_TARGET_NOT_KEY" => (
@@ -1305,8 +1305,8 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_FIELD_ON_NON_RECORD" => (
             "This value has no fields",
-            "Only a value, input, output, entity, failure, or enum payload has named fields that can be selected with `.`.",
-            "Use a record value before `.`, or remove the field access",
+            "Only an object, failure context, or enum payload has named fields that can be selected with `.`.",
+            "Use an object value before `.`, or remove the field access",
         ),
         "TYPE_INCOMPARABLE" => (
             "Values cannot be compared for equality",
@@ -1329,8 +1329,8 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Use a value of the required type, or construct that type explicitly",
         ),
         "TYPE_MISSING_FIELD" => (
-            "Record construction is missing a required field",
-            "A constructed record must provide every required field from its declaration exactly once.",
+            "Object construction is missing a required field",
+            "A constructed object must provide every required field from its declaration exactly once.",
             "Add the missing required field to the constructor",
         ),
         "TYPE_MISSING_VARIANT_FIELD" => (
@@ -1340,12 +1340,12 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_NOT_RECORD" => (
             "This type cannot be constructed with `{ ... }`",
-            "Braces construct a value, input, output, entity, failure, or enum variant. A scalar named type uses parentheses instead.",
-            "Use a record with braces, or construct a scalar type with parentheses",
+            "Braces construct an object, failure context, or enum variant. A scalar named type uses parentheses instead.",
+            "Use an object type with braces, or construct a scalar type with parentheses",
         ),
         "TYPE_NULLABLE_SELECTION" => (
             "Value may be `none`, so its field cannot be read yet",
-            "A nullable record may contain no value. Jadpo needs the `some(...)` case before it can safely read a field.",
+            "A nullable object may contain no value. Jadpo needs the `some(...)` case before it can safely read a field.",
             "Use a nullable match and select the field inside the `some(...)` arm",
         ),
         "TYPE_ORDERING_OPERAND" => (
@@ -1476,14 +1476,14 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Use a declared persistence constraint from the target entity",
         ),
         "TYPE_CREATE_NOT_ENTITY" => (
-            "Create target is not an entity",
-            "`create` stores an entity. Values, inputs, outputs, failures, and scalar types are not stored as entity records.",
-            "Create a declared entity or use ordinary value construction",
+            "Create target is not persisted",
+            "`create` stores an object type that has a `persist` declaration. Ordinary object, enum, failure, and scalar types have no storage contract.",
+            "Add an appropriate `persist` declaration, or use ordinary object construction",
         ),
         "TYPE_DELETE_NOT_ENTITY" => (
-            "Delete target is not an entity",
-            "`delete required` operates on persisted entity rows and cannot target a value, input, output, failure, or scalar type.",
-            "Delete a declared entity",
+            "Delete target is not persisted",
+            "`delete required` operates on rows for an object type with a `persist` declaration.",
+            "Delete a persisted object type",
         ),
         "TYPE_INCLUDE_DUPLICATE_RELATIONSHIP" => (
             "Relationship is included more than once",
@@ -1511,23 +1511,23 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Use a required or many-parent query for this include",
         ),
         "TYPE_INCLUDE_RESULT_MISMATCH" => (
-            "Includes use different result output types",
-            "All relationships loaded by one query are returned together, so every include must name the same `into` output type.",
-            "Use the same result output type for every include",
+            "Includes use different result object types",
+            "All relationships loaded by one query are returned together, so every include must name the same `into` object type.",
+            "Use the same result object type for every include",
         ),
         "TYPE_INCLUDE_RESULT_NOT_OUTPUT" => (
-            "Include result type is not an output",
-            "An include returns an explicitly declared boundary projection. Entities, values, and inputs cannot stand in for that named output contract.",
-            "Declare and use an output type for the include result",
+            "Include result is not an object type",
+            "An include needs a named `type ... = Object { ... }` whose fields exactly describe the parent and loaded relationships.",
+            "Use an object type with the required parent and relationship fields",
         ),
         "TYPE_INCLUDE_RESULT_SHAPE" => (
-            "Output fields do not match the included relationships",
-            "The result output must contain exactly `parent` with the queried entity type and one non-nullable `List<Child>` field for each included inverse relationship.",
-            "Make the output fields exactly match the parent and included child lists",
+            "Result fields do not match the included relationships",
+            "The result object must contain exactly `parent` with the queried persisted type and one non-nullable `List<Child>` field for each included inverse relationship.",
+            "Make the result fields exactly match the parent and included child lists",
         ),
         "TYPE_INCLUDE_UNKNOWN_RELATIONSHIP" => (
             "Included to-many relationship does not exist",
-            "A to-many include must name a declared `inverse ... many` relationship on the queried parent entity.",
+            "A to-many include must name a declared `inverse ... many` relationship on the queried parent object.",
             "Use a declared many-valued inverse relationship",
         ),
         "TYPE_INVERSE_ONE_CARDINALITY" => (
@@ -1541,9 +1541,9 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Use `query required` for this inverse-one include",
         ),
         "TYPE_INVERSE_ONE_RESULT_SHAPE" => (
-            "Output fields do not match the optional inverse relationship",
-            "The result output must contain exactly `parent` with the queried entity type and a nullable child field named for the optional inverse relationship.",
-            "Make the output contain the exact parent and nullable inverse child fields",
+            "Result fields do not match the optional inverse relationship",
+            "The result object must contain exactly `parent` with the queried persisted type and a nullable child field named for the optional inverse relationship.",
+            "Make the result object contain the exact parent and nullable inverse child fields",
         ),
         "TYPE_INVERSE_ONE_SINGLE" => (
             "Inverse-one query has more than one include",
@@ -1552,13 +1552,13 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_MUTATION_NULLABLE_FIELD_UNSUPPORTED" => (
             "Mutation predicate field is nullable",
-            "The current required update and delete slice accepts a single equality predicate on a non-nullable entity field; nullable equality semantics are not implicit.",
+            "The current required update and delete slice accepts a single equality predicate on a non-nullable persisted-object field; nullable equality semantics are not implicit.",
             "Use a non-nullable predicate field",
         ),
         "TYPE_MUTATION_UNKNOWN_PREDICATE_FIELD" => (
             "Mutation predicate field does not exist",
-            "The field after `where:` must be declared on the entity being updated or deleted.",
-            "Use a declared field from the target entity",
+            "The field after `where:` must be declared on the persisted object being updated or deleted.",
+            "Use a declared field from the target object",
         ),
         "TYPE_NESTED_INCLUDE_CARDINALITY" => (
             "Nested include must be optional",
@@ -1581,9 +1581,9 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Use `query required` for this nested include",
         ),
         "TYPE_NESTED_INCLUDE_RESULT_SHAPE" => (
-            "Output fields do not match the nested relationship",
-            "The outer output must contain exactly the queried `parent` and the named first-hop field whose output, in turn, contains its parent and nullable second-hop child.",
-            "Make both output layers match the exact two-hop result shape",
+            "Result fields do not match the nested relationship",
+            "The outer result object must contain exactly the queried `parent` and the named first-hop field whose object, in turn, contains its parent and nullable second-hop child.",
+            "Make both object layers match the exact two-hop result shape",
         ),
         "TYPE_NESTED_INCLUDE_SECOND_HOP" => (
             "Nested include second hop is not an optional inverse",
@@ -1606,9 +1606,9 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Use `query required` for this owning-parent include",
         ),
         "TYPE_PARENT_INCLUDE_RESULT_SHAPE" => (
-            "Output fields do not match the parent relationship",
-            "The result output must contain exactly `parent` with the queried child type and a relationship field whose nullability matches the include cardinality.",
-            "Make the output contain the exact child and related-parent fields",
+            "Result fields do not match the parent relationship",
+            "The result object must contain exactly `parent` with the queried child type and a relationship field whose nullability matches the include cardinality.",
+            "Make the result object contain the exact child and related-parent fields",
         ),
         "TYPE_PARENT_INCLUDE_SINGLE" => (
             "Owning-parent query has more than one include",
@@ -1617,8 +1617,8 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_PARENT_INCLUDE_UNKNOWN_REFERENCE" => (
             "Included parent relationship is not an owning reference",
-            "An owning-parent include must name a stored reference declared on the queried child entity, using its explicit relationship name when present.",
-            "Use a declared owning relationship from the queried entity",
+            "An owning-parent include must name a stored reference declared on the queried child object, using its explicit relationship name when present.",
+            "Use a declared owning relationship from the queried object",
         ),
         "TYPE_PATCH_CONDITION_BINDING" => (
             "Patch supplied-condition uses the wrong binding",
@@ -1642,8 +1642,8 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_PATCH_FIELD_REQUIRED" => (
             "Patch input has no fields",
-            "A patch input must declare at least one entity field; an empty input can never describe a change.",
-            "Add at least one optional entity field to the patch input",
+            "A patch object must declare at least one persisted-object field; an empty object can never describe a change.",
+            "Add at least one optional persisted-object field to the patch object",
         ),
         "TYPE_PATCH_INPUT_BINDING" => (
             "Patch must name a direct input binding",
@@ -1651,19 +1651,19 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Pass the patch input binding directly",
         ),
         "TYPE_PATCH_NOT_INPUT" => (
-            "Patch binding is not an input record",
-            "Omission metadata belongs to declared input fields. Values, outputs, entities, and scalar values do not carry the required supplied flags.",
-            "Use a binding whose type is a declared input",
+            "Patch binding is not an omission-aware object",
+            "`patch:` needs a non-persistent object type whose fields use `optional`, so Jadpo can distinguish an omitted field from a supplied value.",
+            "Use a non-persistent object type with optional patch fields",
         ),
         "TYPE_PATCH_UNKNOWN_FIELD" => (
-            "Patch input contains a field not on the entity",
-            "Every patch field must map statically to a declared target-entity field so the generated update remains fixed and type checked.",
-            "Remove the field or declare the corresponding entity field",
+            "Patch object contains a field not on the persisted object",
+            "Every patch field must map statically to a declared field on the target object so the generated update remains fixed and type checked.",
+            "Remove the field or declare the corresponding field on the target object",
         ),
         "TYPE_QUERY_NOT_ENTITY" => (
-            "Query target is not an entity",
-            "`query` reads persisted entity rows; values, inputs, outputs, failures, and scalar types have no entity storage contract.",
-            "Query a declared entity",
+            "Query target is not persisted",
+            "`query` reads rows for an object type with a `persist` declaration; ordinary objects and scalar types have no storage contract.",
+            "Query a persisted object type",
         ),
         "TYPE_QUERY_NULLABLE_FIELD_UNSUPPORTED" => (
             "Query predicate field is nullable",
@@ -1687,17 +1687,17 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_QUERY_UNKNOWN_FIELD" => (
             "Query predicate field does not exist",
-            "The field after `where:` must be declared on the entity being queried.",
-            "Use a declared field from the target entity",
+            "The field after `where:` must be declared on the persisted object being queried.",
+            "Use a declared field from the target object",
         ),
         "TYPE_QUERY_UNKNOWN_ORDER_FIELD" => (
             "Query ordering field does not exist",
-            "`order_by` must name a declared field on the queried entity before its stability can be checked.",
-            "Use a declared field from the target entity",
+            "`order_by` must name a declared field on the queried persisted object before its stability can be checked.",
+            "Use a declared field from the target object",
         ),
         "TYPE_UPDATE_DUPLICATE_FIELD" => (
             "Update writes the same field more than once",
-            "Each entity field may have only one fixed or conditional `set` write so the mutation has a single deterministic value for that column.",
+            "Each persisted-object field may have only one fixed or conditional `set` write so the mutation has a single deterministic value for that column.",
             "Keep one `set` write for this field",
         ),
         "TYPE_UPDATE_FIELD_REQUIRED" => (
@@ -1706,14 +1706,14 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Add a `set` change or a `patch` binding",
         ),
         "TYPE_UPDATE_NOT_ENTITY" => (
-            "Update target is not an entity",
-            "`update required` mutates persisted entity rows and cannot target a value, input, output, failure, or scalar type.",
-            "Update a declared entity",
+            "Update target is not persisted",
+            "`update required` mutates rows for an object type with a `persist` declaration.",
+            "Update a persisted object type",
         ),
         "TYPE_UPDATE_UNKNOWN_FIELD" => (
-            "Updated field does not exist on the entity",
-            "Every field after `set:` must be declared on the entity being updated.",
-            "Use a declared field from the target entity",
+            "Updated field does not exist on the persisted object",
+            "Every field after `set:` must be declared on the object being updated.",
+            "Use a declared field from the target object",
         ),
         _ => return None,
     };
@@ -2630,7 +2630,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "CLI_PRESENTATION_ARGUMENTS" => "Diagnostic format and colour flags must select one supported presentation without changing the semantic diagnostic payload.".to_owned(),
         "RUNTIME_UNHANDLED_FAULT" => "An exception outside the declared domain-failure boundary was contained by the generated runtime.".to_owned(),
         "RUNTIME_STARTUP_FAILED" => "The generated runtime could not establish its startup contract and did not report readiness.".to_owned(),
-        "SYN_EXPECTED_DECLARATION" => "Jadpo files accept `type`, `enum`, `entity`, `value`, `input`, `output`, `failure`, `function`, `action`, `test`, and `route` declarations at the top level. Route items such as `path:` belong inside a `route` block, so `{found}` cannot be parsed here.".to_owned(),
+        "SYN_EXPECTED_DECLARATION" => "Jadpo files accept `type`, `persist`, `failure`, `function`, `action`, `test`, and `route` declarations at the top level. Optional `module` and `import` headers come before those declarations. Route items such as `path:` belong inside a `route` block, so `{found}` cannot be parsed here.".to_owned(),
         "SYN_UNEXPECTED_TOKEN" => "Found `{found}` while parsing this construct. Jadpo requires {expected} at this location, so parsing stops rather than guessing the authored structure.".to_owned(),
         _ => authored.map_or_else(
             || format!("The compiler-enforced `{code}` invariant is not satisfied at this location."),
@@ -2774,6 +2774,14 @@ fn semantic_unknown_name_guidance(name: &str, expected: &str, suggestion: Option
         "declared failure" => suggestion.map_or_else(
             || format!("Declare `{name}` as a failure or import the failure"),
             |suggested| format!("Use `{suggested}`, declare `{name}` as a failure, or import it"),
+        ),
+        "field" => suggestion.map_or_else(
+            || format!("Add `{name}: Type` to the object, or use an existing field name"),
+            |suggested| format!("Use the existing `{suggested}` field, or add `{name}: Type` to the object"),
+        ),
+        "object type" => suggestion.map_or_else(
+            || format!("Define `{name}` as `type {name} = Object {{ ... }}`, or use an existing object type"),
+            |suggested| format!("Use `{suggested}`, or define `{name}` as `type {name} = Object {{ ... }}`"),
         ),
         "predefined category" => "Use one of Jadpo's predefined categories".to_owned(),
         _ => format!("Define `{name}` as a {expected} or import it"),

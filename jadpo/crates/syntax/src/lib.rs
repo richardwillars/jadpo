@@ -56,6 +56,7 @@ pub enum TokenKind {
     Route,
     Module,
     Import,
+    Persist,
     Code,
     Kind,
     Message,
@@ -451,6 +452,7 @@ fn keyword_kind(text: &str) -> TokenKind {
         "route" => TokenKind::Route,
         "module" => TokenKind::Module,
         "import" => TokenKind::Import,
+        "persist" => TokenKind::Persist,
         "code" => TokenKind::Code,
         "kind" => TokenKind::Kind,
         "message" => TokenKind::Message,
@@ -567,7 +569,7 @@ mod tests {
         let mut paths = Vec::new();
         collect_sources(&root, &mut paths);
 
-        assert_eq!(paths.len(), 107);
+        assert_eq!(paths.len(), 110);
         for path in paths {
             let source = fs::read_to_string(&path).expect("fixture should be readable");
             let result = lex(&path, &source);

@@ -8,26 +8,26 @@ application TodoApplication {
 }
 
 type TodoTitle = Text {
-    min_length 1
-    max_length 200
+    min_length: 1
+    max_length: 200
 }
 
 type PageSize = Int {
-    min 1
-    max 100
+    min: 1
+    max: 100
 }
 
-enum UserStatus {
+type UserStatus = Enum {
     active
     disabled
 }
 
-enum TodoStatus {
+type TodoStatus = Enum {
     open
     completed
 }
 
-enum AuthenticationStrength {
+type AuthenticationStrength = Enum {
     primary
     multi_factor
 }
@@ -79,20 +79,25 @@ actor Actor {
     authentication_strength: AuthenticationStrength
 }
 
-entity User {
-    id: Uuid identity
-    authentication_subject: Text unique
-    email: Email unique
+type User = Object {
+    id: Uuid
+    authentication_subject: Text
+    email: Email
     status: UserStatus default UserStatus.active
     created_at: DateTime default now
     disabled_at: DateTime?
-
-    inverse todos: many Todo via Todo.owner_id
 }
 
-entity Todo {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete restrict
+persist User {
+    identity: id
+    unique: authentication_subject
+    unique: email
+    inverse todos: many Todo via: Todo.owner_id
+}
+
+type Todo = Object {
+    id: Uuid
+    owner_id: User.id
     title: TodoTitle
     status: TodoStatus default TodoStatus.open
     due_at: DateTime?
@@ -100,39 +105,45 @@ entity Todo {
     created_at: DateTime default now
     updated_at: DateTime default now
     deleted_at: DateTime?
-
-    index owner_active_order: (owner_id, deleted_at, created_at, id)
-    index reminder_scan: (status, deleted_at, reminder_sent_at, due_at, id)
 }
 
-input CreateTodo {
+persist Todo {
+    identity: id
+    references owner_id: User.id as: owner on_delete: restrict
+}
+
+// Compound non-unique index spelling remains deliberately unresolved:
+// owner_active_order over owner_id, deleted_at, created_at, id
+// reminder_scan over status, deleted_at, reminder_sent_at, due_at, id
+
+type CreateTodo = Object {
     title: Todo.title
     due_at: Todo.due_at default none
 }
 
-input PatchTodo {
+type PatchTodo = Object {
     title: Todo.title optional
     status: Todo.status optional
     due_at: Todo.due_at optional
 }
 
-input ListTodos {
+type ListTodos = Object {
     status: Todo.status optional
     due_before: DateTime optional
     page_size: PageSize default 25
     after: TodoCursor optional
 }
 
-input DisableUser {
+type DisableUser = Object {
     user_id: User.id
 }
 
-value TodoCursor {
+type TodoCursor = Object {
     created_at: Todo.created_at
     id: Todo.id
 }
 
-output TodoView {
+type TodoView = Object {
     id: Todo.id
     title: Todo.title
     status: Todo.status
@@ -141,26 +152,26 @@ output TodoView {
     updated_at: Todo.updated_at
 }
 
-output TodoPage {
+type TodoPage = Object {
     items: List<TodoView>
     next: TodoCursor?
 }
 
-output UserWithTodos {
+type UserWithTodos = Object {
     user_id: User.id
     email: User.email
     todos: List<TodoView>
 }
 
-output PublicHealth {
+type PublicHealth = Object {
     status: HealthStatus
 }
 
-enum HealthStatus {
+type HealthStatus = Enum {
     healthy
 }
 
-value ReminderMessage {
+type ReminderMessage = Object {
     idempotency_key: Todo.id
     from: Email
     to: User.email
@@ -168,7 +179,7 @@ value ReminderMessage {
     due_at: Todo.due_at
 }
 
-value ReminderReceipt {
+type ReminderReceipt = Object {
     accepted_at: DateTime
 }
 
@@ -236,18 +247,19 @@ service ReminderMail {
     egress: mail.example.invalid:443
 
     operation send_overdue_reminder
-        POST /v1/messages
-        idempotency_key: Todo.id
-        input ReminderMessage
-        output ReminderReceipt
-        maps provider.invalid_recipient -> ReminderRecipientRejected
-        maps provider.rate_limited -> ReminderTemporarilyUnavailable
-        maps provider.timeout -> ReminderTemporarilyUnavailable
-        maps provider.authentication -> fault Misconfigured
+    POST /v1/messages
+    idempotency_key: Todo.id
+    input ReminderMessage
+    output ReminderReceipt
+    maps provider.invalid_recipient -> ReminderRecipientRejected
+    maps provider.rate_limited -> ReminderTemporarilyUnavailable
+    maps provider.timeout -> ReminderTemporarilyUnavailable
+    maps provider.authentication -> fault Misconfigured
 }
 
-action create_todo(input: CreateTodo, actor: Actor) -> TodoView
+action create_todo(input: CreateTodo, actor: Actor)
     fails DueDateInPast, TodoMutationConflict
+    -> TodoView
 {
     require policy Todo.create with actor
 
@@ -274,9 +286,9 @@ action list_todos(input: ListTodos, actor: Actor) -> TodoPage {
 
     return attempt query page Todo {
         where: owner_id == actor.user_id
-            and deleted_at == none
-            and status matches optional input.status
-            and due_at <= optional input.due_before
+        and deleted_at == none
+        and status matches optional input.status
+        and due_at <= optional input.due_before
         order_by: created_at desc, id desc
         after: optional input.after
         limit: input.page_size
@@ -285,15 +297,16 @@ action list_todos(input: ListTodos, actor: Actor) -> TodoPage {
     }
 }
 
-action get_todo(todo_id: Todo.id, actor: Actor) -> TodoView
+action get_todo(todo_id: Todo.id, actor: Actor)
     fails TodoNotFound
+    -> TodoView
 {
     require policy Todo.read with actor
 
     var todo = attempt query required Todo {
         where: id == todo_id
-            and owner_id == actor.user_id
-            and deleted_at == none
+        and owner_id == actor.user_id
+        and deleted_at == none
         missing: TodoNotFound {
             todo_id: todo_id
         }
@@ -302,8 +315,9 @@ action get_todo(todo_id: Todo.id, actor: Actor) -> TodoView
     return project todo as TodoView
 }
 
-action patch_todo(todo_id: Todo.id, input: PatchTodo, actor: Actor) -> TodoView
+action patch_todo(todo_id: Todo.id, input: PatchTodo, actor: Actor)
     fails TodoNotFound, EmptyPatch, DueDateInPast, TodoMutationConflict
+    -> TodoView
 {
     require policy Todo.update with actor
 
@@ -317,8 +331,8 @@ action patch_todo(todo_id: Todo.id, input: PatchTodo, actor: Actor) -> TodoView
 
     var todo = attempt update required Todo {
         where: id == todo_id
-            and owner_id == actor.user_id
-            and deleted_at == none
+        and owner_id == actor.user_id
+        and deleted_at == none
         patch: input
         set: {
             updated_at: clock.now
@@ -333,15 +347,16 @@ action patch_todo(todo_id: Todo.id, input: PatchTodo, actor: Actor) -> TodoView
     return project todo as TodoView
 }
 
-action delete_todo(todo_id: Todo.id, actor: Actor) -> None
+action delete_todo(todo_id: Todo.id, actor: Actor)
     fails TodoNotFound, TodoMutationConflict
+    -> None
 {
     require policy Todo.delete with actor
 
     attempt update required Todo {
         where: id == todo_id
-            and owner_id == actor.user_id
-            and deleted_at == none
+        and owner_id == actor.user_id
+        and deleted_at == none
         set: {
             deleted_at: clock.now
             updated_at: clock.now
@@ -355,8 +370,9 @@ action delete_todo(todo_id: Todo.id, actor: Actor) -> None
     return none
 }
 
-action read_user_with_todos(user_id: User.id, actor: Actor) -> UserWithTodos
+action read_user_with_todos(user_id: User.id, actor: Actor)
     fails UserNotFound
+    -> UserWithTodos
 {
     require actor.user_id == user_id
     require policy User.read with actor
@@ -365,17 +381,18 @@ action read_user_with_todos(user_id: User.id, actor: Actor) -> UserWithTodos
     return attempt query required User {
         where: id == user_id and status == UserStatus.active
         include: todos into: UserWithTodos
-            where: deleted_at == none
-            order_by: created_at asc, id asc
-            limit: 100
+        where: deleted_at == none
+        order_by: created_at asc, id asc
+        limit: 100
         missing: UserNotFound {
             user_id: user_id
         }
     }
 }
 
-action disable_user(input: DisableUser, actor: Actor) -> None
+action disable_user(input: DisableUser, actor: Actor)
     fails UserNotFound
+    -> None
 {
     require actor.user_id == input.user_id
     require policy User.disable with actor
@@ -395,14 +412,15 @@ action disable_user(input: DisableUser, actor: Actor) -> None
     return none
 }
 
-action send_due_reminders(at: DateTime) -> None
+action send_due_reminders(at: DateTime)
     fails ReminderRecipientRejected, ReminderTemporarilyUnavailable
+    -> None
 {
     var todos = attempt query many Todo {
         where: status == TodoStatus.open
-            and deleted_at == none
-            and reminder_sent_at == none
-            and due_at < at
+        and deleted_at == none
+        and reminder_sent_at == none
+        and due_at < at
         order_by: due_at asc, id asc
         limit: 500
         include: owner required
@@ -431,7 +449,7 @@ action send_due_reminders(at: DateTime) -> None
 action purge_deleted_todos(at: DateTime) -> None {
     delete many Todo {
         where: deleted_at exists
-            and deleted_at <= at - config.soft_delete_retention
+        and deleted_at <= at - config.soft_delete_retention
         order_by: deleted_at asc, id asc
         limit: 500
     }

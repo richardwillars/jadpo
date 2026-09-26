@@ -1,11 +1,11 @@
 module todo.api
 import todo.domain { Todo, TodoTitle }
 
-public input CreateTodo {
+public type CreateTodo = Object {
     title: TodoTitle
 }
 
-public output TodoView {
+public type TodoView = Object {
     id: Todo.id
     title: Todo.title
 }

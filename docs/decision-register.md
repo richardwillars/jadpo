@@ -222,6 +222,10 @@ item should update the charter, affected specifications, and examples.
   binding/assigning a value. Parentheses are limited to callable interfaces,
   calls and scalar constructors, explicit expression grouping, and constructor-
   shaped patterns; persistence metadata does not masquerade as a function call.
+- The exact colon-delimited spelling for named compound uniqueness and
+  compound non-unique indexes remains unresolved. Implementations may preserve
+  the former spelling as migration compatibility, but documentation and
+  scaffolds must not present a guessed replacement as canonical.
 - Policy is human-owned; audit is compiler-derived.
 - CI blocks policy/implementation disagreement.
 - Generated target code is not normal developer-facing source.

@@ -380,9 +380,10 @@ impl<'project> ArtifactModel<'project> {
         let records = self.records.iter().map(|(name, declaration)| {
             let fields = declaration.fields.iter().map(field_plan_json);
             format!(
-                "{{\"name\":{},\"kind\":{},\"closed_shape\":true,\"fields\":{}}}",
+                "{{\"name\":{},\"kind\":{},\"persistent\":{},\"closed_shape\":true,\"fields\":{}}}",
                 json_string(name),
                 json_string(record_kind(declaration.kind)),
+                declaration.kind == RecordKind::Entity,
                 json_array(fields)
             )
         });
@@ -508,7 +509,11 @@ impl<'project> ArtifactModel<'project> {
                 self.openapi_enum_schema(declaration)
             ));
         }
-        for (name, declaration) in &self.records {
+        for (name, declaration) in self
+            .records
+            .iter()
+            .filter(|(name, _)| !name.starts_with("__jadpo_"))
+        {
             schemas.push(format!(
                 "{}:{}",
                 json_string(name),
@@ -659,17 +664,49 @@ impl<'project> ArtifactModel<'project> {
     fn openapi_type_schema(&self, name: &str) -> String {
         let base = name.trim_end_matches('?');
         let nullable = base.len() != name.len();
-        let resolved = self.schema_declaration(base);
-        let schema = if self.types.contains_key(&resolved)
-            || self.enums.contains_key(&resolved)
-            || self.records.contains_key(&resolved)
+        let schema = if let Some(item) = base
+            .strip_prefix("List<")
+            .and_then(|value| value.strip_suffix('>'))
         {
             format!(
-                "{{\"$ref\":{}}}",
-                json_string(&format!("#/components/schemas/{resolved}"))
+                "{{\"type\":\"array\",\"items\":{}}}",
+                self.openapi_type_schema(item)
             )
+        } else if let Some(item) = base
+            .strip_prefix("Set<")
+            .and_then(|value| value.strip_suffix('>'))
+        {
+            format!(
+                "{{\"type\":\"array\",\"uniqueItems\":true,\"items\":{}}}",
+                self.openapi_type_schema(item)
+            )
+        } else if let Some(arguments) = base
+            .strip_prefix("Map<")
+            .and_then(|value| value.strip_suffix('>'))
+        {
+            let value = split_generic_arguments(arguments)
+                .get(1)
+                .map_or_else(|| "{}".to_owned(), |value| self.openapi_type_schema(value));
+            format!("{{\"type\":\"object\",\"additionalProperties\":{value}}}")
         } else {
-            format!("{{{}}}", scalar_schema_parts(&resolved).join(","))
+            let resolved = self.schema_declaration(base);
+            if let Some(record) = self
+                .records
+                .get(&resolved)
+                .filter(|_| resolved.starts_with("__jadpo_"))
+            {
+                self.openapi_record_schema(record)
+            } else if self.types.contains_key(&resolved)
+                || self.enums.contains_key(&resolved)
+                || self.records.contains_key(&resolved)
+            {
+                format!(
+                    "{{\"$ref\":{}}}",
+                    json_string(&format!("#/components/schemas/{resolved}"))
+                )
+            } else {
+                format!("{{{}}}", scalar_schema_parts(&resolved).join(","))
+            }
         };
         if nullable {
             format!("{{\"anyOf\":[{schema},{{\"type\":\"null\"}}]}}")
@@ -679,9 +716,15 @@ impl<'project> ArtifactModel<'project> {
     }
 
     fn schema_declaration(&self, name: &str) -> String {
+        if matches!(name, "Email" | "Url" | "IpAddress") {
+            return name.to_owned();
+        }
         let mut current = name.to_owned();
         let mut visited = BTreeSet::new();
         while visited.insert(current.clone()) {
+            if matches!(current.as_str(), "Email" | "Url" | "IpAddress") {
+                return current;
+            }
             if self.types.contains_key(&current)
                 || self.enums.contains_key(&current)
                 || self.records.contains_key(&current)
@@ -773,8 +816,56 @@ fn scalar_schema_parts(name: &str) -> Vec<String> {
             "\"type\":\"string\"".to_owned(),
             "\"format\":\"date-time\"".to_owned(),
         ],
+        "Date" => vec![
+            "\"type\":\"string\"".to_owned(),
+            "\"format\":\"date\"".to_owned(),
+        ],
+        "Time" => vec![
+            "\"type\":\"string\"".to_owned(),
+            "\"format\":\"time\"".to_owned(),
+        ],
+        "Duration" => vec![
+            "\"type\":\"string\"".to_owned(),
+            "\"format\":\"duration\"".to_owned(),
+        ],
+        "Bytes" => vec![
+            "\"type\":\"string\"".to_owned(),
+            "\"contentEncoding\":\"base64\"".to_owned(),
+        ],
+        "Email" => vec![
+            "\"type\":\"string\"".to_owned(),
+            "\"format\":\"email\"".to_owned(),
+            "\"maxLength\":254".to_owned(),
+        ],
+        "Url" => vec![
+            "\"type\":\"string\"".to_owned(),
+            "\"format\":\"uri\"".to_owned(),
+        ],
+        "IpAddress" => vec![
+            "\"type\":\"string\"".to_owned(),
+            "\"format\":\"ip\"".to_owned(),
+        ],
         _ => vec!["\"type\":\"string\"".to_owned()],
     }
+}
+
+fn split_generic_arguments(arguments: &str) -> Vec<&str> {
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    let mut values = Vec::new();
+    for (index, character) in arguments.char_indices() {
+        match character {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                values.push(arguments[start..index].trim());
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    values.push(arguments[start..].trim());
+    values
 }
 
 fn type_name(reference: &TypeReference) -> String {
@@ -814,10 +905,7 @@ fn method_name(method: HttpMethod) -> &'static str {
 
 fn record_kind(kind: RecordKind) -> &'static str {
     match kind {
-        RecordKind::Entity => "entity",
-        RecordKind::Value => "value",
-        RecordKind::Input => "input",
-        RecordKind::Output => "output",
+        RecordKind::Entity | RecordKind::Value | RecordKind::Input | RecordKind::Output => "object",
     }
 }
 
@@ -933,6 +1021,24 @@ mod tests {
         assert!(artifact(&artifacts, "openapi/openapi.json").contains(
             "\"DeliveryState\":{\"type\":\"string\",\"enum\":[\"pending\",\"sent\",\"failed\"]}"
         ));
+    }
+
+    #[test]
+    fn exposes_nested_objects_collections_and_validated_prelude_types() {
+        let fixture =
+            repository_root().join("tests/compile/pass/108_unified_types_and_persistence.jadpo");
+        let analyzed = analyze_project(&fixture).expect("unified type fixture should analyze");
+        let artifacts = derive_artifacts(&fixture, &analyzed);
+        let openapi = artifact(&artifacts, "openapi/openapi.json");
+        let validators = artifact(&artifacts, "validators/plan.json");
+
+        assert!(openapi.contains("\"addresses\":{\"type\":\"array\""));
+        assert!(openapi.contains("\"format\":\"email\""));
+        assert!(openapi.contains("\"format\":\"uri\""));
+        assert!(openapi.contains("\"format\":\"ip\""));
+        assert!(!openapi.contains("__jadpo_"));
+        assert!(validators.contains("\"kind\":\"object\",\"persistent\":true"));
+        assert!(!validators.contains("\"kind\":\"output\""));
     }
 
     #[test]

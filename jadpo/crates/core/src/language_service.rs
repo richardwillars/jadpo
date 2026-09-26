@@ -47,6 +47,7 @@ impl LanguageIndex {
             .nodes
             .iter()
             .filter(|node| !matches!(node.kind, NodeKind::PreludeType | NodeKind::StandardFailure))
+            .filter(|node| !node.name.starts_with("__jadpo_"))
             .map(|node| semantic_symbol(node, project))
             .collect::<Vec<_>>();
         let mut locals = Vec::new();
@@ -427,6 +428,49 @@ fn collect_explicit_references(
     globals: &BTreeMap<String, LanguageSymbol>,
     output: &mut BTreeMap<(String, usize, usize), String>,
 ) {
+    for persistence in &source.file.persistence {
+        insert_explicit(
+            source,
+            persistence.target.range,
+            persistence.target.text.clone(),
+            globals,
+            output,
+        );
+        for field in persistence
+            .identities
+            .iter()
+            .chain(&persistence.uniques)
+            .chain(&persistence.indexes)
+        {
+            insert_explicit(
+                source,
+                field.range,
+                format!("{}.{}", persistence.target.text, field.text),
+                globals,
+                output,
+            );
+        }
+        for constraint in &persistence.constraints {
+            for field in &constraint.fields {
+                insert_explicit(
+                    source,
+                    field.range,
+                    format!("{}.{}", persistence.target.text, field.text),
+                    globals,
+                    output,
+                );
+            }
+        }
+        for reference in &persistence.references {
+            insert_explicit(
+                source,
+                reference.field.range,
+                format!("{}.{}", persistence.target.text, reference.field.text),
+                globals,
+                output,
+            );
+        }
+    }
     for declaration in &source.file.declarations {
         match declaration {
             Declaration::Record(record) => {

@@ -1,11 +1,15 @@
 module todo.domain
 
 public type TodoTitle = Text {
-    min_length 1
-    max_length 200
+    min_length: 1
+    max_length: 200
 }
 
-public entity Todo {
-    id: Uuid identity
+public type Todo = Object {
+    id: Uuid
     title: TodoTitle
+}
+
+persist Todo {
+    identity: id
 }

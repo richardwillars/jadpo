@@ -45,8 +45,8 @@ impl NodeKind {
             Self::Type => "type",
             Self::Enum => "enum",
             Self::EnumVariant => "enum_variant",
-            Self::Entity => "entity",
-            Self::Value => "value",
+            Self::Entity => "persistent_object",
+            Self::Value => "object",
             Self::Input => "input",
             Self::Output => "output",
             Self::Field => "field",
@@ -80,8 +80,8 @@ impl NodeKind {
             Self::StandardFailure => "predefined category",
             Self::Enum => "enum",
             Self::EnumVariant => "enum variant",
-            Self::Entity => "entity",
-            Self::Value => "value",
+            Self::Entity => "persistent object type",
+            Self::Value => "object type",
             Self::Input => "input",
             Self::Output => "output",
             Self::Field => "field",
@@ -441,11 +441,28 @@ struct ModuleScope {
 impl GraphBuilder {
     fn add_prelude(&mut self) {
         for name in [
-            "Bool", "DateTime", "Decimal", "Int", "List", "Map", "Set", "Text", "Unit", "Uuid",
+            "Bool", "Bytes", "Date", "DateTime", "Decimal", "Duration", "Int", "List", "Map",
+            "Object", "Set", "Text", "Time", "Unit", "Uuid",
         ] {
             self.add_node(PendingNode {
                 kind: NodeKind::PreludeType,
                 name: name.to_owned(),
+                source: "<prelude>".to_owned(),
+                range: TextRange::new(0, 0),
+            });
+        }
+        for name in ["Email", "Url", "IpAddress"] {
+            self.add_node(PendingNode {
+                kind: NodeKind::Type,
+                name: name.to_owned(),
+                source: "<prelude>".to_owned(),
+                range: TextRange::new(0, 0),
+            });
+            self.references.push(PendingReference {
+                refined: Some(name.to_owned()),
+                target: "Text".to_owned(),
+                expected: ReferenceKind::Type,
+                usage: ReferenceUsage::TypeDefinition,
                 source: "<prelude>".to_owned(),
                 range: TextRange::new(0, 0),
             });
@@ -1701,7 +1718,6 @@ mod tests {
     #[test]
     fn builds_deterministic_field_and_refinement_nodes() {
         let source = r#"
-type Email = Text { format email }
 entity Customer { email: Email }
 "#;
         let parsed = parse(Path::new("app.jadpo"), source);
@@ -1728,11 +1744,11 @@ entity Customer { email: Email }
     fn enforces_selective_module_imports_visibility_and_cycles() {
         let shared = parse(
             Path::new("shared.jadpo"),
-            "module todo.shared\npublic type Email = Text { format email }\n",
+            "module todo.shared\npublic type ContactEmail = Email {}\n",
         );
         let api = parse(
             Path::new("api.jadpo"),
-            "module todo.api\nimport todo.shared { Email }\npublic input Signup { email: Email }\n",
+            "module todo.api\nimport todo.shared { ContactEmail }\npublic input Signup { email: ContactEmail }\n",
         );
         assert!(shared.diagnostics.is_empty(), "{:#?}", shared.diagnostics);
         assert!(api.diagnostics.is_empty(), "{:#?}", api.diagnostics);
@@ -1740,7 +1756,7 @@ entity Customer { email: Email }
         assert!(graph.diagnostics.is_empty(), "{:#?}", graph.diagnostics);
         assert_eq!(graph.modules.len(), 2);
         assert_eq!(graph.modules[0].name, "todo.api");
-        assert_eq!(graph.modules[0].imports, vec!["todo.shared.Email"]);
+        assert_eq!(graph.modules[0].imports, vec!["todo.shared.ContactEmail"]);
         assert!(graph
             .manifest()
             .to_json()
@@ -1748,7 +1764,7 @@ entity Customer { email: Email }
 
         let missing_import = parse(
             Path::new("missing.jadpo"),
-            "module todo.consumer\ninput SignupWithoutImport { email: Email }\n",
+            "module todo.consumer\ninput SignupWithoutImport { email: ContactEmail }\n",
         );
         let graph = build_semantic_graph(&[shared, missing_import]);
         assert!(

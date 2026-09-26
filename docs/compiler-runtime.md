@@ -248,6 +248,11 @@ Production handling follows the [failure model](failure-model.md):
   internally while returning a generic safe response;
 - defects and unclassified target exceptions are containment failures, return a
   generic internal response, and raise an internal invariant diagnostic;
+
+Generated Postgres startup uses a bounded two-second connection attempt. If the
+database cannot be reached, the process emits one secret-safe
+`RUNTIME_STARTUP_FAILED` operational event and exits before opening its HTTP
+listener.
 - only fields declared in a failure's public schema reach the client;
 - internal diagnostic fields remain subject to type-aware redaction and
   retention policy.

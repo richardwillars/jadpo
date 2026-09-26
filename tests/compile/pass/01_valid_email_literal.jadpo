@@ -1,8 +1,3 @@
-type Email = Text {
-    format email
-    max_length 254
-}
-
 function support_email() -> Email {
     return Email("support@example.com")
 }

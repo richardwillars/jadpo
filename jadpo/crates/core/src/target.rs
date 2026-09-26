@@ -1178,7 +1178,7 @@ impl<'project> TargetGenerator<'project> {
         line(&mut output, "try {");
         line(
             &mut output,
-            "  postgres = Bun.env.DATABASE_URL ? persistenceSync(\"database.open\", () => new SQL({ url: Bun.env.DATABASE_URL!, prepare: false })) : null;",
+            "  postgres = Bun.env.DATABASE_URL ? persistenceSync(\"database.open\", () => new SQL({ url: Bun.env.DATABASE_URL!, prepare: false, connectionTimeout: 2 })) : null;",
         );
         line(
             &mut output,
@@ -2905,6 +2905,30 @@ impl<'project> TargetGenerator<'project> {
         line(output, "  return value;");
         line(output, "}");
         line(output, "");
+        line(
+            output,
+            "function validateDate(value: unknown, path: string): string {",
+        );
+        line(output, "  if (typeof value !== \"string\" || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/u.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) invalid(path, \"Date\");");
+        line(output, "  return value;");
+        line(output, "}");
+        line(output, "");
+        line(
+            output,
+            "function validateTime(value: unknown, path: string): string {",
+        );
+        line(output, "  if (typeof value !== \"string\" || !/^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\\.[0-9]+)?)?$/u.test(value)) invalid(path, \"Time\");");
+        line(output, "  return value;");
+        line(output, "}");
+        line(output, "");
+        line(
+            output,
+            "function validateDuration(value: unknown, path: string): string {",
+        );
+        line(output, "  if (typeof value !== \"string\" || !/^P(?=\\d|T\\d)(?:\\d+D)?(?:T(?:\\d+H)?(?:\\d+M)?(?:\\d+(?:\\.\\d+)?S)?)?$/u.test(value)) invalid(path, \"Duration\");");
+        line(output, "  return value;");
+        line(output, "}");
+        line(output, "");
         line(output, "function isEmail(value: string): boolean {");
         line(output, "  const parts = value.split(\"@\");");
         line(output, "  if (parts.length !== 2) return false;");
@@ -2912,6 +2936,46 @@ impl<'project> TargetGenerator<'project> {
         line(
             output,
             "  return local.length > 0 && domain.includes(\".\") && !domain.startsWith(\".\") && !domain.endsWith(\".\") && !/\\s/u.test(value);",
+        );
+        line(output, "}");
+        line(output, "");
+        line(output, "function isUrl(value: string): boolean {");
+        line(output, "  if (/\\s/u.test(value)) return false;");
+        line(output, "  try { const parsed = new URL(value); return (parsed.protocol === \"http:\" || parsed.protocol === \"https:\") && (parsed.hostname === \"localhost\" || parsed.hostname.includes(\".\")); } catch { return false; }");
+        line(output, "}");
+        line(output, "");
+        line(output, "function isIpv4(value: string): boolean {");
+        line(output, "  const parts = value.split(\".\");");
+        line(output, "  return parts.length === 4 && parts.every(part => /^[0-9]{1,3}$/u.test(part) && Number(part) <= 255);");
+        line(output, "}");
+        line(output, "");
+        line(output, "function isIpAddress(value: string): boolean {");
+        line(output, "  if (isIpv4(value)) return true;");
+        line(output, "  const halves = value.split(\"::\");");
+        line(output, "  if (halves.length > 2) return false;");
+        line(
+            output,
+            "  const parts = halves.flatMap(half => half === \"\" ? [] : half.split(\":\"));",
+        );
+        line(output, "  let groups = 0;");
+        line(output, "  for (const [index, part] of parts.entries()) {");
+        line(output, "    if (part.includes(\".\")) {");
+        line(
+            output,
+            "      if (index !== parts.length - 1 || !isIpv4(part)) return false;",
+        );
+        line(output, "      groups += 2;");
+        line(output, "    } else {");
+        line(
+            output,
+            "      if (!/^[0-9a-f]{1,4}$/iu.test(part)) return false;",
+        );
+        line(output, "      groups += 1;");
+        line(output, "    }");
+        line(output, "  }");
+        line(
+            output,
+            "  return halves.length === 2 ? groups < 8 : groups === 8;",
         );
         line(output, "}");
         line(output, "");
@@ -2984,6 +3048,13 @@ impl<'project> TargetGenerator<'project> {
     }
 
     fn type_aliases(&self, output: &mut String) {
+        for name in ["Email", "Url", "IpAddress"] {
+            line(
+                output,
+                &format!("type {name} = string & {{ readonly __brand_{name}: unique symbol }};"),
+            );
+        }
+        line(output, "");
         for (name, declaration) in &self.enums {
             let tagged = enum_is_tagged(declaration);
             let variants = declaration
@@ -3044,6 +3115,31 @@ impl<'project> TargetGenerator<'project> {
     }
 
     fn validators(&self, output: &mut String) {
+        for (name, check, expectation) in [
+            (
+                "Email",
+                "isEmail(candidate) && candidate.length <= 254",
+                "Email",
+            ),
+            ("Url", "isUrl(candidate)", "Url"),
+            ("IpAddress", "isIpAddress(candidate)", "IpAddress"),
+        ] {
+            line(
+                output,
+                &format!("function validate_{name}(value: unknown, path: string): {name} {{"),
+            );
+            line(output, "  const candidate = validateText(value, path);");
+            line(
+                output,
+                &format!(
+                    "  if (!({check})) invalid(path, {});",
+                    ts_string(expectation)
+                ),
+            );
+            line(output, &format!("  return candidate as {name};"));
+            line(output, "}");
+            line(output, "");
+        }
         for (name, declaration) in &self.enums {
             line(
                 output,
@@ -3141,7 +3237,9 @@ impl<'project> TargetGenerator<'project> {
                 &format!("function validate_{name}(value: unknown, path: string): {name} {{"),
             );
             let parent_name = type_name(&declaration.parent);
-            if self.types.contains_key(&parent_name) {
+            if self.types.contains_key(&parent_name)
+                || matches!(parent_name.as_str(), "Email" | "Url" | "IpAddress")
+            {
                 line(
                     output,
                     &format!("  const candidate = validate_{parent_name}(value, path);"),
@@ -4450,11 +4548,20 @@ impl<'project> TargetGenerator<'project> {
         let name = self.schema_declaration(&type_name(reference));
         let base = if name == "List" && reference.arguments.len() == 1 {
             format!("Array<{}>", self.ts_type(&reference.arguments[0]))
+        } else if name == "Set" && reference.arguments.len() == 1 {
+            format!("ReadonlySet<{}>", self.ts_type(&reference.arguments[0]))
+        } else if name == "Map" && reference.arguments.len() == 2 {
+            format!(
+                "ReadonlyMap<{}, {}>",
+                self.ts_type(&reference.arguments[0]),
+                self.ts_type(&reference.arguments[1])
+            )
         } else {
             match name.as_str() {
                 "Bool" => "boolean".to_owned(),
                 "Int" | "Decimal" => "number".to_owned(),
-                "Text" | "Uuid" | "DateTime" => "string".to_owned(),
+                "Text" | "Uuid" | "Date" | "Time" | "DateTime" | "Duration" => "string".to_owned(),
+                "Bytes" => "Uint8Array".to_owned(),
                 "Unit" => "void".to_owned(),
                 _ => name,
             }
@@ -4477,9 +4584,29 @@ impl<'project> TargetGenerator<'project> {
             format!(
                 "Array.isArray({value}) ? {value}.map((item, index) => {item}) : invalid({path}, \"List\")"
             )
+        } else if name == "Set" && reference.arguments.len() == 1 {
+            let item = self.validation_expression(
+                &reference.arguments[0],
+                "item",
+                &format!("{path} + \"[\" + index + \"]\""),
+            );
+            format!("{value} instanceof Set ? new Set([...{value}].map((item, index) => {item})) : invalid({path}, \"Set\")")
+        } else if name == "Map" && reference.arguments.len() == 2 {
+            let key = self.validation_expression(
+                &reference.arguments[0],
+                "entry[0]",
+                &format!("{path} + \".key[\" + index + \"]\""),
+            );
+            let item = self.validation_expression(
+                &reference.arguments[1],
+                "entry[1]",
+                &format!("{path} + \".value[\" + index + \"]\""),
+            );
+            format!("{value} instanceof Map ? new Map([...{value}].map((entry, index) => [{key}, {item}])) : invalid({path}, \"Map\")")
         } else if self.types.contains_key(&name)
             || self.enums.contains_key(&name)
             || self.records.contains_key(&name)
+            || matches!(name.as_str(), "Email" | "Url" | "IpAddress")
         {
             format!("validate_{name}({value}, {path})")
         } else {
@@ -4489,7 +4616,14 @@ impl<'project> TargetGenerator<'project> {
                 "Decimal" => format!("validateDecimal({value}, {path})"),
                 "Text" => format!("validateText({value}, {path})"),
                 "Uuid" => format!("validateUuid({value}, {path})"),
+                "Date" => format!("validateDate({value}, {path})"),
+                "Time" => format!("validateTime({value}, {path})"),
                 "DateTime" => format!("validateDateTime({value}, {path})"),
+                "Duration" => format!("validateDuration({value}, {path})"),
+                "Bytes" => {
+                    format!("{value} instanceof Uint8Array ? {value} : invalid({path}, \"Bytes\")")
+                }
+                "Object" => format!("expectObject({value}, {path})"),
                 _ => format!("invalid({path}, {})", ts_string(&name)),
             }
         };
@@ -4535,6 +4669,16 @@ impl<'project> TargetGenerator<'project> {
             "DateTime" => format!(
                 "typeof {value} !== \"string\" || Number.isNaN(Date.parse({value}))"
             ),
+            "Date" => format!(
+                "typeof {value} !== \"string\" || !/^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}$/u.test({value}) || Number.isNaN(Date.parse(`${{{value}}}T00:00:00Z`))"
+            ),
+            "Time" => format!(
+                "typeof {value} !== \"string\" || !/^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\\.[0-9]+)?)?$/u.test({value})"
+            ),
+            "Duration" => format!(
+                "typeof {value} !== \"string\" || !/^P(?=\\d|T\\d)(?:\\d+D)?(?:T(?:\\d+H)?(?:\\d+M)?(?:\\d+(?:\\.\\d+)?S)?)?$/u.test({value})"
+            ),
+            "Bytes" => format!("!({value} instanceof Uint8Array)"),
             other => {
                 line(
                     output,
@@ -4592,6 +4736,9 @@ impl<'project> TargetGenerator<'project> {
 
     fn schema_declaration(&self, raw_name: &str) -> String {
         let name = raw_name.trim_end_matches('?');
+        if matches!(name, "Email" | "Url" | "IpAddress") {
+            return name.to_owned();
+        }
         if self.types.contains_key(name)
             || self.enums.contains_key(name)
             || self.records.contains_key(name)
@@ -4601,6 +4748,9 @@ impl<'project> TargetGenerator<'project> {
         let mut current = name.to_owned();
         let mut visited = BTreeSet::new();
         while visited.insert(current.clone()) {
+            if matches!(current.as_str(), "Email" | "Url" | "IpAddress") {
+                return current;
+            }
             let Some(node) = self.project.semantics.node(&current) else {
                 break;
             };
@@ -5153,6 +5303,12 @@ mod tests {
         assert!(targets[0].contents.contains("function validate_Email"));
         assert!(targets[0]
             .contents
+            .contains("parsed.hostname === \"localhost\" || parsed.hostname.includes(\".\")"));
+        assert!(targets[0]
+            .contents
+            .contains("return halves.length === 2 ? groups < 8 : groups === 8"));
+        assert!(targets[0]
+            .contents
             .contains("request.method === \"POST\" && routePath"));
         assert!(targets[0]
             .contents
@@ -5431,9 +5587,9 @@ mod tests {
         assert!(runtime
             .contents
             .contains("class PersistenceFault extends Error"));
-        assert!(runtime
-            .contents
-            .contains("new SQL({ url: Bun.env.DATABASE_URL!, prepare: false })"));
+        assert!(runtime.contents.contains(
+            "new SQL({ url: Bun.env.DATABASE_URL!, prepare: false, connectionTimeout: 2 })"
+        ));
         assert!(runtime.contents.contains("details.errno"));
         assert!(runtime
             .contents

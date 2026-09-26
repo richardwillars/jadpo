@@ -137,7 +137,7 @@ which semantic risks remain.
 | ----- | ----------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | P0    | Design foundation                         | complete    | Charter, semantic model, type system, failure model, acceptance cases                                                                                                                   |
 | P1    | Jadpo seed and core grammar            | complete    | [Core grammar](grammar-v0.1.md), [seed application](../examples/jadpo-seed/app.jadpo), [expected semantics](../examples/jadpo-seed/expected.md), [issue log](language-issues.md) |
-| P2    | Executable compiler fixtures              | complete    | [One hundred and seven source/expectation pairs](../tests/compile/README.md) cover syntax, names, types, failures, disclosure, effects, typed CRUD, patches, relationships, modules, local mutation, enums, matching, operators, authored tests, and the executable P10.6 surface |
+| P2    | Executable compiler fixtures              | complete    | [One hundred and ten source/expectation pairs](../tests/compile/README.md) cover syntax, names, types, failures, disclosure, effects, typed CRUD, patches, relationships, modules, local mutation, enums, matching, operators, authored tests, and the executable P10.6 surface |
 | P3    | Rust workspace and CLI                    | complete    | [Rust workspace](../jadpo/README.md), deterministic scaffold manifest, discovery tests, stable build-stage diagnostics                                                               |
 | P4    | Lexer, parser, and syntax tree            | complete    | Span-preserving lexer and AST, recovering parser, exact seed outline, fixture coverage, real `jadpo check` syntax pass                                                               |
 | P5    | Declaration index and semantic graph      | complete    | Deterministic IDs, resolved declaration references, field/refinement nodes, callable edges, semantic JSON manifest                                                                       |
@@ -149,9 +149,9 @@ which semantic risks remain.
 | P10R  | Assurance and validation reset            | deferred    | Candidate packages exist; outside review and five first-user sessions are deferred until feature-complete implementation, not passed                                                    |
 | P10.5 | Pre-P11 language completion               | complete    | Exploratory under P10R deferral; patches, bounded relationships, migration review, index acceptance, bounded modules/imports, and immutable-value/scoped-local-rebinding semantics are implemented; advanced extensions remain deferred |
 | DX0.5 | Checked local development loop             | in progress | JSON plus source-rendered diagnostics, coalesced atomic watch, compiler-owned HTTP health, structured runtime faults, and initial Bun restart with invalid-edit continuity implemented; startup rollback and structured shutdown remain |
-| P10.6 | Problems, routes, and type/persistence boundary | in progress | Explicit failure kinds and flat context, exact callable failures with `attempt`, typed path bindings, `auth: none`, and local/named route behaviour are executable. The accepted consistency revision now unifies authored data under `type`, separates `persist`, moves `fails` before the result arrow, and requires nested object/list support; implementation is in progress. Operational boundary mapping, handler arms, and policy authority remain unresolved. |
-| DX1   | Compiler-backed language service            | complete    | Standard `jadpo lsp`, live unsaved diagnostics, symbols, cross-file definitions/references, hover, contextual completion, signature help, semantic tokens, rename, formatting, generated-artifact links, and a persistent VS Code client pass protocol tests |
-| DX2   | Guided diagnostics and agent context        | internal implementation complete; external trials pending | All 298 compiler-emitted public codes have central authored copy, exhaustive agent, terminal, LSP, and VS Code projection tests, and explicit conformance evidence. One hundred and seven compile pairs plus focused Rust scenarios cover every language diagnostic; operational and I/O faults have explicit emitter-contract tests. The permanent catalogue-and-evidence gate is active and green. Fresh-agent and first-user repair-cycle trials remain external evidence. |
+| P10.6 | Problems, routes, and type/persistence boundary | in progress | All unblocked work is executable: explicit failure kinds and flat context, exact callable failures with `attempt`, typed path bindings, `auth: none`, local/named route behaviour, unified authored `type` declarations, separate `persist`, pre-arrow `fails`, nested objects/lists, and the complete accepted prelude. Operational boundary mapping, handler arms, compound persistence spelling, and policy authority remain unresolved design choices. |
+| DX1   | Compiler-backed language service            | complete    | Standard `jadpo lsp`, live unsaved diagnostics, symbols, cross-file definitions/references, hover, contextual completion, signature help, semantic tokens, rename, formatting, explicit generated-artifact commands, and a persistent VS Code client pass protocol tests |
+| DX2   | Guided diagnostics and agent context        | internal implementation complete; external trials pending | All 298 compiler-emitted public codes have central authored copy, exhaustive agent, terminal, LSP, and VS Code projection tests, and explicit conformance evidence. One hundred and ten compile pairs plus focused Rust scenarios cover every language diagnostic; operational and I/O faults have explicit emitter-contract tests. The permanent catalogue-and-evidence gate is active and green. Fresh-agent and first-user repair-cycle trials remain external evidence. |
 | P11   | Authentication, policy, and golden todo   | not started | May proceed as exploratory implementation after P10.6 and DX0.5; Milestone C and assurance claims still require the deferred P10R evidence                                               |
 | P12   | Order/payment application and TS baseline | not started | Reference implementations may proceed; external sessions and protocol freeze precede final comparative trials and the continuation decision                                             |
 
@@ -2663,6 +2663,37 @@ A phase may move backwards if a golden application invalidates its assumptions.
   task observations, cross-case decision artifacts, prototype coverage, and an
   exit gate that must pass before production website design begins.
 
+### 2026-09-26 — Unified authored type model implemented
+
+- Made `type Name = Object { ... }` and `type Name = Enum { ... }` executable,
+  including recursively closed inline objects and `List<Object { ... }>`.
+- Added separate `persist Name { ... }` parsing and normalization so existing
+  checked persistence, migration, SQL, and runtime behavior is retained without
+  making object declarations storage-bearing by default.
+- Made ordinary object types valid wherever an input, output, include
+  projection, or omission-aware patch shape is required.
+- Added the accepted prelude representation/time/container names and validated
+  `Email`, `Url`, and `IpAddress` constructors, target validators, and OpenAPI
+  formats. The former canonical authored `Email` declaration is recognized as
+  a migration-compatible spelling during project analysis.
+- Accepted callable `fails` before the success arrow and colon-delimited scalar
+  constraints, while keeping the former positions readable during fixture
+  migration.
+- Removed LSP document links and the VS Code document-link provider. Generated
+  OpenAPI and validation plans now use explicit commands, leaving source
+  underlines exclusively for diagnostics.
+- Fixed the formatter to preserve indentation through multiline parameter,
+  collection, and grouped-expression delimiters, including the canonical
+  pre-arrow `fails` layout.
+- Bound generated PostgreSQL startup connection attempts and corrected the
+  secret-canary startup suite to exercise a persistence-enabled application.
+- Updated the seed, persistence example, module example, scaffold, grammar,
+  snippets, syntax highlighting, completion, navigation, validation plan, and
+  compile fixtures to the new model.
+- Left the exact colon-delimited spelling for named compound uniqueness as the
+  sole syntax decision still requiring confirmation; no new canonical spelling
+  is published in the grammar.
+
 ## 12. Immediate next action
 
 P10 is complete. The candidate P10R package now contains the canonical todo
@@ -2689,8 +2720,9 @@ rebinding cores are implemented. P10.5's bounded implementation is complete.
 Module aliases, re-exports, relative imports, same-name namespaces,
 caller-visible mutation, and authored reference notation remain unsupported
 until golden-application evidence shows they are necessary; other migration
-transforms continue to fail closed. The language-learning slice and initial
-DX1 language service are complete. The next technical work returns to DX0.5
-startup-failure restoration, portable structured shutdown, and the remaining
-edit-recovery protocol cases, followed by the P10.6 problem, route, and entity
-boundary revision before P11 application authoring.
+transforms continue to fail closed. The language-learning slice, initial DX1
+language service, P10.6 failure/route contract, DX2 diagnostic presentation,
+and unified authored type/persistence model are complete. The next technical
+work returns to DX0.5 startup-failure restoration, portable structured
+shutdown, and the remaining edit-recovery protocol cases before P11
+application authoring.
