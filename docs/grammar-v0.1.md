@@ -517,9 +517,10 @@ The exact colon-delimited spelling for named compound uniqueness remains open.
 The former call-shaped `constraint name: unique(field_a, field_b)` spelling is
 not canonical and must not be copied into new source.
 
-The first expression grammar supports equality because the seed uses it.
-Arithmetic, ordering, boolean operators, exhaustive `match`, and richer
-precedence are added only through fixtures.
+The expression grammar implements conventional precedence for unary `not` and
+`-`; multiplicative `*`, `/`, and `%`; additive `+` and `-`; ordering `<`,
+`<=`, `>`, and `>=`; equality `==` and `!=`; `and`; then `or`. Arithmetic is
+numeric except for `Text + Text`, and `match` is exhaustive for closed domains.
 
 ## 12. Route declarations
 
