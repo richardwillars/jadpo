@@ -293,6 +293,7 @@ impl<'source> Parser<'source> {
 
         while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
             let before = self.cursor;
+            let diagnostics_before = self.diagnostics.len();
             if self.at(TokenKind::Inverse) {
                 if kind != RecordKind::Entity {
                     self.error_current("SYN_INVERSE_NON_ENTITY");
@@ -310,7 +311,9 @@ impl<'source> Parser<'source> {
             } else if let Some(field) = self.parse_field_declaration() {
                 fields.push(field);
             } else {
-                self.error_current("SYN_EXPECTED_FIELD");
+                if self.diagnostics.len() == diagnostics_before {
+                    self.error_current("SYN_EXPECTED_FIELD");
+                }
                 self.recover_until(&[TokenKind::RightBrace]);
             }
             if self.cursor == before {
@@ -1001,7 +1004,12 @@ impl<'source> Parser<'source> {
                 QueryCardinality::Many
             }
             _ => {
-                self.error_current("SYN_UNEXPECTED_TOKEN");
+                let range = self.current().range;
+                let diagnostic = self.expected_diagnostic(
+                    "SYN_UNEXPECTED_TOKEN",
+                    "one of `optional`, `required`, or `many` after `query`",
+                );
+                self.diagnostic_at(diagnostic, range);
                 return Expression::Missing(TextRange::new(start, self.current().range.end));
             }
         };
@@ -1683,10 +1691,13 @@ impl<'source> Parser<'source> {
 
         while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
             let before = self.cursor;
+            let diagnostics_before = self.diagnostics.len();
             if let Some(field) = self.parse_field_declaration() {
                 fields.push(field);
             } else {
-                self.error_current("SYN_EXPECTED_FIELD");
+                if self.diagnostics.len() == diagnostics_before {
+                    self.error_current("SYN_EXPECTED_FIELD");
+                }
                 self.recover_until(&[TokenKind::RightBrace]);
             }
             if self.cursor == before {
@@ -2208,13 +2219,28 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn expect(&mut self, kind: TokenKind, _message: &str) -> Option<Token> {
+    fn expect(&mut self, kind: TokenKind, message: &str) -> Option<Token> {
         if self.at(kind) {
             Some(self.bump())
         } else {
-            self.error_current("SYN_UNEXPECTED_TOKEN");
+            let range = self.current().range;
+            let diagnostic = self.expected_diagnostic("SYN_UNEXPECTED_TOKEN", message);
+            self.diagnostic_at(diagnostic, range);
             None
         }
+    }
+
+    fn expected_diagnostic(&self, code: &'static str, message: &str) -> Diagnostic {
+        let expected = message
+            .strip_prefix("expected ")
+            .unwrap_or(message)
+            .to_owned();
+        Diagnostic::error(code)
+            .with_fact(DiagnosticFact::Expected(expected))
+            .with_fact(DiagnosticFact::FoundValue(diagnostic_token_label(
+                self.current(),
+                self.source,
+            )))
     }
 
     fn at(&self, kind: TokenKind) -> bool {
@@ -2591,7 +2617,8 @@ route POST /registrations {
         let parsed = parse(Path::new("required-query.jadpo"), source);
 
         assert!(parsed.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "SYN_UNEXPECTED_TOKEN" && diagnostic.message == "Unexpected token"
+            diagnostic.code == "SYN_UNEXPECTED_TOKEN"
+                && diagnostic.message == "Expected `:` after `missing`"
         }));
     }
 
@@ -2601,7 +2628,8 @@ route POST /registrations {
         let parsed = parse(Path::new("query-where.jadpo"), source);
 
         assert!(parsed.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "SYN_UNEXPECTED_TOKEN" && diagnostic.message == "Unexpected token"
+            diagnostic.code == "SYN_UNEXPECTED_TOKEN"
+                && diagnostic.message == "Expected `:` after `where`"
         }));
     }
 
@@ -2636,11 +2664,9 @@ route POST /registrations {
             );
             let parsed = parse(Path::new("query-clause.jadpo"), &source);
             assert!(
-                parsed
-                    .diagnostics
-                    .iter()
-                    .any(|diagnostic| diagnostic.code == "SYN_UNEXPECTED_TOKEN"
-                        && diagnostic.message == "Unexpected token"),
+                parsed.diagnostics.iter().any(|diagnostic| diagnostic.code
+                    == "SYN_UNEXPECTED_TOKEN"
+                    && diagnostic.message == expected_syntax.replacen("expected", "Expected", 1)),
                 "missing diagnostic for {expected_syntax:?} in {:#?}",
                 parsed.diagnostics
             );
@@ -2653,7 +2679,8 @@ route POST /registrations {
         let parsed = parse(Path::new("mutation.jadpo"), source);
 
         assert!(parsed.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "SYN_UNEXPECTED_TOKEN" && diagnostic.message == "Unexpected token"
+            diagnostic.code == "SYN_UNEXPECTED_TOKEN"
+                && diagnostic.message == "Expected `:` after `set`"
         }));
     }
 
@@ -2941,6 +2968,13 @@ function choose(initial: Choice, replacement: Choice) -> Choice {
                     .diagnostics
                     .iter()
                     .all(|diagnostic| diagnostic.code == "ROUTE_ITEM_COLON_REQUIRED"));
+            } else if file_name == "74_record_field_colon_required.jadpo" {
+                assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
+                assert_eq!(parsed.diagnostics[0].code, "SYN_UNEXPECTED_TOKEN");
+                assert_eq!(
+                    parsed.diagnostics[0].message,
+                    "Expected `:` after field name"
+                );
             } else {
                 assert!(
                     parsed.diagnostics.is_empty(),
