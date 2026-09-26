@@ -1,0 +1,16 @@
+[package]
+name = "jadpo-semantic"
+description = "Semantic analysis for the Jadpo language"
+documentation.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+jadpo-diagnostics = { path = "../diagnostics" }
+jadpo-syntax = { path = "../syntax" }
+
+[lib]
+path = "src/lib.rs"

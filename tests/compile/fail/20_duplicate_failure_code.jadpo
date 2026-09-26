@@ -1,0 +1,7 @@
+failure First: Conflict {
+    code "same"
+}
+
+failure Second: Conflict {
+    code "same"
+}

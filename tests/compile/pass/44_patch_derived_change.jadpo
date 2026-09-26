@@ -1,0 +1,28 @@
+entity Todo {
+    id: Uuid identity
+    due_at: DateTime?
+    reminder_sent_at: DateTime?
+}
+
+input PatchTodo {
+    due_at: Todo.due_at optional
+}
+
+failure EmptyTodoPatch: InvalidValue { code "empty_todo_patch" }
+failure TodoNotFound: NotFound { code "todo_not_found" }
+failure TodoConflict: Conflict { code "todo_conflict" }
+
+action patch_todo(id: Todo.id, input: PatchTodo) -> Todo
+    fails EmptyTodoPatch, TodoNotFound, TodoConflict
+{
+    return update required Todo {
+        where: id == id
+        patch: input
+        empty: EmptyTodoPatch
+        set: {
+            reminder_sent_at: none when input.due_at supplied
+        }
+        missing: TodoNotFound
+        conflict: TodoConflict
+    }
+}

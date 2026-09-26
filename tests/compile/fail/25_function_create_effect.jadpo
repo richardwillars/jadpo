@@ -1,0 +1,9 @@
+entity Customer {
+    id: Uuid
+}
+
+function invalid_create(id: Customer.id) -> Customer {
+    return create Customer {
+        id: id
+    }
+}

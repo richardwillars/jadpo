@@ -1,0 +1,33 @@
+type Email = Text {
+    format email
+}
+
+entity Customer {
+    email: Email
+}
+
+entity Supplier {
+    email: Email
+}
+
+value Result {
+    ok: Bool
+}
+
+failure CustomerRejected: Rejected {
+    code "customer_rejected"
+
+    internal {
+        email: Customer.email
+    }
+}
+
+action reject_supplier(supplier: Supplier) -> Result
+    fails CustomerRejected
+{
+    reject CustomerRejected {
+        internal {
+            email: supplier.email
+        }
+    }
+}

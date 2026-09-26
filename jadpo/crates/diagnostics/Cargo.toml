@@ -1,0 +1,12 @@
+[package]
+name = "jadpo-diagnostics"
+description = "Diagnostic types and rendering for Jadpo"
+documentation.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+path = "src/lib.rs"

@@ -1,0 +1,30 @@
+entity Customer {
+    id: Uuid
+    email: Text
+}
+
+input UpdateCustomer {
+    id: Customer.id
+    email: Customer.email
+}
+
+failure CustomerNotFound: NotFound {
+    code "customer_not_found"
+}
+
+failure CustomerConflict: Conflict {
+    code "customer_conflict"
+}
+
+action update_customer(input: UpdateCustomer) -> Customer
+    fails CustomerNotFound, CustomerConflict
+{
+    return update required Customer {
+        where: id == input.id
+        set: {
+            email: input.email
+        }
+        missing: CustomerNotFound
+        conflict: CustomerConflict
+    }
+}

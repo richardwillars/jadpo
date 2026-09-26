@@ -1,0 +1,94 @@
+# Generated Bun target v0.1
+
+**Status:** accepted for the P9 jadpo-seed slice  
+**Target:** TypeScript executed by Bun 1.2 or later
+
+`jadpo build <project>` first runs the complete syntax, semantic, nominal
+type, failure, and effect checks. It then refreshes the seven P8 artifacts and
+writes one disposable executable target:
+
+```text
+build/
+  target/
+    app.ts
+```
+
+The generated file has no package dependency or framework configuration. It
+exports a Fetch-compatible `handleRequest(request)` function and starts
+`Bun.serve` when executed as the main module.
+
+## Closed runtime dependency contract
+
+A generated application requires a Bun executable and nothing from a package
+registry. It must never require `bun install`, `npm install`, or an equivalent
+step.
+
+Generated TypeScript may import only:
+
+- `bun` and `bun:*` built-ins supplied by the Bun runtime; and
+- compiler-owned relative TypeScript modules emitted in the same `build/`
+  target set.
+
+The generator rejects any bare third-party module with
+`JADPO_TARGET_EXTERNAL_MODULE`. It also rejects generated `package.json`,
+`bun.lock`, `bun.lockb`, or `node_modules` artifacts with
+`JADPO_TARGET_DEPENDENCY_MANIFEST`. Authored source has no import or package
+escape hatch that can bypass this check.
+
+CI and acceptance commands use Bun's `--no-install` option. This matters because
+Bun can otherwise auto-install an unresolved bare package during execution;
+the disabled mode proves the target is closed over Bun's runtime and its own
+generated files.
+
+## Runtime boundaries
+
+The v0.1 generator implements the already-checked core constructs needed by the
+seed: semantic scalar types and constraints, closed input/output records,
+actions and functions, conditionals, validated construction, returns, typed
+rejection, and explicit public routes.
+
+At the HTTP boundary it:
+
+- generates a fresh `req_<uuid>` request ID and returns it in the body and
+  `x-request-id` response header;
+- parses JSON and validates the exact closed input shape before invoking the
+  action;
+- applies the same email, length, pattern, primitive, and record constraints as
+  the compiler slice;
+- validates and reconstructs the declared output, thereby serialising only its
+  declared fields;
+- maps declared domain failures through compiler-derived status, code, message,
+  and public-field allowlists;
+- never copies internal failure context into the response;
+- converts malformed or constraint-invalid input to the generic 400
+  `invalid_request` envelope; and
+- contains output-contract failures, unknown generated-runtime failures, and
+  other defects behind the generic 500 `internal_fault` envelope.
+
+Input validation is handled locally inside the route branch. A validation error
+after action invocation is therefore an internal contract defect, not a client
+400. This distinction prevents generated or application defects from being
+misclassified as caller mistakes.
+
+Authentication is deliberately not stubbed. A route without `auth: public
+explicitly` produces `JADPO_TARGET_AUTH_NOT_IMPLEMENTED` until P11 provides the
+required-default authentication runtime.
+
+## Executable evidence
+
+The [Bun acceptance suite](../tests/runtime/jadpo-seed.test.ts) starts a real
+TCP listener on a bounded temporary localhost port and sends Fetch requests
+through the generated handler. It proves:
+
+- a valid registration returns the exact declared output;
+- malformed email, constrained invite code, malformed JSON, and unknown fields
+  all fail before action execution with a safe 400 response;
+- the exact reserved invite code maps automatically to the declared 422
+  failure; and
+- neither the internal `invite_code` field nor its `reserved` value appears in
+  the public response.
+
+`bun build --no-install` also bundles the generated file successfully as a
+dependency-free Bun entry point. Generated target source remains disposable
+and is not the normal review or debugging surface; authored source, derived
+audits, OpenAPI, and semantic metadata retain those roles.

@@ -1,0 +1,8 @@
+type Email = Text {
+    format email
+}
+
+function preserve_email() -> Email {
+    var raw: Text = Email("person@example.com")
+    return Email("fallback@example.com")
+}

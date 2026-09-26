@@ -1,0 +1,14 @@
+{
+  "fixture_version": 1,
+  "result": "fail",
+  "diagnostics": [
+    {
+      "code": "TYPE_SIBLING_MISMATCH",
+      "primary_match": "supplier.email",
+      "expected_type": "Customer.email",
+      "received_type": "Supplier.email",
+      "shared_parent": "Email"
+    }
+  ]
+}
+

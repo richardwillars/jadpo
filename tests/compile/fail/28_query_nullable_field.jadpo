@@ -1,0 +1,9 @@
+entity Customer {
+    email: Text?
+}
+
+action find_customer(email: Customer.email?) -> Customer? {
+    return query optional Customer {
+        where: email == email
+    }
+}

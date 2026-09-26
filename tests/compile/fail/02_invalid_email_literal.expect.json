@@ -1,0 +1,12 @@
+{
+  "fixture_version": 1,
+  "result": "fail",
+  "diagnostics": [
+    {
+      "code": "TYPE_INVALID_LITERAL",
+      "primary_match": "Email(\"not-an-email\")",
+      "target_type": "Email"
+    }
+  ]
+}
+

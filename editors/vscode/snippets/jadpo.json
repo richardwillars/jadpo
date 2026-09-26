@@ -1,0 +1,43 @@
+{
+  "Enum": {
+    "prefix": "enum",
+    "body": ["enum ${1:State} {", "    ${2:ready}", "    ${3:failed}", "}"],
+    "description": "Closed enum"
+  },
+  "Tagged enum": {
+    "prefix": "tagged-enum",
+    "body": [
+      "enum ${1:Outcome} {",
+      "    ${2:pending}",
+      "    ${3:complete} {",
+      "        ${4:value}: ${5:Text}",
+      "    }",
+      "}"
+    ],
+    "description": "Closed enum with a data-carrying variant"
+  },
+  "Exhaustive match": {
+    "prefix": "match",
+    "body": ["match ${1:value} {", "    ${2:State.ready} => {", "        ${3}", "    }", "    ${4:State.failed} => {", "        ${5}", "    }", "}"],
+    "description": "Exhaustive match"
+  },
+  "Test": {
+    "prefix": "test",
+    "body": ["test \"${1:behaviour}\" {", "    ${2:assert true}", "}"],
+    "description": "Authored Jadpo test"
+  },
+  "Optional match": {
+    "prefix": "match-optional",
+    "body": [
+      "match ${1:value} {",
+      "    none => {",
+      "        ${2}",
+      "    }",
+      "    some(${3:present}) => {",
+      "        ${4}",
+      "    }",
+      "}"
+    ],
+    "description": "Exhaustively match and narrow a nullable value"
+  }
+}

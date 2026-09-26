@@ -1,0 +1,16 @@
+entity Customer {
+    id: Uuid
+}
+
+entity Order {
+    id: Uuid
+}
+
+function accept_customer_id(id: Customer.id) -> Customer.id {
+    return id
+}
+
+function misuse_order_id(order: Order) -> Customer.id {
+    return accept_customer_id(order.id)
+}
+

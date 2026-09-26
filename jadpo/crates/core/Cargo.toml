@@ -1,0 +1,17 @@
+[package]
+name = "jadpo-core"
+description = "Compiler and artifact generation core for Jadpo"
+documentation.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+jadpo-diagnostics = { path = "../diagnostics" }
+jadpo-semantic = { path = "../semantic" }
+jadpo-syntax = { path = "../syntax" }
+
+[lib]
+path = "src/lib.rs"

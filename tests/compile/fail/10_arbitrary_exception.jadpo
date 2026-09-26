@@ -1,0 +1,8 @@
+type Email = Text {
+    format email
+}
+
+function fail_with_exception() -> Email {
+    throw Error("boom")
+}
+

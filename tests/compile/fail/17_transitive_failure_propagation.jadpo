@@ -1,0 +1,18 @@
+value RegistrationResult {
+    accepted: Bool
+}
+
+failure RegistrationClosed: Conflict {
+    code "registration_closed"
+}
+
+action child(
+) -> RegistrationResult
+    fails RegistrationClosed
+{
+    reject RegistrationClosed
+}
+
+action parent() -> RegistrationResult {
+    return child()
+}

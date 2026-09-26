@@ -1,0 +1,11 @@
+module todo.api
+import todo.domain { Todo, TodoTitle }
+
+public input CreateTodo {
+    title: TodoTitle
+}
+
+public output TodoView {
+    id: Todo.id
+    title: Todo.title
+}

@@ -1,0 +1,42 @@
+{
+  "name": "jadpo-language",
+  "displayName": "Jadpo Language",
+  "description": "Compiler-backed language support, navigation, diagnostics, formatting, and snippets for Jadpo.",
+  "version": "0.0.1",
+  "publisher": "jadpo",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages", "Linters", "Formatters"],
+  "activationEvents": ["onLanguage:jadpo", "onCommand:jadpo.check"],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "jadpo",
+        "aliases": ["Jadpo", "jadpo"],
+        "extensions": [".jadpo"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "jadpo",
+        "scopeName": "source.jadpo",
+        "path": "./syntaxes/jadpo.tmLanguage.json"
+      }
+    ],
+    "snippets": [{ "language": "jadpo", "path": "./snippets/jadpo.json" }],
+    "commands": [
+      { "command": "jadpo.check", "title": "Jadpo: Check Project" }
+    ],
+    "configuration": {
+      "title": "Jadpo",
+      "properties": {
+        "jadpo.executable": {
+          "type": "string",
+          "default": "jadpo",
+          "description": "Path to the Jadpo CLI executable."
+        }
+      }
+    }
+  }
+}

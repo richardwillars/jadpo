@@ -1,0 +1,13 @@
+value RegistrationResult {
+    accepted: Bool
+}
+
+failure RegistrationClosed: Conflict {
+    code "registration_closed"
+    message "Registration is closed."
+}
+
+action register() -> RegistrationResult {
+    reject RegistrationClosed
+}
+

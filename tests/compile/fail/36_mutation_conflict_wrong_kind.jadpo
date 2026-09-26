@@ -1,0 +1,13 @@
+entity Customer { id: Uuid }
+failure CustomerNotFound: NotFound { code "customer_not_found" }
+failure WrongConflict: Rejected { code "wrong_conflict" }
+
+action delete_customer(id: Customer.id) -> Customer
+    fails CustomerNotFound, WrongConflict
+{
+    return delete required Customer {
+        where: id == id
+        missing: CustomerNotFound
+        conflict: WrongConflict
+    }
+}

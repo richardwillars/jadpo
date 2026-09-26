@@ -1,0 +1,14 @@
+type Email = Text {
+    format email
+}
+
+input PatchCustomer {
+    email: Email optional
+    fallback: Email?
+}
+
+function empty_patch() -> PatchCustomer {
+    return PatchCustomer {
+        fallback: none
+    }
+}

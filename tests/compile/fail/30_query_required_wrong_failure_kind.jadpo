@@ -1,0 +1,16 @@
+entity Customer {
+    id: Uuid
+}
+
+failure LookupRejected: Rejected {
+    code "lookup_rejected"
+}
+
+action find_customer(id: Customer.id) -> Customer
+    fails LookupRejected
+{
+    return query required Customer {
+        where: id == id
+        missing: LookupRejected
+    }
+}

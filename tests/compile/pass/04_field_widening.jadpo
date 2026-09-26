@@ -1,0 +1,16 @@
+type Email = Text {
+    format email
+}
+
+entity Customer {
+    email: Email
+}
+
+function accept_email(email: Email) -> Email {
+    return email
+}
+
+function widen_customer_email(customer: Customer) -> Email {
+    return accept_email(customer.email)
+}
+

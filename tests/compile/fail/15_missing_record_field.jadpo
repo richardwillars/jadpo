@@ -1,0 +1,11 @@
+type Email = Text {
+    format email
+}
+
+output Receipt {
+    email: Email
+}
+
+function incomplete_receipt() -> Receipt {
+    return Receipt {}
+}

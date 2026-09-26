@@ -1,0 +1,31 @@
+input FindCustomer {
+    exists: Bool
+}
+
+output CustomerResult {
+    found: Bool
+}
+
+failure CustomerNotFound: NotFound {
+    code "customer_not_found"
+    message "Customer not found."
+}
+
+action find_customer(input: FindCustomer) -> CustomerResult
+    fails CustomerNotFound
+{
+    if input.exists == false {
+        reject CustomerNotFound
+    }
+
+    return CustomerResult {
+        found: true
+    }
+}
+
+route POST /customers/find {
+    auth: public explicitly
+    input: FindCustomer
+    output: CustomerResult
+    run: find_customer(input)
+}

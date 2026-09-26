@@ -1,0 +1,37 @@
+entity Customer {
+    id: Uuid
+}
+
+input LookupCustomer {
+    id: Customer.id
+}
+
+output CustomerResult {
+    id: Customer.id
+}
+
+failure CustomerNotFound: NotFound {
+    code "customer_not_found"
+    message "Customer not found."
+
+    internal {
+        customer_id: Customer.id
+    }
+}
+
+action lookup_customer(input: LookupCustomer) -> CustomerResult
+    fails CustomerNotFound
+{
+    reject CustomerNotFound {
+        internal {
+            customer_id: input.id
+        }
+    }
+}
+
+route POST /customers/lookup {
+    auth: public explicitly
+    input: LookupCustomer
+    output: CustomerResult
+    run: lookup_customer(input)
+}

@@ -1,0 +1,585 @@
+type Email = Text {
+    format email
+    max_length 254
+}
+
+entity Customer {
+    id: Uuid
+    email: Email
+}
+
+// Persistence metadata pressure case. It deliberately has no route yet: the
+// generated schema and manifest are the executable contract for this slice.
+entity Account {
+    id: Uuid identity
+    handle: Text unique
+    tenant: Text
+    owner_email: Email index
+    constraint tenant_owner: unique(tenant, owner_email)
+}
+
+entity User {
+    id: Uuid identity
+    email: Email unique
+    group: Text index
+    inverse todos: many Todo via Todo.owner_id
+    inverse notes: many Note via Note.owner_id
+    inverse profile: optional UserProfile via UserProfile.user_id
+}
+
+entity UserProfile {
+    id: Uuid identity
+    user_id: User.id unique references User.id on_delete cascade
+    display_name: Text
+}
+
+entity Todo {
+    id: Uuid identity
+    owner_id: User.id references User.id as owner on_delete cascade
+    title: Text
+}
+
+entity Note {
+    id: Uuid identity
+    owner_id: User.id references User.id on_delete cascade
+    body: Text
+}
+
+entity AtomicItem {
+    id: Uuid identity
+    key: Text unique
+}
+
+entity PatchItem {
+    id: Uuid identity
+    title: Text
+    note: Text?
+    marker: Text?
+    reviewer_id: User.id? references User.id on_delete set_null
+}
+
+input CreateCustomer {
+    id: Customer.id
+    email: Customer.email
+}
+
+input FindCustomer {
+    id: Customer.id
+}
+
+input UpdateCustomer {
+    id: Customer.id
+    email: Customer.email
+}
+
+input FindUserTodos {
+    id: User.id
+}
+
+input FindTodo {
+    id: Todo.id
+}
+
+input FindUserGroup {
+    group: User.group
+}
+
+input CreateAtomicPair {
+    first_id: AtomicItem.id
+    first_key: AtomicItem.key
+    second_id: AtomicItem.id
+    second_key: AtomicItem.key
+}
+
+input CreateAccount {
+    id: Account.id
+    handle: Account.handle
+    tenant: Account.tenant
+    owner_email: Account.owner_email
+}
+
+input UpdateAccount {
+    id: Account.id
+    handle: Account.handle
+    owner_email: Account.owner_email
+}
+
+input CreatePatchItem {
+    id: PatchItem.id
+    title: PatchItem.title
+    note: PatchItem.note
+    marker: PatchItem.marker
+    reviewer_id: PatchItem.reviewer_id
+}
+
+input PatchItemChanges {
+    title: PatchItem.title optional
+    note: PatchItem.note optional
+}
+
+input PatchItemRequest {
+    id: PatchItem.id
+    changes: PatchItemChanges
+}
+
+input FindPatchItem {
+    id: PatchItem.id
+}
+
+output UserTodos {
+    parent: User
+    todos: List<Todo>
+}
+
+output UserActivity {
+    parent: User
+    todos: List<Todo>
+    notes: List<Note>
+}
+
+output UserProfileResult {
+    parent: User
+    profile: UserProfile?
+}
+
+output TodoOwner {
+    parent: Todo
+    owner: User
+}
+
+output TodoOwnerProfile {
+    parent: Todo
+    owner: UserProfileResult
+}
+
+output PatchItemReviewer {
+    parent: PatchItem
+    reviewer_id: User?
+}
+
+output AtomicPair {
+    first: AtomicItem
+    second: AtomicItem
+}
+
+failure CustomerNotFound: NotFound {
+    code "customer_not_found"
+    message "Customer not found."
+
+    internal {
+        customer_id: Customer.id
+    }
+}
+
+failure CustomerMutationConflict: Conflict {
+    code "customer_mutation_conflict"
+    message "The customer could not be changed."
+}
+
+failure AtomicPairConflict: Conflict {
+    code "atomic_pair_conflict"
+    message "The atomic pair could not be created."
+}
+
+failure AccountNotFound: NotFound {
+    code "account_not_found"
+    message "Account not found."
+}
+
+failure AccountMutationConflict: Conflict {
+    code "account_mutation_conflict"
+    message "The account could not be changed."
+}
+
+failure AccountHandleTaken: Conflict {
+    code "account_handle_taken"
+    message "That account handle is already used."
+}
+
+failure AccountTenantOwnerTaken: Conflict {
+    code "account_tenant_owner_taken"
+    message "That owner already has an account in this tenant."
+}
+
+failure UserNotFound: NotFound {
+    code "user_not_found"
+    message "User not found."
+
+    internal {
+        user_id: User.id
+    }
+}
+
+failure TodoNotFound: NotFound {
+    code "todo_not_found"
+    message "Todo not found."
+}
+
+failure PatchItemNotFound: NotFound {
+    code "patch_item_not_found"
+    message "Patch item not found."
+}
+
+failure EmptyPatchItem: InvalidValue {
+    code "empty_patch_item"
+    message "Supply at least one patch field."
+}
+
+failure PatchItemConflict: Conflict {
+    code "patch_item_conflict"
+    message "The patch item could not be changed."
+}
+
+action create_customer(input: CreateCustomer) -> Customer
+    fails CustomerMutationConflict
+{
+    return create Customer {
+        id: input.id
+        email: input.email
+    } conflict: CustomerMutationConflict
+}
+
+action find_customer(input: FindCustomer) -> Customer? {
+    return query optional Customer {
+        where: id == input.id
+    }
+}
+
+action require_customer(input: FindCustomer) -> Customer
+    fails CustomerNotFound
+{
+    return query required Customer {
+        where: id == input.id
+        missing: CustomerNotFound {
+            internal {
+                customer_id: input.id
+            }
+        }
+    }
+}
+
+action update_customer(input: UpdateCustomer) -> Customer
+    fails CustomerNotFound, CustomerMutationConflict
+{
+    return update required Customer {
+        where: id == input.id
+        set: {
+            email: input.email
+        }
+        missing: CustomerNotFound {
+            internal {
+                customer_id: input.id
+            }
+        }
+        conflict: CustomerMutationConflict
+    }
+}
+
+action delete_customer(input: FindCustomer) -> Customer
+    fails CustomerNotFound, CustomerMutationConflict
+{
+    return delete required Customer {
+        where: id == input.id
+        missing: CustomerNotFound {
+            internal {
+                customer_id: input.id
+            }
+        }
+        conflict: CustomerMutationConflict
+    }
+}
+
+action list_user_todos(input: FindUserTodos) -> UserTodos
+    fails UserNotFound
+{
+    return query required User {
+        where: id == input.id
+        include: todos into: UserTodos order_by: id asc limit: 100 offset: 0
+        missing: UserNotFound {
+            internal {
+                user_id: input.id
+            }
+        }
+    }
+}
+
+action get_todo_owner(input: FindTodo) -> TodoOwner
+    fails TodoNotFound
+{
+    return query required Todo {
+        where: id == input.id
+        include: owner required into: TodoOwner
+        missing: TodoNotFound
+    }
+}
+
+action get_todo_owner_profile(input: FindTodo) -> TodoOwnerProfile
+    fails TodoNotFound
+{
+    return query required Todo {
+        where: id == input.id
+        include: owner.profile optional into: TodoOwnerProfile
+        missing: TodoNotFound
+    }
+}
+
+action get_user_profile(input: FindUserTodos) -> UserProfileResult
+    fails UserNotFound
+{
+    return query required User {
+        where: id == input.id
+        include: profile optional into: UserProfileResult
+        missing: UserNotFound {
+            internal {
+                user_id: input.id
+            }
+        }
+    }
+}
+
+action list_group_user_todos(input: FindUserGroup) -> List<UserTodos> {
+    return query many User {
+        where: group == input.group
+        order_by: id asc
+        limit: 2 offset: 0
+        include: todos into: UserTodos order_by: id asc limit: 2 offset: 0
+    }
+}
+
+action list_user_activity(input: FindUserTodos) -> UserActivity
+    fails UserNotFound
+{
+    return query required User {
+        where: id == input.id
+        include: todos into: UserActivity order_by: id asc limit: 2 offset: 0
+        include: notes into: UserActivity order_by: id asc limit: 2 offset: 0
+        missing: UserNotFound {
+            internal {
+                user_id: input.id
+            }
+        }
+    }
+}
+
+action list_group_user_activity(input: FindUserGroup) -> List<UserActivity> {
+    return query many User {
+        where: group == input.group
+        order_by: id asc
+        limit: 2 offset: 0
+        include: todos into: UserActivity order_by: id asc limit: 2 offset: 0
+        include: notes into: UserActivity order_by: id asc limit: 2 offset: 0
+    }
+}
+
+action create_atomic_item(id: AtomicItem.id, key: AtomicItem.key) -> AtomicItem
+    fails AtomicPairConflict
+{
+    return create AtomicItem {
+        id: id
+        key: key
+    } conflict: AtomicPairConflict
+}
+
+action create_atomic_pair(input: CreateAtomicPair) -> AtomicPair
+    fails AtomicPairConflict
+{
+    var first = create_atomic_item(input.first_id, input.first_key)
+    var second = create_atomic_item(input.second_id, input.second_key)
+    return AtomicPair {
+        first: first
+        second: second
+    }
+}
+
+action create_account(input: CreateAccount) -> Account
+    fails AccountHandleTaken, AccountTenantOwnerTaken, AccountMutationConflict
+{
+    return create Account {
+        id: input.id
+        handle: input.handle
+        tenant: input.tenant
+        owner_email: input.owner_email
+    }
+    conflict Account.handle: AccountHandleTaken
+    conflict Account.tenant_owner: AccountTenantOwnerTaken
+    conflict: AccountMutationConflict
+}
+
+action update_account(input: UpdateAccount) -> Account
+    fails AccountNotFound, AccountHandleTaken, AccountTenantOwnerTaken, AccountMutationConflict
+{
+    return update required Account {
+        where: id == input.id
+        set: {
+            handle: input.handle
+            owner_email: input.owner_email
+        }
+        missing: AccountNotFound
+        conflict Account.handle: AccountHandleTaken
+        conflict Account.tenant_owner: AccountTenantOwnerTaken
+        conflict: AccountMutationConflict
+    }
+}
+
+action create_patch_item(input: CreatePatchItem) -> PatchItem
+    fails PatchItemConflict
+{
+    return create PatchItem {
+        id: input.id
+        title: input.title
+        note: input.note
+        marker: input.marker
+        reviewer_id: input.reviewer_id
+    } conflict: PatchItemConflict
+}
+
+action get_patch_item_reviewer(input: FindPatchItem) -> PatchItemReviewer
+    fails PatchItemNotFound
+{
+    return query required PatchItem {
+        where: id == input.id
+        include: reviewer_id optional into: PatchItemReviewer
+        missing: PatchItemNotFound
+    }
+}
+
+action patch_item(id: PatchItem.id, changes: PatchItemChanges) -> PatchItem
+    fails EmptyPatchItem, PatchItemNotFound, PatchItemConflict
+{
+    return update required PatchItem {
+        where: id == id
+        patch: changes
+        empty: EmptyPatchItem
+        set: {
+            marker: none when changes.title supplied
+        }
+        missing: PatchItemNotFound
+        conflict: PatchItemConflict
+    }
+}
+
+route POST /customers {
+    auth: public explicitly
+    input: CreateCustomer
+    output: Customer
+    run: create_customer(input)
+}
+
+route POST /customers/find {
+    auth: public explicitly
+    input: FindCustomer
+    output: Customer?
+    run: find_customer(input)
+}
+
+route POST /customers/require {
+    auth: public explicitly
+    input: FindCustomer
+    output: Customer
+    run: require_customer(input)
+}
+
+route POST /customers/update {
+    auth: public explicitly
+    input: UpdateCustomer
+    output: Customer
+    run: update_customer(input)
+}
+
+route POST /customers/delete {
+    auth: public explicitly
+    input: FindCustomer
+    output: Customer
+    run: delete_customer(input)
+}
+
+route POST /users/todos {
+    auth: public explicitly
+    input: FindUserTodos
+    output: UserTodos
+    run: list_user_todos(input)
+}
+
+route POST /todos/owner {
+    auth: public explicitly
+    input: FindTodo
+    output: TodoOwner
+    run: get_todo_owner(input)
+}
+
+route POST /todos/owner-profile {
+    auth: public explicitly
+    input: FindTodo
+    output: TodoOwnerProfile
+    run: get_todo_owner_profile(input)
+}
+
+route POST /users/profile {
+    auth: public explicitly
+    input: FindUserTodos
+    output: UserProfileResult
+    run: get_user_profile(input)
+}
+
+route POST /users/todos/page {
+    auth: public explicitly
+    input: FindUserGroup
+    output: List<UserTodos>
+    run: list_group_user_todos(input)
+}
+
+route POST /users/activity {
+    auth: public explicitly
+    input: FindUserTodos
+    output: UserActivity
+    run: list_user_activity(input)
+}
+
+route POST /users/activity/page {
+    auth: public explicitly
+    input: FindUserGroup
+    output: List<UserActivity>
+    run: list_group_user_activity(input)
+}
+
+route POST /atomic-pairs {
+    auth: public explicitly
+    input: CreateAtomicPair
+    output: AtomicPair
+    run: create_atomic_pair(input)
+}
+
+route POST /accounts {
+    auth: public explicitly
+    input: CreateAccount
+    output: Account
+    run: create_account(input)
+}
+
+route POST /accounts/update {
+    auth: public explicitly
+    input: UpdateAccount
+    output: Account
+    run: update_account(input)
+}
+
+route POST /patch-items {
+    auth: public explicitly
+    input: CreatePatchItem
+    output: PatchItem
+    run: create_patch_item(input)
+}
+
+route POST /patch-items/patch {
+    auth: public explicitly
+    input: PatchItemRequest
+    output: PatchItem
+    run: patch_item(input.id, input.changes)
+}
+
+route POST /patch-items/reviewer {
+    auth: public explicitly
+    input: FindPatchItem
+    output: PatchItemReviewer
+    run: get_patch_item_reviewer(input)
+}

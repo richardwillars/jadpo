@@ -1,0 +1,24 @@
+entity Customer {
+    id: Uuid identity
+    email: Text
+}
+
+input PatchCustomer {
+    display_name: Text optional
+}
+
+failure EmptyCustomerPatch: InvalidValue { code "empty_customer_patch" }
+failure CustomerNotFound: NotFound { code "customer_not_found" }
+failure CustomerConflict: Conflict { code "customer_conflict" }
+
+action patch_customer(id: Customer.id, input: PatchCustomer) -> Customer
+    fails EmptyCustomerPatch, CustomerNotFound, CustomerConflict
+{
+    return update required Customer {
+        where: id == id
+        patch: input
+        empty: EmptyCustomerPatch
+        missing: CustomerNotFound
+        conflict: CustomerConflict
+    }
+}

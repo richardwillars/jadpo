@@ -1,0 +1,34 @@
+# Jadpo
+
+**Jadpo — one language for the whole web.**
+
+Jadpo is a programming environment designed for software written primarily by
+LLMs but reviewable and editable by humans. Its current implementation focuses
+on the backend and is still a design and falsification exercise.
+
+The central premise is that an LLM may propose an implementation, but a boring,
+deterministic compiler must decide whether that implementation is valid and
+permitted. Human review should focus on intent, policy, and explicit exceptions
+rather than generated framework code.
+
+Start with the [documentation index](docs/README.md). It explains the reading
+order, the authority of each document, and how decisions are recorded.
+The canonical public home for the project is [jadpo.dev](https://jadpo.dev/).
+
+Implementation progress is tracked in the
+[Jadpo implementation roadmap](docs/implementation-roadmap.md). The first implementation
+contract is the [core grammar](docs/grammar-v0.1.md) exercised by the
+[Jadpo seed application](examples/jadpo-seed/app.jadpo).
+
+The project remains a design and falsification exercise. A dependency-free Rust
+compiler workspace now implements the first complete semantic pipeline:
+recovering syntax, deterministic identities, nominal typing, validated
+construction, closed failure/effect checking, deterministic derived artifacts,
+and a reproducible static project scaffold. The Jadpo seed now runs through
+a generated TypeScript/Bun HTTP target with boundary validation and safe
+failure mapping. A bounded authored module system now enforces explicit module
+identity, selective imports, private-by-default visibility, and acyclic
+dependencies while preserving legacy header-free projects. The persistence slice is complete and the active P10R phase
+now has a candidate golden-todo contract, proof kernel, threat model, approval
+protocol, and preregistered comparison protocol awaiting independent review.
+Jadpo is not yet a general-purpose web environment.

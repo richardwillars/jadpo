@@ -1,0 +1,20 @@
+type Email = Text {
+    format email
+}
+
+entity Customer {
+    id: Uuid
+    email: Email
+}
+
+input CreateCustomer {
+    id: Customer.id
+    email: Customer.email
+}
+
+action create_customer(input: CreateCustomer) -> Customer {
+    return create Customer {
+        id: input.id
+        email: input.email
+    }
+}

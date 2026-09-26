@@ -1,0 +1,20 @@
+type Email = Text {
+    format email
+}
+
+entity Customer {
+    email: Email
+}
+
+entity Supplier {
+    email: Email
+}
+
+function customer_receipt(email: Customer.email) -> Customer.email {
+    return email
+}
+
+function misuse_supplier_email(supplier: Supplier) -> Customer.email {
+    return customer_receipt(supplier.email)
+}
+
