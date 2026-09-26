@@ -95,3 +95,8 @@ the distinct contracts for entity operations, deterministic query bounds,
 constraint mappings, omission-aware patches, and each supported include plan:
 to-many, owning-parent, inverse-one, and bounded two-hop. Real trigger-fixture
 coverage remains independently enforced by the strict completion gate.
+
+The `MOD_*`, `FMT_*`, and `LSP_*` families are fully authored. Module copy
+explains explicit visibility and acyclic imports; formatter copy distinguishes
+check drift from write failure; and language-server transport failures provide
+editor-specific recovery without exposing message bodies.

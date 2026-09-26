@@ -1305,6 +1305,123 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     })
 }
 
+fn module_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "MOD_DUPLICATE_IMPORT" => (
+            "Declaration is imported more than once",
+            "A module scope may bind an imported declaration name only once; repeated imports do not create a second distinct value or type.",
+            "Keep one import of this declaration",
+        ),
+        "MOD_DUPLICATE_MODULE" => (
+            "Module name is declared by more than one file",
+            "Each explicit module has one source file so its exports, imports, and declaration scope have a single owner.",
+            "Give each module file a unique module name",
+        ),
+        "MOD_IMPORT_CONFLICT" => (
+            "Imported name conflicts with a local declaration",
+            "The module already declares this name locally, so importing another declaration under the same name would make references ambiguous.",
+            "Remove the import or rename one of the declarations",
+        ),
+        "MOD_IMPORT_CYCLE" => (
+            "Module imports form a cycle",
+            "Modules must have an acyclic dependency order so declarations can be resolved and generated deterministically.",
+            "Move shared declarations or remove an import to break the cycle",
+        ),
+        "MOD_IMPORT_REQUIRED" => (
+            "Declaration is used without being imported",
+            "In explicit-module mode, declarations from another file are visible only when selected by an import in the current module.",
+            "Import the declaration from its module",
+        ),
+        "MOD_MODULE_REQUIRED" => (
+            "Source file is missing its module declaration",
+            "Once any source uses explicit modules, every source file must declare its module so cross-file visibility is deterministic.",
+            "Add a module declaration to this file",
+        ),
+        "MOD_PRIVATE_IMPORT" => (
+            "Imported declaration is private to its module",
+            "The target declaration exists but is not listed as public by its owning module, so another module cannot select it.",
+            "Export the declaration from its module or stop importing it",
+        ),
+        "MOD_PUBLIC_REQUIRES_MODULE" => (
+            "Public export requires explicit modules",
+            "A public declaration needs an owning module boundary; export markers cannot be used while the project is in implicit single-scope mode.",
+            "Declare modules for the project or remove the public export",
+        ),
+        "MOD_SELF_IMPORT" => (
+            "Module imports itself",
+            "Declarations in the current module are already in scope, and a self-import would create a dependency cycle without adding visibility.",
+            "Remove the self-import",
+        ),
+        "MOD_UNKNOWN_EXPORT" => (
+            "Imported declaration does not exist in the target module",
+            "The selected name is neither a public export nor a private declaration in the module being imported.",
+            "Correct the imported name or add and export that declaration",
+        ),
+        "MOD_UNKNOWN_MODULE" => (
+            "Imported module does not exist",
+            "No source file declares the module named by this import, so its selected declarations cannot be resolved.",
+            "Correct the module path or add the missing module file",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
+fn tooling_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "FMT_CHANGES_REQUIRED" => (
+            "Source files are not canonically formatted",
+            "The formatter check found source whose canonical Jadpo layout differs from the checked-in text.",
+            "Run `jadpo fmt` and review the resulting source changes",
+        ),
+        "FMT_WRITE_FAILED" => (
+            "Formatted source could not be written",
+            "The formatter produced canonical text but the source file could not be replaced, commonly because of filesystem permissions or an I/O failure.",
+            "Make the source writable and run the formatter again",
+        ),
+        "LSP_CONTENT_LENGTH_MISSING" => (
+            "Language-server message has no Content-Length header",
+            "The editor connection sent an LSP frame without the byte length required to read exactly one JSON-RPC message.",
+            "Restart the editor connection and check the LSP client transport",
+        ),
+        "LSP_JSON_INVALID" => (
+            "Language-server message is not valid JSON",
+            "The editor connection delivered a complete frame whose body could not be decoded as a JSON-RPC message.",
+            "Restart the editor connection and inspect the client message payload",
+        ),
+        "LSP_JSON_WRITE_FAILED" => (
+            "Language-server response could not be encoded",
+            "The server produced a response that could not be serialized as JSON for the editor connection.",
+            "Restart the language server and report the request that triggered this response",
+        ),
+        "LSP_READ_FAILED" => (
+            "Language-server input could not be read",
+            "The editor connection closed or failed while the server was reading an LSP header or message body.",
+            "Restart the editor connection; if it recurs, inspect the client transport logs",
+        ),
+        "LSP_ROOT_MISSING" => (
+            "Language server has no workspace root",
+            "The editor did not provide a workspace folder or root URI, so the server cannot discover the Jadpo project and its source files.",
+            "Open the Jadpo project folder as an editor workspace and restart the server",
+        ),
+        "LSP_WRITE_FAILED" => (
+            "Language-server response could not be written",
+            "The editor connection closed or failed while the server was sending a framed JSON-RPC response.",
+            "Restart the editor connection; if it recurs, inspect the client transport logs",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let (category, remainder) = code.split_once('_').unwrap_or(("diagnostic", code));
     let category = match category {
@@ -1335,7 +1452,9 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         .or_else(|| data_catalogue_copy(code))
         .or_else(|| core_type_catalogue_copy(code))
         .or_else(|| match_type_catalogue_copy(code))
-        .or_else(|| persistence_type_catalogue_copy(code));
+        .or_else(|| persistence_type_catalogue_copy(code))
+        .or_else(|| module_catalogue_copy(code))
+        .or_else(|| tooling_catalogue_copy(code));
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
@@ -2260,6 +2379,21 @@ mod tests {
             .iter()
             .filter(|code| code.starts_with("TYPE_"))
         {
+            let definition = catalogue_definition(code);
+            assert!(definition.authored_copy, "{code}");
+            assert!(!definition.reason.contains(code), "{code}");
+            assert_ne!(
+                definition.recommended_title, "Update the source to satisfy this rule",
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_module_format_and_lsp_diagnostic_has_rule_specific_public_copy() {
+        for code in CATALOGUE_CODES.iter().filter(|code| {
+            code.starts_with("MOD_") || code.starts_with("FMT_") || code.starts_with("LSP_")
+        }) {
             let definition = catalogue_definition(code);
             assert!(definition.authored_copy, "{code}");
             assert!(!definition.reason.contains(code), "{code}");
