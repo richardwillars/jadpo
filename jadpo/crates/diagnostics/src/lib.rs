@@ -751,6 +751,102 @@ fn route_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     })
 }
 
+fn data_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "DATA_COMPOUND_CONSTRAINT_FIELDS" => (
+            "Compound constraint needs at least two fields",
+            "A named compound identity, uniqueness rule, or index describes a multi-field storage shape; a single field uses its ordinary field modifier instead.",
+            "Add the other participating fields, or use a field-level modifier",
+        ),
+        "DATA_CONSTRAINT_DUPLICATE_FIELD" => (
+            "Compound constraint repeats a field",
+            "Each field may participate once in a compound constraint. Repetition does not add a column and makes the intended key shape unclear.",
+            "Remove the repeated field from the constraint",
+        ),
+        "DATA_CONSTRAINT_NULLABLE_FIELD" => (
+            "Compound constraint contains a nullable field",
+            "Jadpo does not define cross-adapter uniqueness or identity semantics for null inside compound keys, so constrained fields must be non-nullable.",
+            "Use non-nullable fields, or remove the field from the constraint",
+        ),
+        "DATA_CONSTRAINT_UNKNOWN_FIELD" => (
+            "Compound constraint names an unknown field",
+            "Every member of a compound constraint must resolve to a stored field on the same entity.",
+            "Correct the field name or add the missing entity field",
+        ),
+        "DATA_DUPLICATE_CONSTRAINT_SHAPE" => (
+            "Entity repeats the same constraint field set",
+            "Two persistence constraints over the same ordered fields describe the same storage shape and would generate redundant or conflicting database objects.",
+            "Keep one constraint for this field set",
+        ),
+        "DATA_IDENTITY_NULLABLE" => (
+            "Entity identity field cannot be nullable",
+            "Every stored entity instance needs a present, stable identity. A nullable identity could not address or reference every record.",
+            "Make the identity field non-nullable",
+        ),
+        "DATA_INVERSE_DUPLICATE_NAME" => (
+            "Inverse relationship name is already in use",
+            "Fields and inverse relationships share an entity member namespace so selection and generated output paths resolve unambiguously.",
+            "Rename the inverse relationship or conflicting field",
+        ),
+        "DATA_INVERSE_NOT_OWNING_REFERENCE" => (
+            "Inverse relationship does not target an owning reference",
+            "An inverse is derived from a stored reference field on the related entity; the named `via` field must be that owning reference.",
+            "Point `via` at the related entity's owning reference field",
+        ),
+        "DATA_INVERSE_OPTIONAL_NOT_UNIQUE" => (
+            "Optional inverse relationship is not unique",
+            "An optional one-to-one inverse may return at most one record, so its owning reference must be protected by a unique constraint.",
+            "Make the owning reference unique, or declare a many-valued inverse",
+        ),
+        "DATA_INVERSE_VIA_FIELD" => (
+            "Inverse relationship names an unknown `via` field",
+            "The `via` member must resolve to a stored field on the related entity before the compiler can derive the reverse relationship.",
+            "Correct the `via` field name on the inverse relationship",
+        ),
+        "DATA_MODIFIER_NON_ENTITY" => (
+            "Persistence modifier is only valid on entity fields",
+            "Identity, uniqueness, indexing, and reference modifiers describe stored columns and have no meaning on value, input, or output records.",
+            "Move the modifier to an entity field, or remove it",
+        ),
+        "DATA_MULTIPLE_IDENTITIES" => (
+            "Entity declares more than one identity",
+            "An entity has exactly one canonical identity used by references, generated persistence, and stable semantic IDs.",
+            "Keep one identity field or one named identity constraint",
+        ),
+        "DATA_RELATIONSHIP_CYCLE" => (
+            "Required cascading references form a delete cycle",
+            "A cycle of required references with cascading deletion has no safe starting point and can recursively delete the same dependency graph.",
+            "Break the cycle by changing one reference or its delete behavior",
+        ),
+        "DATA_RELATIONSHIP_SET_NULL_REQUIRED" => (
+            "Required reference cannot use `set_null` on delete",
+            "`set_null` clears the stored reference when its target is deleted, which is impossible for a non-nullable required field.",
+            "Make the reference nullable or choose `restrict` or `cascade`",
+        ),
+        "DATA_RELATIONSHIP_TARGET_FIELD" => (
+            "Reference target field does not exist",
+            "A stored reference must name a real field on its target entity so generated foreign keys and nominal types share one identity.",
+            "Correct the referenced target field",
+        ),
+        "DATA_RELATIONSHIP_TARGET_NOT_KEY" => (
+            "Reference target is not an identity or unique key",
+            "A relationship must point to a stable identity or unique field set; otherwise one stored reference could resolve to multiple target records.",
+            "Reference the target identity or another unique key",
+        ),
+        "DATA_RELATIONSHIP_TYPE_MISMATCH" => (
+            "Reference field type does not match its target",
+            "The stored reference and referenced target field must have the same nominal semantic type so values cannot cross identifier domains.",
+            "Use the referenced field's semantic type for this reference",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let (category, remainder) = code.split_once('_').unwrap_or(("diagnostic", code));
     let category = match category {
@@ -777,7 +873,8 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let authored = syntax_catalogue_copy(code)
         .or_else(|| semantic_catalogue_copy(code))
         .or_else(|| failure_catalogue_copy(code))
-        .or_else(|| route_catalogue_copy(code));
+        .or_else(|| route_catalogue_copy(code))
+        .or_else(|| data_catalogue_copy(code));
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
@@ -1600,6 +1697,22 @@ mod tests {
         for code in CATALOGUE_CODES
             .iter()
             .filter(|code| code.starts_with("ROUTE_"))
+        {
+            let definition = catalogue_definition(code);
+            assert!(definition.authored_copy, "{code}");
+            assert!(!definition.reason.contains(code), "{code}");
+            assert_ne!(
+                definition.recommended_title, "Update the source to satisfy this rule",
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_data_model_diagnostic_has_rule_specific_public_copy() {
+        for code in CATALOGUE_CODES
+            .iter()
+            .filter(|code| code.starts_with("DATA_"))
         {
             let definition = catalogue_definition(code);
             assert!(definition.authored_copy, "{code}");

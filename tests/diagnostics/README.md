@@ -73,3 +73,8 @@ public/internal context rules.
 The `ROUTE_*` family is fully authored. It covers authentication ownership,
 exactly one behavior form, consistent item separators, duplicate items, and the
 one-to-one typed relationship between URL placeholders and `path:` fields.
+
+The `DATA_*` family is fully authored. It explains compound storage
+constraints, canonical identity, owning/inverse relationship shape, nominal
+reference compatibility, delete behavior, and cycles without leaking adapter
+implementation details.
