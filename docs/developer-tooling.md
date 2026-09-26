@@ -128,6 +128,10 @@ machine-oriented commands continue to emit their JSON contracts directly.
 
 ### 3.2 IDE presentation
 
+The normative cross-audience shapes, catalogue quality gates, and the
+human-owned invalid-authentication example are recorded in the
+[diagnostic presentation contract](diagnostic-presentation-contract.md).
+
 The LSP transports the same semantic diagnostic object, using standard
 diagnostic `data` and code-action mechanisms rather than embedding a second
 catalogue in the editor. Presentation is progressive:

@@ -242,6 +242,15 @@ item should update the charter, affected specifications, and examples.
 - Parser cascades and dependent consequences are grouped beneath one root cause.
   Pipeline summaries such as "type checking failed" are report status, not
   additional user problems.
+- Public catalogue entries may not fall back to identifier-derived summaries,
+  “compiler-enforced invariant” reasons, or “update the source” advice. Every
+  public code has authored, fixture-backed repair guidance and passes the shared
+  [diagnostic presentation contract](diagnostic-presentation-contract.md).
+- An invalid route authentication value is one root diagnostic over the value,
+  not a token cascade. Because `auth: none` disables the authenticated default,
+  the diagnostic is a human-owned security decision: retain authentication by
+  removing the item, or intentionally use the exact `none` opt-out. Neither
+  choice is silently preferred or applied by an agent.
 - Compiler diagnostics, public HTTP failures, operational telemetry, and
   agent incident packets are distinct audience-specific schemas. None can be
   serialized directly as another.
