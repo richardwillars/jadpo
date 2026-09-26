@@ -32,7 +32,10 @@ Coverage is split by responsibility:
   protocol; and
 - compile fixtures prove exact root-diagnostic sequences and byte ranges. A
   fixture may additionally assert the exact summary, reason fragment, repair
-  classification, owner, context, alternatives, replacements, and impact.
+  classification, owner, context, alternatives, replacements, and impact; and
+- focused Rust tests count as real trigger evidence only when the test body
+  names and asserts the diagnostic it exercises. Generic catalogue and
+  projection sweeps do not satisfy this requirement.
 
 Catalogue discovery scans diagnostic identifier tokens rather than naively
 splitting Rust source on quotation marks. Escaped JSON literals therefore
@@ -58,8 +61,8 @@ cargo test -p jadpo-diagnostics strict_public_catalogue_has_no_placeholders_and_
 ```
 
 It must be made non-ignored, and must pass, before DX2 can be called complete.
-This red gate is the work queue for replacing every remaining generic message
-with rule-specific copy and a real triggering fixture.
+This red gate is the work queue for giving every public diagnostic a real
+triggering compile fixture or focused asserted Rust scenario.
 
 The `SYN_*` catalogue family is fully authored. Its public copy now describes
 the concrete grammar rule and a usable next step; the general parser expectation

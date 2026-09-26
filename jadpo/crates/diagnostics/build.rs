@@ -21,6 +21,7 @@ fn main() {
     println!("cargo:rerun-if-changed={}", fixture_root.display());
     let mut fixtures = BTreeSet::new();
     visit_fixtures(repository, &fixture_root, &mut fixtures);
+    visit_rust_test_fixtures(repository, crates, &mut fixtures);
     let mut fixture_values = String::new();
     for (code, fixture) in fixtures {
         writeln!(fixture_values, "    ({code:?}, {fixture:?}),")
@@ -32,6 +33,68 @@ fn main() {
     let destination =
         PathBuf::from(env::var("OUT_DIR").expect("output directory")).join("catalogue_codes.rs");
     fs::write(destination, output).expect("write generated diagnostic catalogue code list");
+}
+
+fn visit_rust_test_fixtures(
+    repository: &Path,
+    path: &Path,
+    fixtures: &mut BTreeSet<(String, String)>,
+) {
+    let Ok(entries) = fs::read_dir(path) else {
+        return;
+    };
+    let mut entries = entries
+        .map(|entry| entry.expect("test evidence directory entry").path())
+        .collect::<Vec<_>>();
+    entries.sort();
+    for entry in entries {
+        if entry.is_dir() {
+            if entry.file_name().is_some_and(|name| name == "target") {
+                continue;
+            }
+            visit_rust_test_fixtures(repository, &entry, fixtures);
+            continue;
+        }
+        if !entry.extension().is_some_and(|extension| extension == "rs")
+            || entry.ends_with("diagnostics/src/lib.rs")
+        {
+            continue;
+        }
+        println!("cargo:rerun-if-changed={}", entry.display());
+        let source = fs::read_to_string(&entry)
+            .unwrap_or_else(|error| panic!("read {}: {error}", entry.display()));
+        let starts = source
+            .match_indices("#[test]")
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        for (position, start) in starts.iter().copied().enumerate() {
+            let end = starts.get(position + 1).copied().unwrap_or(source.len());
+            let test = &source[start..end];
+            if !test.contains("assert") {
+                continue;
+            }
+            let Some(name_start) = test.find("fn ").map(|index| index + 3) else {
+                continue;
+            };
+            let name = test[name_start..]
+                .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+                .next()
+                .unwrap_or("unnamed_test");
+            let path = entry
+                .strip_prefix(repository)
+                .expect("test evidence should be beneath repository")
+                .to_string_lossy()
+                .replace('\\', "/");
+            let fixture = format!("{path}#{name}");
+            for token in test.split(|character: char| {
+                !(character.is_ascii_uppercase() || character.is_ascii_digit() || character == '_')
+            }) {
+                if is_diagnostic_code(token) {
+                    fixtures.insert((token.to_owned(), fixture.clone()));
+                }
+            }
+        }
+    }
 }
 
 fn visit_fixtures(repository: &Path, path: &Path, fixtures: &mut BTreeSet<(String, String)>) {
