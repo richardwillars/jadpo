@@ -1,0 +1,7 @@
+output Health {
+    ok: Bool
+}
+
+path: {
+    probe_id: Uuid
+}

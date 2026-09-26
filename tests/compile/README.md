@@ -47,7 +47,7 @@ Diagnostic codes in these fixtures are part of the compiler-facing contract.
 Renaming one requires updating the roadmap, relevant specification, and all
 affected fixture expectations together.
 
-The current eighty-five pairs comprise the original ten type/failure cases plus
+The current eighty-six pairs comprise the original ten type/failure cases plus
 coverage for optional omission, nullable widening, implicit narrowing,
 semantic-to-primitive unwrapping, incomplete records, invariant collections,
 transitive failure propagation, function/action separation, missing failure
@@ -107,6 +107,9 @@ diagnostic. It also asserts the agent-facing summary, reason, owner, kind,
 bounded context, two security choices, edit replacements, and public-contract
 impact rather than accepting a generic token error or dependent route-item
 cascades.
+Fixture 72 covers a route item written at file scope. It requires a concrete
+top-level-declaration explanation and guided alternatives, rather than the
+identifier-derived “expected declaration” fallback.
 
 Expectation files retain established compiler codes as migration aliases. CLI
 and LSP diagnostics expose the canonical lower-dotted `ruleId` alongside those

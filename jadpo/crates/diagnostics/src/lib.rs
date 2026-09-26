@@ -450,6 +450,9 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
                 "RUNTIME_STARTUP_FAILED" => {
                     "Inspect the generated runtime startup event before retrying"
                 }
+                "SYN_EXPECTED_DECLARATION" => {
+                    "Move `{found}` into its owning declaration, or replace it with a top-level declaration"
+                }
                 _ => "Update the source to satisfy this rule",
             }
             .to_owned(),
@@ -475,6 +478,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "CLI_PRESENTATION_ARGUMENTS" => "Terminal presentation option is invalid".to_owned(),
         "RUNTIME_UNHANDLED_FAULT" => "Generated runtime contained an unexpected fault".to_owned(),
         "RUNTIME_STARTUP_FAILED" => "Generated runtime failed during startup".to_owned(),
+        "SYN_EXPECTED_DECLARATION" => "`{found}` cannot start a top-level declaration".to_owned(),
         _ => sentence_case_identifier(remainder),
     };
     let reason = match code {
@@ -489,6 +493,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "CLI_PRESENTATION_ARGUMENTS" => "Diagnostic format and colour flags must select one supported presentation without changing the semantic diagnostic payload.".to_owned(),
         "RUNTIME_UNHANDLED_FAULT" => "An exception outside the declared domain-failure boundary was contained by the generated runtime.".to_owned(),
         "RUNTIME_STARTUP_FAILED" => "The generated runtime could not establish its startup contract and did not report readiness.".to_owned(),
+        "SYN_EXPECTED_DECLARATION" => "Jadpo files accept `type`, `enum`, `entity`, `value`, `input`, `output`, `failure`, `function`, `action`, `test`, and `route` declarations at the top level. Route items such as `path:` belong inside a `route` block, so `{found}` cannot be parsed here.".to_owned(),
         _ => format!("The compiler-enforced `{code}` invariant is not satisfied at this location."),
     };
     let mut fixtures = CATALOGUE_FIXTURES
@@ -513,6 +518,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             | "CLI_PRESENTATION_ARGUMENTS"
             | "RUNTIME_UNHANDLED_FAULT"
             | "RUNTIME_STARTUP_FAILED"
+            | "SYN_EXPECTED_DECLARATION"
     );
     CatalogueDefinition {
         help_id: format!("diagnostics/{rule_id}"),
@@ -527,6 +533,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             "FAIL_STALE_DECLARATION" => vec!["callable", "declared", "reachable"],
             "CLI_INCIDENT_REVISION_MISMATCH" => vec!["eventRevision", "localRevision"],
             "ROUTE_AUTH_VALUE_INVALID" => vec!["route", "found"],
+            "SYN_EXPECTED_DECLARATION" => vec!["found"],
             _ => Vec::new(),
         },
         fixtures,
@@ -580,6 +587,18 @@ fn default_alternatives(code: &str, _definition: &CatalogueDefinition) -> Vec<Re
                 public_contract_effect: "The public security contract changes: this route becomes callable without authentication.".to_owned(),
             },
         ];
+    }
+    if code == "SYN_EXPECTED_DECLARATION" {
+        return vec![RepairStep {
+            kind: RepairKind::GuidedChoice,
+            title: "Remove the stray top-level construct".to_owned(),
+            reason: "Delete it only when it is leftover text rather than content intended for a declaration or route.".to_owned(),
+            decision_owner: DecisionOwner::Agent,
+            preferred: false,
+            edits: Vec::new(),
+            behavioral_effect: "The stray construct no longer contributes authored behavior.".to_owned(),
+            public_contract_effect: "Review whether the removed construct was intended to change a route or another public declaration.".to_owned(),
+        }];
     }
     let (title, reason) = match code {
         "FAIL_STALE_DECLARATION" => (

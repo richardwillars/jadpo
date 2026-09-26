@@ -82,7 +82,13 @@ impl<'source> Parser<'source> {
                 declarations.push(declaration);
             } else {
                 if self.diagnostics.len() == diagnostics_before {
-                    self.error_current("SYN_EXPECTED_DECLARATION");
+                    let token = self.current();
+                    self.diagnostic_at(
+                        Diagnostic::error("SYN_EXPECTED_DECLARATION").with_fact(
+                            DiagnosticFact::FoundValue(diagnostic_token_label(token, self.source)),
+                        ),
+                        token.range,
+                    );
                 }
                 self.recover_declaration();
             }
@@ -2342,6 +2348,29 @@ fn http_method_name(method: HttpMethod) -> &'static str {
     }
 }
 
+fn diagnostic_token_label(token: Token, source: &str) -> String {
+    let text = token.text(source);
+    if !text.is_empty()
+        && text.len() <= 64
+        && text
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    {
+        return text.to_owned();
+    }
+    match token.kind {
+        TokenKind::StringLiteral => "string literal".to_owned(),
+        TokenKind::IntegerLiteral | TokenKind::DecimalLiteral => "number literal".to_owned(),
+        TokenKind::RoutePath => "route path".to_owned(),
+        TokenKind::LeftBrace => "opening brace".to_owned(),
+        TokenKind::RightBrace => "closing brace".to_owned(),
+        TokenKind::Colon => "colon".to_owned(),
+        TokenKind::Comma => "comma".to_owned(),
+        TokenKind::Eof => "end of file".to_owned(),
+        _ => "this token".to_owned(),
+    }
+}
+
 fn route_item_removal_range(source: &str, item_start: usize, value_end: usize) -> (usize, usize) {
     let line_start = source[..item_start]
         .rfind('\n')
@@ -2897,6 +2926,13 @@ function choose(initial: Choice, replacement: Choice) -> Choice {
             } else if file_name == "71_invalid_route_auth_value.jadpo" {
                 assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
                 assert_eq!(parsed.diagnostics[0].code, "ROUTE_AUTH_VALUE_INVALID");
+            } else if file_name == "72_top_level_route_item.jadpo" {
+                assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
+                assert_eq!(parsed.diagnostics[0].code, "SYN_EXPECTED_DECLARATION");
+                assert_eq!(
+                    parsed.diagnostics[0].message,
+                    "`path` cannot start a top-level declaration"
+                );
             } else {
                 assert!(
                     parsed.diagnostics.is_empty(),
