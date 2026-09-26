@@ -1,0 +1,10 @@
+output Health {
+    ok: Bool
+}
+
+route GET /private-health {
+    output: Health
+    action {
+        return Health { ok: true }
+    }
+}

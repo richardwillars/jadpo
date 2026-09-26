@@ -103,7 +103,7 @@ fn scaffold_files(name: &str) -> Vec<ScaffoldFile> {
                 "    }\n",
                 "}\n\n",
                 "route GET /health {\n",
-                "    auth: public explicitly\n",
+                "    auth: none\n",
                 "    output: Health\n",
                 "    run: health()\n",
                 "}\n"
@@ -153,7 +153,7 @@ mod tests {
         assert!(analyzed.semantics.diagnostics.is_empty());
         assert!(analyzed.typing.diagnostics.is_empty());
         assert!(analyzed.failures.diagnostics.is_empty());
-        assert_eq!(derive_artifacts(&project, &analyzed).len(), 7);
+        assert_eq!(derive_artifacts(&project, &analyzed).len(), 9);
         assert!(files.iter().all(|file| !matches!(
             file.relative_path,
             "package.json" | "bun.lock" | "bun.lockb"

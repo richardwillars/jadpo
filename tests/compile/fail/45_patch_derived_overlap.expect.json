@@ -4,7 +4,7 @@
   "diagnostics": [
     {
       "code": "TYPE_PATCH_DERIVED_OVERLAP",
-      "primary_match": "patch: input"
+      "primary_match": "input"
     }
   ]
 }

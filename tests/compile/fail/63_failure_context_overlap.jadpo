@@ -1,0 +1,16 @@
+type Reference = Text {
+    max_length 64
+}
+
+failure PaymentRefused {
+    kind Rejected
+    code "payment_refused"
+
+    public {
+        reference: Reference
+    }
+
+    internal {
+        reference: Text
+    }
+}

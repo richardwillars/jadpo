@@ -3,7 +3,7 @@ entity Customer {
 }
 
 function invalid_query(id: Customer.id) -> Customer? {
-    return query optional Customer {
+    return attempt query optional Customer {
         where: id == id
     }
 }

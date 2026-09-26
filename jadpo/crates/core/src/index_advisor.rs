@@ -244,11 +244,7 @@ fn collect_queries<'a>(block: &'a Block, queries: &mut Vec<&'a QueryExpression>)
             Statement::Assignment(statement) => collect_expression(&statement.value, queries),
             Statement::Return(statement) => collect_expression(&statement.value, queries),
             Statement::Reject(statement) => {
-                for field in statement
-                    .public_values
-                    .iter()
-                    .chain(&statement.internal_values)
-                {
+                for field in &statement.values {
                     collect_expression(&field.value, queries);
                 }
             }
@@ -316,6 +312,7 @@ fn collect_expression<'a>(expression: &'a Expression, queries: &mut Vec<&'a Quer
         }
         Expression::Unary(unary) => collect_expression(&unary.value, queries),
         Expression::Grouped(grouped) => collect_expression(&grouped.value, queries),
+        Expression::Attempt(attempt) => collect_expression(&attempt.value, queries),
         Expression::Literal(_) | Expression::Name(_) | Expression::Missing(_) => {}
     }
 }
@@ -404,7 +401,7 @@ mod tests {
         fs::create_dir_all(&root).expect("test project should be created");
         fs::write(
             root.join("app.jadpo"),
-            "entity Item { id: Uuid identity category: Text }\ninput ListItems { category: Item.category }\naction list_items(input: ListItems) -> List<Item> { return query many Item { where: category == input.category order_by: id asc } }\n",
+            "entity Item { id: Uuid identity category: Text }\ninput ListItems { category: Item.category }\naction list_items(input: ListItems) -> List<Item> { return attempt query many Item { where: category == input.category order_by: id asc } }\n",
         )
         .expect("test source should be written");
         let analyzed = analyze_project(&root).expect("test project should analyze");

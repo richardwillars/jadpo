@@ -2,7 +2,8 @@ value RegistrationResult {
     accepted: Bool
 }
 
-failure RegistrationClosed: Conflict {
+failure RegistrationClosed {
+    kind Conflict
     code "registration_closed"
     message "Registration is closed."
 }

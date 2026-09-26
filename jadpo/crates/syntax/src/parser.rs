@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::{lex, TextRange, Token, TokenKind};
 use jadpo_diagnostics::{Diagnostic, SourceSpan};
+use std::collections::BTreeSet;
 use std::path::Path;
 
 pub type ParseResult = ParsedSyntax;
@@ -434,10 +435,9 @@ impl<'source> Parser<'source> {
             .range
             .start;
         let name = self.expect_name("expected a failure name")?;
-        self.expect(TokenKind::Colon, "expected `:` before failure kind")?;
-        let kind = self.expect_name("expected a standard failure kind")?;
-        self.expect(TokenKind::LeftBrace, "expected `{` after failure kind")?;
+        self.expect(TokenKind::LeftBrace, "expected `{` after failure name")?;
 
+        let mut kind = None;
         let mut code = None;
         let mut message = None;
         let mut public_fields = Vec::new();
@@ -446,6 +446,10 @@ impl<'source> Parser<'source> {
         while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
             let before = self.cursor;
             match self.current_kind() {
+                TokenKind::Kind => {
+                    self.bump();
+                    kind = self.expect_name("expected a standard failure kind after `kind`");
+                }
                 TokenKind::Code => {
                     self.bump();
                     code = self.parse_literal_of(TokenKind::StringLiteral);
@@ -469,9 +473,10 @@ impl<'source> Parser<'source> {
                 _ => {
                     self.error_current(
                         "SYN_EXPECTED_FAILURE_ITEM",
-                        "expected `code`, `message`, `public`, or `internal`",
+                        "expected `kind`, `code`, `message`, `public`, or `internal`",
                     );
                     self.recover_until(&[
+                        TokenKind::Kind,
                         TokenKind::Code,
                         TokenKind::Message,
                         TokenKind::Public,
@@ -500,10 +505,20 @@ impl<'source> Parser<'source> {
                 name.range,
             );
         }
+        if kind.is_none() {
+            self.error_at(
+                "SYN_FAILURE_KIND_REQUIRED",
+                "failure declaration requires an explicit `kind` member",
+                name.range,
+            );
+        }
 
         Some(FailureDeclaration {
             name,
-            kind,
+            kind: kind.unwrap_or_else(|| Name {
+                text: "InternalFault".to_owned(),
+                range: TextRange::new(start, start),
+            }),
             code,
             message,
             public_fields,
@@ -531,8 +546,9 @@ impl<'source> Parser<'source> {
         let return_annotation_range = TextRange::new(return_start, return_type.range.end);
 
         let mut failures = Vec::new();
+        let mut failures_range = None;
         if self.at(TokenKind::Fails) {
-            self.bump();
+            let failures_start = self.bump().range.start;
             loop {
                 if let Some(failure) = self.expect_name("expected failure name after `fails`") {
                     failures.push(failure);
@@ -542,6 +558,9 @@ impl<'source> Parser<'source> {
                 }
                 self.bump();
             }
+            failures_range = failures
+                .last()
+                .map(|failure| TextRange::new(failures_start, failure.range.end));
         }
 
         let body = self.parse_block()?;
@@ -553,6 +572,7 @@ impl<'source> Parser<'source> {
             return_type,
             return_annotation_range,
             failures,
+            failures_range,
             body,
             range: TextRange::new(start, end),
         })
@@ -710,49 +730,18 @@ impl<'source> Parser<'source> {
             .range
             .start;
         let failure = self.expect_name("expected failure name after `reject`")?;
-        let mut public_values = Vec::new();
-        let mut internal_values = Vec::new();
+        let mut values = Vec::new();
         let mut end = failure.range.end;
 
         if self.at(TokenKind::LeftBrace) {
-            self.bump();
-            while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
-                match self.current_kind() {
-                    TokenKind::Public => {
-                        self.bump();
-                        if let Some((values, _)) = self.parse_object_body() {
-                            public_values = values;
-                        }
-                    }
-                    TokenKind::Internal => {
-                        self.bump();
-                        if let Some((values, _)) = self.parse_object_body() {
-                            internal_values = values;
-                        }
-                    }
-                    _ => {
-                        self.error_current(
-                            "SYN_EXPECTED_REJECTION_ITEM",
-                            "expected `public` or `internal` rejection values",
-                        );
-                        self.recover_until(&[
-                            TokenKind::Public,
-                            TokenKind::Internal,
-                            TokenKind::RightBrace,
-                        ]);
-                    }
-                }
-            }
-            end = self
-                .expect(TokenKind::RightBrace, "expected `}` after rejection values")?
-                .range
-                .end;
+            let parsed = self.parse_object_body()?;
+            values = parsed.0;
+            end = parsed.1;
         }
 
         Some(RejectStatement {
             failure,
-            public_values,
-            internal_values,
+            values,
             range: TextRange::new(start, end),
         })
     }
@@ -827,7 +816,11 @@ impl<'source> Parser<'source> {
                     range: token.range,
                 }))
             }
-            TokenKind::Identifier | TokenKind::Input | TokenKind::Output | TokenKind::Value => {
+            TokenKind::Identifier
+            | TokenKind::Input
+            | TokenKind::Output
+            | TokenKind::Value
+            | TokenKind::Path => {
                 let path = self.parse_qualified_name()?;
                 let range = TextRange::new(path.first()?.range.start, path.last()?.range.end);
                 let target = NameExpression { path, range };
@@ -929,6 +922,14 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_prefix_expression(&mut self, allow_construction: bool) -> Expression {
+        if self.at(TokenKind::Attempt) {
+            let start = self.bump().range.start;
+            let value = self.parse_prefix_expression(allow_construction);
+            return Expression::Attempt(AttemptExpression {
+                range: TextRange::new(start, value.range().end),
+                value: Box::new(value),
+            });
+        }
         if self.at(TokenKind::Not) || self.at(TokenKind::Minus) {
             let token = self.bump();
             let operator = if token.kind == TokenKind::Not {
@@ -956,9 +957,11 @@ impl<'source> Parser<'source> {
                 .parse_any_literal()
                 .map(Expression::Literal)
                 .unwrap_or_else(|| Expression::Missing(self.current().range)),
-            TokenKind::Identifier | TokenKind::Input | TokenKind::Output | TokenKind::Value => {
-                self.parse_named_expression_with_construction(allow_construction)
-            }
+            TokenKind::Identifier
+            | TokenKind::Input
+            | TokenKind::Output
+            | TokenKind::Value
+            | TokenKind::Path => self.parse_named_expression_with_construction(allow_construction),
             TokenKind::LeftParen => {
                 let start = self.bump().range.start;
                 let value = self.parse_expression();
@@ -1329,52 +1332,18 @@ impl<'source> Parser<'source> {
     fn parse_failure_binding(&mut self) -> Option<RejectStatement> {
         let failure = self.expect_name("expected failure name after `missing:`")?;
         let start = failure.range.start;
-        let mut public_values = Vec::new();
-        let mut internal_values = Vec::new();
+        let mut values = Vec::new();
         let mut end = failure.range.end;
 
         if self.at(TokenKind::LeftBrace) {
-            self.bump();
-            while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
-                match self.current_kind() {
-                    TokenKind::Public => {
-                        self.bump();
-                        if let Some((values, _)) = self.parse_object_body() {
-                            public_values = values;
-                        }
-                    }
-                    TokenKind::Internal => {
-                        self.bump();
-                        if let Some((values, _)) = self.parse_object_body() {
-                            internal_values = values;
-                        }
-                    }
-                    _ => {
-                        self.error_current(
-                            "SYN_EXPECTED_REJECTION_ITEM",
-                            "expected `public` or `internal` missing-failure values",
-                        );
-                        self.recover_until(&[
-                            TokenKind::Public,
-                            TokenKind::Internal,
-                            TokenKind::RightBrace,
-                        ]);
-                    }
-                }
-            }
-            end = self
-                .expect(
-                    TokenKind::RightBrace,
-                    "expected `}` after missing-failure values",
-                )?
-                .range
-                .end;
+            let parsed = self.parse_object_body()?;
+            values = parsed.0;
+            end = parsed.1;
         }
 
         Some(RejectStatement {
             failure,
-            public_values,
-            internal_values,
+            values,
             range: TextRange::new(start, end),
         })
     }
@@ -1774,7 +1743,7 @@ impl<'source> Parser<'source> {
         let mut path = vec![self.expect_contextual_name("expected name")?];
         while self.at(TokenKind::Dot) {
             self.bump();
-            path.push(self.expect_name("expected name after `.`")?);
+            path.push(self.expect_contextual_name("expected name after `.`")?);
         }
         Some(path)
     }
@@ -2017,40 +1986,97 @@ impl<'source> Parser<'source> {
             }
         };
         self.bump();
-        let path_token = self.expect(TokenKind::Path, "expected route path")?;
+        let path_token = self.expect(TokenKind::RoutePath, "expected route path")?;
         let path = path_token.text(self.source).to_owned();
         self.expect(TokenKind::LeftBrace, "expected `{` after route path")?;
 
         let mut public = false;
+        let mut auth_seen = false;
+        let mut path_fields = Vec::new();
+        let mut path_seen = false;
         let mut input = None;
         let mut output = None;
         let mut run = None;
+        let mut inline_action = None;
 
         while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
             let before = self.cursor;
             match self.current_kind() {
                 TokenKind::Auth => {
-                    self.bump();
+                    let item = self.bump();
+                    if auth_seen {
+                        self.error_at(
+                            "ROUTE_ITEM_DUPLICATE",
+                            "route item `auth` may appear only once",
+                            item.range,
+                        );
+                    }
+                    auth_seen = true;
                     self.expect(TokenKind::Colon, "expected `:` after route item `auth`")?;
-                    self.expect(TokenKind::Public, "expected `public` after `auth:`")?;
-                    self.expect(
-                        TokenKind::Explicitly,
-                        "expected `explicitly` after `auth: public`",
-                    )?;
+                    self.expect(TokenKind::NoneLiteral, "expected `none` after `auth:`")?;
                     public = true;
                 }
+                TokenKind::Path => {
+                    let item = self.bump();
+                    if path_seen {
+                        self.error_at(
+                            "ROUTE_ITEM_DUPLICATE",
+                            "route item `path` may appear only once",
+                            item.range,
+                        );
+                    }
+                    path_seen = true;
+                    if let Some((fields, _)) = self.parse_field_block() {
+                        for field in &fields {
+                            if field.field_type.nullable
+                                || field.optional
+                                || !field.constraints.is_empty()
+                                || !field.persistence.is_empty()
+                                || field.reference.is_some()
+                            {
+                                self.error_at(
+                                    "ROUTE_PATH_FIELD_MODIFIER_INVALID",
+                                    "route path fields declare only a required semantic type",
+                                    field.range,
+                                );
+                            }
+                        }
+                        path_fields = fields;
+                    }
+                }
                 TokenKind::Input => {
-                    self.bump();
+                    let item = self.bump();
+                    if input.is_some() {
+                        self.error_at(
+                            "ROUTE_ITEM_DUPLICATE",
+                            "route item `input` may appear only once",
+                            item.range,
+                        );
+                    }
                     self.expect(TokenKind::Colon, "expected `:` after route item `input`")?;
                     input = self.parse_type_reference();
                 }
                 TokenKind::Output => {
-                    self.bump();
+                    let item = self.bump();
+                    if output.is_some() {
+                        self.error_at(
+                            "ROUTE_ITEM_DUPLICATE",
+                            "route item `output` may appear only once",
+                            item.range,
+                        );
+                    }
                     self.expect(TokenKind::Colon, "expected `:` after route item `output`")?;
                     output = self.parse_type_reference();
                 }
                 TokenKind::Run => {
-                    self.bump();
+                    let item = self.bump();
+                    if run.is_some() {
+                        self.error_at(
+                            "ROUTE_ITEM_DUPLICATE",
+                            "route item `run` may appear only once",
+                            item.range,
+                        );
+                    }
                     self.expect(TokenKind::Colon, "expected `:` after route item `run`")?;
                     let expression = self.parse_named_expression();
                     match expression {
@@ -2062,16 +2088,56 @@ impl<'source> Parser<'source> {
                         ),
                     }
                 }
+                TokenKind::Action => {
+                    let item = self.bump();
+                    if inline_action.is_some() {
+                        self.error_at(
+                            "ROUTE_ITEM_DUPLICATE",
+                            "inline route action may appear only once",
+                            item.range,
+                        );
+                    }
+                    let action_start = item.range.start;
+                    let mut failures = Vec::new();
+                    let mut failures_range = None;
+                    if self.at(TokenKind::Fails) {
+                        let failures_start = self.bump().range.start;
+                        loop {
+                            if let Some(failure) =
+                                self.expect_name("expected problem name after `fails`")
+                            {
+                                failures.push(failure);
+                            }
+                            if !self.at(TokenKind::Comma) {
+                                break;
+                            }
+                            self.bump();
+                        }
+                        failures_range = failures
+                            .last()
+                            .map(|failure| TextRange::new(failures_start, failure.range.end));
+                    }
+                    if let Some(body) = self.parse_block() {
+                        inline_action = Some(InlineAction {
+                            range: TextRange::new(action_start, body.range.end),
+                            failures,
+                            failures_range,
+                            body,
+                        });
+                    }
+                }
                 _ => {
                     self.error_current(
                         "SYN_EXPECTED_ROUTE_ITEM",
-                        "expected `auth`, `input`, `output`, or `run`",
+                        "expected `auth`, `path`, `input`, `output`, `run`, or `action`",
                     );
                     self.recover_until(&[
                         TokenKind::Auth,
+                        TokenKind::Path,
                         TokenKind::Input,
                         TokenKind::Output,
                         TokenKind::Run,
+                        TokenKind::Action,
                         TokenKind::RightBrace,
                     ]);
                 }
@@ -2086,14 +2152,109 @@ impl<'source> Parser<'source> {
             .range
             .end;
 
+        if run.is_some() == inline_action.is_some() {
+            let (code, message) = if run.is_some() {
+                (
+                    "ROUTE_BEHAVIOUR_CONFLICT",
+                    "route must contain either `run:` or an inline `action`, not both",
+                )
+            } else {
+                (
+                    "ROUTE_BEHAVIOUR_REQUIRED",
+                    "route must contain exactly one of `run:` or an inline `action`",
+                )
+            };
+            self.error_at(code, message, TextRange::new(start, path_token.range.end));
+        }
+
+        let mut placeholders = Vec::new();
+        let mut remaining = path.as_str();
+        while let Some(open) = remaining.find('{') {
+            let after_open = &remaining[open + 1..];
+            let Some(close) = after_open.find('}') else {
+                self.error_at(
+                    "ROUTE_PATH_PLACEHOLDER_INVALID",
+                    "route path placeholder is missing a closing `}`",
+                    path_token.range,
+                );
+                break;
+            };
+            let name = &after_open[..close];
+            if name.is_empty()
+                || !name.chars().enumerate().all(|(index, character)| {
+                    if index == 0 {
+                        character.is_ascii_alphabetic() || character == '_'
+                    } else {
+                        character.is_ascii_alphanumeric() || character == '_'
+                    }
+                })
+            {
+                self.error_at(
+                    "ROUTE_PATH_PLACEHOLDER_INVALID",
+                    "route path placeholders must contain a lower-level identifier",
+                    path_token.range,
+                );
+            } else {
+                placeholders.push(name.to_owned());
+            }
+            remaining = &after_open[close + 1..];
+        }
+        let mut unique_placeholders = BTreeSet::new();
+        for placeholder in &placeholders {
+            if !unique_placeholders.insert(placeholder.clone()) {
+                self.error_at(
+                    "ROUTE_PATH_PLACEHOLDER_DUPLICATE",
+                    format!("route path placeholder `{{{placeholder}}}` appears more than once"),
+                    path_token.range,
+                );
+            }
+        }
+        let declared = path_fields
+            .iter()
+            .map(|field| field.name.text.clone())
+            .collect::<BTreeSet<_>>();
+        for placeholder in &unique_placeholders {
+            if !declared.contains(placeholder) {
+                self.error_at(
+                    "ROUTE_PATH_BINDING_MISSING",
+                    format!("path placeholder `{{{placeholder}}}` requires a typed path binding"),
+                    path_token.range,
+                );
+            }
+        }
+        let mut seen_bindings = BTreeSet::new();
+        for field in &path_fields {
+            if !seen_bindings.insert(field.name.text.clone()) {
+                self.error_at(
+                    "ROUTE_PATH_BINDING_DUPLICATE",
+                    format!(
+                        "path binding `{}` is declared more than once",
+                        field.name.text
+                    ),
+                    field.range,
+                );
+            } else if !unique_placeholders.contains(&field.name.text) {
+                self.error_at(
+                    "ROUTE_PATH_BINDING_EXTRA",
+                    format!(
+                        "path binding `{}` has no matching route placeholder",
+                        field.name.text
+                    ),
+                    field.range,
+                );
+            }
+        }
+
         Some(RouteDeclaration {
             method,
             path,
             path_range: path_token.range,
             public,
+            path_fields,
             input,
             output,
             run,
+            inline_action,
             range: TextRange::new(start, end),
         })
     }
@@ -2117,7 +2278,11 @@ impl<'source> Parser<'source> {
     fn expect_name_token(&mut self, message: &str) -> Option<Token> {
         if matches!(
             self.current_kind(),
-            TokenKind::Identifier | TokenKind::Input | TokenKind::Output | TokenKind::Value
+            TokenKind::Identifier
+                | TokenKind::Input
+                | TokenKind::Output
+                | TokenKind::Value
+                | TokenKind::Path
         ) {
             Some(self.bump())
         } else {
@@ -2289,6 +2454,7 @@ mod tests {
                 "failure InviteCodeRejected",
                 "action register_customer",
                 "route POST /registrations",
+                "route GET /registrations/{email}",
             ]
         );
     }
@@ -2426,7 +2592,7 @@ output PrivateResult { todo: Todo }
 
     #[test]
     fn mutations_require_colon_separated_items() {
-        let source = "entity Customer { id: Uuid } failure Missing: NotFound { code \"missing\" } failure Clashed: Conflict { code \"clashed\" } action change(id: Customer.id) -> Customer fails Missing, Clashed { return update required Customer { where: id == id set { id: id } missing: Missing conflict: Clashed } }";
+        let source = "entity Customer { id: Uuid } failure Missing { kind NotFound code \"missing\" } failure Clashed { kind Conflict code \"clashed\" } action change(id: Customer.id) -> Customer fails Missing, Clashed { return update required Customer { where: id == id set { id: id } missing: Missing conflict: Clashed } }";
         let parsed = parse(Path::new("mutation.jadpo"), source);
 
         assert!(parsed.diagnostics.iter().any(|diagnostic| {
@@ -2460,7 +2626,7 @@ output PrivateResult { todo: Todo }
 
     #[test]
     fn parses_named_compound_constraints_and_precise_conflicts() {
-        let source = "entity Membership { id: Uuid identity tenant: Text email: Text constraint tenant_email: unique(tenant, email) } failure Exists: Conflict { code \"exists\" } action add(id: Membership.id, tenant: Membership.tenant, email: Membership.email) -> Membership fails Exists { return create Membership { id: id tenant: tenant email: email } conflict Membership.tenant_email: Exists }";
+        let source = "entity Membership { id: Uuid identity tenant: Text email: Text constraint tenant_email: unique(tenant, email) } failure Exists { kind Conflict code \"exists\" } action add(id: Membership.id, tenant: Membership.tenant, email: Membership.email) -> Membership fails Exists { return create Membership { id: id tenant: tenant email: email } conflict Membership.tenant_email: Exists }";
         let parsed = parse(Path::new("compound-constraint.jadpo"), source);
 
         assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
@@ -2500,7 +2666,7 @@ output PrivateResult { todo: Todo }
 
     #[test]
     fn parses_a_colon_separated_create_conflict_binding() {
-        let source = "entity Account { id: Uuid identity } failure AccountConflict: Conflict { code \"account_conflict\" } action add(id: Account.id) -> Account fails AccountConflict { return create Account { id: id } conflict: AccountConflict }";
+        let source = "entity Account { id: Uuid identity } failure AccountConflict { kind Conflict code \"account_conflict\" } action add(id: Account.id) -> Account fails AccountConflict { return create Account { id: id } conflict: AccountConflict }";
         let parsed = parse(Path::new("create-conflict.jadpo"), source);
 
         assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
@@ -2584,7 +2750,7 @@ entity User {
 entity Todo { id: Uuid identity owner_id: User.id references User.id on_delete cascade }
 entity Note { id: Uuid identity owner_id: User.id references User.id on_delete cascade }
 output UserActivity { parent: User todos: List<Todo> notes: List<Note> }
-failure UserNotFound: NotFound { code "user_not_found" }
+failure UserNotFound { kind NotFound code "user_not_found" }
 action load(user_id: User.id) -> UserActivity fails UserNotFound {
     return query required User {
         where: id == user_id
@@ -2675,6 +2841,28 @@ function choose(initial: Choice, replacement: Choice) -> Choice {
                     callable.body.statements[0],
                     Statement::Unsupported(_)
                 ));
+            } else if file_name == "59_route_path_binding_mismatch.jadpo" {
+                assert_eq!(parsed.diagnostics.len(), 2, "{:#?}", parsed.diagnostics);
+                assert_eq!(
+                    parsed
+                        .diagnostics
+                        .iter()
+                        .map(|diagnostic| diagnostic.code)
+                        .collect::<Vec<_>>(),
+                    vec!["ROUTE_PATH_BINDING_MISSING", "ROUTE_PATH_BINDING_EXTRA"]
+                );
+            } else if file_name == "62_route_behaviour_conflict.jadpo" {
+                assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
+                assert_eq!(parsed.diagnostics[0].code, "ROUTE_BEHAVIOUR_CONFLICT");
+            } else if file_name == "67_route_path_modifier_invalid.jadpo" {
+                assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
+                assert_eq!(
+                    parsed.diagnostics[0].code,
+                    "ROUTE_PATH_FIELD_MODIFIER_INVALID"
+                );
+            } else if file_name == "69_duplicate_route_item.jadpo" {
+                assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
+                assert_eq!(parsed.diagnostics[0].code, "ROUTE_ITEM_DUPLICATE");
             } else {
                 assert!(
                     parsed.diagnostics.is_empty(),

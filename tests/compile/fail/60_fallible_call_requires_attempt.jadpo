@@ -1,0 +1,16 @@
+value Result {
+    ok: Bool
+}
+
+failure Refused {
+    kind Rejected
+    code "refused"
+}
+
+action child( ) -> Result fails Refused {
+    reject Refused
+}
+
+action parent() -> Result fails Refused {
+    return child()
+}

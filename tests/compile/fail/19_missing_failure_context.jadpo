@@ -2,7 +2,8 @@ value Result {
     ok: Bool
 }
 
-failure Missing: NotFound {
+failure Missing {
+    kind NotFound
     code "missing"
 
     internal {

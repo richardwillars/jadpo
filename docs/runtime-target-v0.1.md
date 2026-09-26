@@ -70,9 +70,9 @@ after action invocation is therefore an internal contract defect, not a client
 400. This distinction prevents generated or application defects from being
 misclassified as caller mistakes.
 
-Authentication is deliberately not stubbed. A route without `auth: public
-explicitly` produces `JADPO_TARGET_AUTH_NOT_IMPLEMENTED` until P11 provides the
-required-default authentication runtime.
+Authentication is deliberately not stubbed. A route without the exact opt-out
+`auth: none` produces `JADPO_TARGET_AUTH_NOT_IMPLEMENTED` until P11 provides
+the required-default authentication runtime.
 
 ## Executable evidence
 
@@ -83,6 +83,8 @@ through the generated handler. It proves:
 - a valid registration returns the exact declared output;
 - malformed email, constrained invite code, malformed JSON, and unknown fields
   all fail before action execution with a safe 400 response;
+- a percent-decoded `Customer.email` path binding is validated before an inline
+  route action, and an invalid segment receives the same safe 400 envelope;
 - the exact reserved invite code maps automatically to the declared 422
   failure; and
 - neither the internal `invite_code` field nor its `reserved` value appears in

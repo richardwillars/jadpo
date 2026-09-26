@@ -4,7 +4,7 @@
   "diagnostics": [
     {
       "code": "FAIL_DUPLICATE_CODE",
-      "primary_match": "Second: Conflict {\n    code \"same\"",
+      "primary_match": "Second {\n    kind Conflict\n    code \"same\"",
       "code_value": "same",
       "first_failure": "First",
       "second_failure": "Second"

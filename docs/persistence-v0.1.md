@@ -10,7 +10,7 @@ The first persistence operation is the existing canonical language form:
 action create_customer(input: CreateCustomer) -> Customer
     fails CustomerMutationConflict
 {
-    return create Customer {
+    return attempt create Customer {
         id: input.id
         email: input.email
     } conflict: CustomerMutationConflict
@@ -41,7 +41,7 @@ The first read operation makes its cardinality explicit:
 
 ```text
 action find_customer(input: FindCustomer) -> Customer? {
-    return query optional Customer {
+    return attempt query optional Customer {
         where: id == input.id
     }
 }
@@ -60,12 +60,10 @@ Required-one reads bind absence to a declared domain failure:
 action require_customer(input: FindCustomer) -> Customer
     fails CustomerNotFound
 {
-    return query required Customer {
+    return attempt query required Customer {
         where: id == input.id
         missing: CustomerNotFound {
-            internal {
-                customer_id: input.id
-            }
+            customer_id: input.id
         }
     }
 }
@@ -82,7 +80,7 @@ Required mutations use explicit absence and constraint bindings:
 action update_customer(input: UpdateCustomer) -> Customer
     fails CustomerNotFound, CustomerMutationConflict
 {
-    return update required Customer {
+    return attempt update required Customer {
         where: id == input.id
         set: {
             email: input.email

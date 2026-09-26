@@ -16,12 +16,13 @@ output TodoOwner {
     owner: User
 }
 
-failure TodoNotFound: NotFound { code "todo_not_found" }
+failure TodoNotFound {
+    kind NotFound code "todo_not_found" }
 
 action get_todo_owner(input: FindTodo) -> TodoOwner
     fails TodoNotFound
 {
-    return query required Todo {
+    return attempt query required Todo {
         where: id == input.id
         include: owner required into: TodoOwner
         missing: TodoNotFound

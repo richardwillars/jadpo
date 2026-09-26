@@ -58,6 +58,33 @@ impl ParsedProject {
     }
 }
 
+pub fn checked_source_revision(project_path: &Path, project: &AnalyzedProject) -> String {
+    let project_root = if project_path.is_dir() {
+        project_path
+    } else {
+        project_path.parent().unwrap_or_else(|| Path::new("."))
+    };
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for source in &project.syntax.sources {
+        let normalized = Path::new(&source.source_name)
+            .strip_prefix(project_root)
+            .unwrap_or_else(|_| Path::new(&source.source_name))
+            .to_string_lossy()
+            .replace('\\', "/");
+        for byte in normalized
+            .as_bytes()
+            .iter()
+            .chain(std::iter::once(&0))
+            .chain(source.source_text.as_bytes())
+            .chain(std::iter::once(&0xff))
+        {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    format!("src_{hash:016x}")
+}
+
 pub fn discover_sources(project: &Path) -> Result<Vec<SourceFile>, Diagnostic> {
     if !project.exists() {
         return Err(Diagnostic::error(
@@ -232,7 +259,7 @@ mod tests {
         let fixtures = repository_root().join("tests/compile");
         let sources = discover_sources(&fixtures).expect("fixtures should be discoverable");
 
-        assert_eq!(sources.len(), 63);
+        assert_eq!(sources.len(), 82);
     }
 
     #[test]
@@ -271,7 +298,7 @@ mod tests {
         let project = parse_project(&seed).expect("seed should be readable");
 
         assert_eq!(project.sources.len(), 1);
-        assert_eq!(project.declaration_count(), 8);
+        assert_eq!(project.declaration_count(), 9);
         assert_eq!(project.diagnostics().count(), 0);
     }
 
@@ -356,6 +383,7 @@ mod tests {
             "InviteCodeRejected.internal.invite_code",
             "register_customer",
             "POST /registrations",
+            "GET /registrations/{email}",
         ] {
             assert!(
                 project.semantics.node(expected).is_some(),
@@ -635,7 +663,7 @@ mod tests {
             }
             if fixture == "pass/29_query_required_entity" {
                 let source = fs::read_to_string(&path).expect("fixture should be readable");
-                let expression = "query required Customer {\n        where: id == input.id\n        missing: CustomerNotFound {\n            internal {\n                customer_id: input.id\n            }\n        }\n    }";
+                let expression = "query required Customer {\n        where: id == input.id\n        missing: CustomerNotFound {\n                customer_id: input.id\n        }\n    }";
                 let start = source
                     .find(expression)
                     .expect("required query expression should exist");
@@ -711,7 +739,7 @@ mod tests {
             (
                 "fail/20_duplicate_failure_code",
                 vec!["FAIL_DUPLICATE_CODE"],
-                vec!["Second: Conflict {\n    code \"same\""],
+                vec!["Second {\n    kind Conflict\n    code \"same\""],
             ),
             (
                 "fail/25_function_create_effect",
@@ -793,5 +821,125 @@ mod tests {
                 assert_eq!(contract.internal_fields, vec!["customer_id"]);
             }
         }
+    }
+
+    #[test]
+    fn p106_fixtures_cover_failure_flow_paths_and_inline_routes() {
+        for fixture in [
+            "pass/59_p106_failure_route",
+            "pass/60_p106_inline_action",
+            "pass/61_distinct_failure_context",
+            "pass/62_attempted_persistence",
+            "pass/63_function_failure_propagation",
+            "pass/64_multi_path_inline_route",
+            "pass/65_authenticated_route_default",
+            "pass/66_inline_action_failure_surface",
+        ] {
+            let path = repository_root()
+                .join("tests/compile")
+                .join(format!("{fixture}.jadpo"));
+            let project = analyze_project(&path).expect("fixture should be analyzable");
+            assert!(project.syntax.diagnostics().next().is_none(), "{fixture}");
+            assert!(project.semantics.diagnostics.is_empty(), "{fixture}");
+            assert!(project.typing.diagnostics.is_empty(), "{fixture}");
+            assert!(project.failures.diagnostics.is_empty(), "{fixture}");
+        }
+
+        let cases = [
+            (
+                "fail/59_route_path_binding_mismatch",
+                vec!["ROUTE_PATH_BINDING_MISSING", "ROUTE_PATH_BINDING_EXTRA"],
+                "syntax",
+            ),
+            (
+                "fail/60_fallible_call_requires_attempt",
+                vec!["FAIL_ATTEMPT_REQUIRED"],
+                "failure",
+            ),
+            (
+                "fail/61_stale_fails_entry",
+                vec!["FAIL_STALE_DECLARATION"],
+                "failure",
+            ),
+            (
+                "fail/62_route_behaviour_conflict",
+                vec!["ROUTE_BEHAVIOUR_CONFLICT"],
+                "syntax",
+            ),
+            (
+                "fail/63_failure_context_overlap",
+                vec!["FAIL_CONTEXT_FIELD_OVERLAP"],
+                "failure",
+            ),
+            (
+                "fail/64_persistence_requires_attempt",
+                vec!["FAIL_ATTEMPT_REQUIRED"],
+                "failure",
+            ),
+            (
+                "fail/65_function_fallible_call_requires_attempt",
+                vec!["FAIL_ATTEMPT_REQUIRED"],
+                "failure",
+            ),
+            (
+                "fail/66_inline_action_stale_fails",
+                vec!["FAIL_STALE_DECLARATION"],
+                "failure",
+            ),
+            (
+                "fail/67_route_path_modifier_invalid",
+                vec!["ROUTE_PATH_FIELD_MODIFIER_INVALID"],
+                "syntax",
+            ),
+            (
+                "fail/68_duplicate_fails_entry",
+                vec!["FAIL_DUPLICATE_DECLARATION"],
+                "failure",
+            ),
+            (
+                "fail/69_duplicate_route_item",
+                vec!["ROUTE_ITEM_DUPLICATE"],
+                "syntax",
+            ),
+        ];
+        for (fixture, expected, stage) in cases {
+            let path = repository_root()
+                .join("tests/compile")
+                .join(format!("{fixture}.jadpo"));
+            let project = analyze_project(&path).expect("fixture should be analyzable");
+            let actual = if stage == "syntax" {
+                project
+                    .syntax
+                    .diagnostics()
+                    .map(|diagnostic| diagnostic.code)
+                    .collect::<Vec<_>>()
+            } else {
+                project
+                    .failures
+                    .diagnostics
+                    .iter()
+                    .map(|diagnostic| diagnostic.code)
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(actual, expected, "{fixture}");
+        }
+
+        let authenticated = analyze_project(
+            &repository_root().join("tests/compile/pass/65_authenticated_route_default.jadpo"),
+        )
+        .expect("authenticated-default route should analyze");
+        let route = authenticated.syntax.sources[0]
+            .file
+            .declarations
+            .iter()
+            .find_map(|declaration| match declaration {
+                jadpo_syntax::Declaration::Route(route) => Some(route),
+                _ => None,
+            })
+            .expect("fixture should contain a route");
+        assert!(
+            !route.public,
+            "omitting `auth: none` must retain authentication"
+        );
     }
 }

@@ -1,4 +1,4 @@
-use crate::{AnalyzedProject, GeneratedArtifact};
+use crate::{checked_source_revision, AnalyzedProject, GeneratedArtifact};
 use jadpo_diagnostics::Diagnostic;
 use jadpo_syntax::{
     BinaryOperator, Block, CallableDeclaration, Constraint, ConstraintKind, Declaration,
@@ -10,10 +10,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 pub fn derive_target(
-    _project_path: &Path,
+    project_path: &Path,
     project: &AnalyzedProject,
 ) -> Result<Vec<GeneratedArtifact>, Diagnostic> {
-    let generator = TargetGenerator::new(project)?;
+    let generator = TargetGenerator::new(project_path, project)?;
     let mut outputs = vec![GeneratedArtifact {
         relative_path: "target/app.ts",
         contents: generator.generate(),
@@ -140,15 +140,18 @@ struct TargetGenerator<'project> {
     types: BTreeMap<String, &'project TypeDeclaration>,
     enums: BTreeMap<String, &'project EnumDeclaration>,
     records: BTreeMap<String, &'project RecordDeclaration>,
+    failures: BTreeMap<String, &'project jadpo_syntax::FailureDeclaration>,
     callables: BTreeMap<String, &'project CallableDeclaration>,
     tests: Vec<&'project TestDeclaration>,
+    source_revision: String,
 }
 
 impl<'project> TargetGenerator<'project> {
-    fn new(project: &'project AnalyzedProject) -> Result<Self, Diagnostic> {
+    fn new(project_path: &Path, project: &'project AnalyzedProject) -> Result<Self, Diagnostic> {
         let mut types = BTreeMap::new();
         let mut enums = BTreeMap::new();
         let mut records = BTreeMap::new();
+        let mut failures = BTreeMap::new();
         let mut callables = BTreeMap::new();
         let mut tests = Vec::new();
 
@@ -168,7 +171,9 @@ impl<'project> TargetGenerator<'project> {
                         callables.insert(declaration.name.text.clone(), declaration);
                     }
                     Declaration::Test(declaration) => tests.push(declaration),
-                    Declaration::Failure(_) => {}
+                    Declaration::Failure(declaration) => {
+                        failures.insert(declaration.name.text.clone(), declaration);
+                    }
                     Declaration::Route(route) if !route.public => {
                         return Err(Diagnostic::error(
                             "JADPO_TARGET_AUTH_NOT_IMPLEMENTED",
@@ -189,8 +194,10 @@ impl<'project> TargetGenerator<'project> {
             types,
             enums,
             records,
+            failures,
             callables,
             tests,
+            source_revision: checked_source_revision(project_path, project),
         })
     }
 
@@ -218,6 +225,10 @@ impl<'project> TargetGenerator<'project> {
         self.test_implementations(&mut output);
         self.http_handler(&mut output);
         output
+    }
+
+    fn source_revision(&self) -> String {
+        self.source_revision.clone()
     }
 
     fn has_entities(&self) -> bool {
@@ -2691,6 +2702,32 @@ impl<'project> TargetGenerator<'project> {
 
     fn runtime_prelude(&self, output: &mut String) {
         line(output, "type JsonObject = Record<string, unknown>;");
+        line(
+            output,
+            "declare const safeOperationalTextBrand: unique symbol;",
+        );
+        line(
+            output,
+            "type SafeOperationalText = string & { readonly [safeOperationalTextBrand]: true };",
+        );
+        line(
+            output,
+            "type SafeOperationalValue = SafeOperationalText | number | boolean | null;",
+        );
+        line(output, "export type OperationalLogEvent = {");
+        line(output, "  schemaVersion: 1;");
+        line(output, "  kind: \"operational_log_event\";");
+        line(output, "  eventName: string;");
+        line(output, "  classification: string;");
+        line(output, "  requestId: string;");
+        line(output, "  traceId: string | null;");
+        line(output, "  semanticOperationId: string;");
+        line(output, "  sourceRevision: string;");
+        line(
+            output,
+            "  attributes: Record<string, SafeOperationalValue>;",
+        );
+        line(output, "};");
         line(output, "");
         line(output, "class ValidationError extends Error {}");
         line(output, "");
@@ -2702,6 +2739,33 @@ impl<'project> TargetGenerator<'project> {
         line(output, "  ) {");
         line(output, "    super(failureName);");
         line(output, "  }");
+        line(output, "}");
+        line(output, "");
+        line(
+            output,
+            "function matchRoutePath(template: string, actual: string): JsonObject | null {",
+        );
+        line(output, "  const expected = template.split(\"/\");");
+        line(output, "  const received = actual.split(\"/\");");
+        line(
+            output,
+            "  if (expected.length !== received.length) return null;",
+        );
+        line(output, "  const values: JsonObject = {};");
+        line(
+            output,
+            "  for (let index = 0; index < expected.length; index += 1) {",
+        );
+        line(output, "    const segment = expected[index];");
+        line(output, "    const value = received[index];");
+        line(
+            output,
+            "    if (segment.startsWith(\"{\") && segment.endsWith(\"}\")) {",
+        );
+        line(output, "      try { values[segment.slice(1, -1)] = decodeURIComponent(value); } catch { return null; }");
+        line(output, "    } else if (segment !== value) return null;");
+        line(output, "  }");
+        line(output, "  return values;");
         line(output, "}");
         line(output, "");
         line(
@@ -2856,16 +2920,34 @@ impl<'project> TargetGenerator<'project> {
         line(output, "");
         line(
             output,
-            "function reportRuntimeFault(code: string, message: string, context: JsonObject, error: unknown): void {",
+            "export function operationalEventToOpenTelemetry(event: OperationalLogEvent): JsonObject {",
         );
-        line(output, "  console.error(JSON.stringify({");
-        line(output, "    schema_version: 1,");
-        line(output, "    kind: \"runtime_diagnostic\",");
-        line(output, "    severity: \"error\",");
-        line(output, "    code,");
-        line(output, "    message,");
-        line(output, "    ...context,");
-        line(output, "  }));");
+        line(output, "  return { name: event.eventName, attributes: { classification: event.classification, request_id: event.requestId, trace_id: event.traceId, semantic_operation_id: event.semanticOperationId, source_revision: event.sourceRevision, ...event.attributes } };");
+        line(output, "}");
+        line(output, "");
+        line(
+            output,
+            "export function operationalEventToProvider(event: OperationalLogEvent): JsonObject {",
+        );
+        line(output, "  return { fingerprint: [event.classification, event.semanticOperationId, event.sourceRevision], tags: { operation: event.semanticOperationId, release: event.sourceRevision }, extra: event.attributes };");
+        line(output, "}");
+        line(output, "");
+        line(
+            output,
+            "export function reportRuntimeFault(classification: string, semanticOperationId: string, sourceRevision: string, requestId: string, error: unknown): void {",
+        );
+        line(output, "  const event: OperationalLogEvent = {");
+        line(output, "    schemaVersion: 1,");
+        line(output, "    kind: \"operational_log_event\",");
+        line(output, "    eventName: \"operation.failed\",");
+        line(output, "    classification,");
+        line(output, "    requestId,");
+        line(output, "    traceId: null,");
+        line(output, "    semanticOperationId,");
+        line(output, "    sourceRevision,");
+        line(output, "    attributes: {},");
+        line(output, "  };");
+        line(output, "  console.error(JSON.stringify(event));");
         line(
             output,
             "  if (Bun.env.JADPO_DEBUG_TARGET_STACKS === \"1\") console.error(error);",
@@ -3260,6 +3342,14 @@ impl<'project> TargetGenerator<'project> {
             "export async function handleRequest(request: Request): Promise<Response> {",
         );
         line(output, "  const requestId = `req_${crypto.randomUUID()}`;");
+        line(
+            output,
+            &format!(
+                "  const sourceRevision = {};",
+                ts_string(&self.source_revision())
+            ),
+        );
+        line(output, "  let semanticOperationId = \"http:unmatched\";");
         line(output, "  let requestPath = \"<unparsed>\";");
         line(output, "  try {");
         line(output, "    const url = new URL(request.url);");
@@ -3285,11 +3375,69 @@ impl<'project> TargetGenerator<'project> {
                 line(
                     output,
                     &format!(
-                        "    if (request.method === {} && url.pathname === {}) {{",
-                        ts_string(method_name(route.method)),
+                        "    const routePath{} = matchRoutePath({}, url.pathname);",
+                        route.range.start,
                         ts_string(&route.path)
                     ),
                 );
+                line(
+                    output,
+                    &format!(
+                        "    if (request.method === {} && routePath{} !== null) {{",
+                        ts_string(method_name(route.method)),
+                        route.range.start
+                    ),
+                );
+                line(
+                    output,
+                    &format!(
+                        "      semanticOperationId = {};",
+                        ts_string(&format!(
+                            "route:{}:{}",
+                            method_name(route.method),
+                            route.path
+                        ))
+                    ),
+                );
+                if !route.path_fields.is_empty() {
+                    let path_type = route
+                        .path_fields
+                        .iter()
+                        .map(|field| {
+                            format!("{}: {}", field.name.text, self.ts_type(&field.field_type))
+                        })
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    line(output, &format!("      let path: {{ {path_type} }};"));
+                    line(output, "      try {");
+                    line(output, "        path = {");
+                    for field in &route.path_fields {
+                        let raw = format!(
+                            "routePath{}[{}]",
+                            route.range.start,
+                            ts_string(&field.name.text)
+                        );
+                        line(
+                            output,
+                            &format!(
+                                "          {}: {},",
+                                field.name.text,
+                                self.validation_expression(
+                                    &field.field_type,
+                                    &raw,
+                                    &ts_string(&format!("path.{}", field.name.text))
+                                )
+                            ),
+                        );
+                    }
+                    line(output, "        };");
+                    line(output, "      } catch {");
+                    line(
+                        output,
+                        "        return json(400, errorEnvelope(\"invalid_request\", \"Request validation failed.\", requestId), requestId);",
+                    );
+                    line(output, "      }");
+                }
                 if let Some(input) = &route.input {
                     line(
                         output,
@@ -3314,12 +3462,26 @@ impl<'project> TargetGenerator<'project> {
                     );
                     line(output, "      }");
                 }
-                let invocation = route
-                    .run
-                    .as_ref()
-                    .map(|run| self.invocation(run))
-                    .unwrap_or_else(|| "undefined".to_owned());
-                line(output, &format!("      const output = {invocation};"));
+                if let Some(run) = &route.run {
+                    let invocation = self.invocation(run);
+                    line(output, &format!("      const output = {invocation};"));
+                } else if let Some(action) = &route.inline_action {
+                    let mut visiting = BTreeSet::new();
+                    if block_contains_mutation(&action.body, &self.callables, &mut visiting) {
+                        line(output, "      const output = await rootPersistence.transaction(async persistence => {");
+                        self.block(output, &action.body, 8);
+                        line(output, "      });");
+                    } else {
+                        line(output, "      const output = await (async () => {");
+                        if self.has_persistence_operations() {
+                            line(output, "        const persistence = rootPersistence;");
+                        }
+                        self.block(output, &action.body, 8);
+                        line(output, "      })();");
+                    }
+                } else {
+                    line(output, "      const output = undefined;");
+                }
                 let validated = route.output.as_ref().map_or_else(
                     || "null".to_owned(),
                     |output_type| {
@@ -3367,14 +3529,9 @@ impl<'project> TargetGenerator<'project> {
         line(output, "    }");
         line(output, "    reportRuntimeFault(");
         line(output, "      \"RUNTIME_UNHANDLED_FAULT\",");
-        line(
-            output,
-            "      \"A generated operation failed unexpectedly.\",",
-        );
-        line(
-            output,
-            "      { request_id: requestId, route: { method: request.method, path: requestPath } },",
-        );
+        line(output, "      semanticOperationId,");
+        line(output, "      sourceRevision,");
+        line(output, "      requestId,");
         line(output, "      error,");
         line(output, "    );");
         line(
@@ -3389,20 +3546,31 @@ impl<'project> TargetGenerator<'project> {
         line(output, "  try {");
         line(output, "    Bun.serve({ port, fetch: handleRequest });");
         line(output, "    console.log(JSON.stringify({");
-        line(output, "      schema_version: 1,");
-        line(output, "      kind: \"runtime_event\",");
-        line(output, "      code: \"RUNTIME_LISTENING\",");
-        line(output, "      status: \"ready\",");
-        line(output, "      health: `http://127.0.0.1:${port}/health`,");
+        line(output, "      schemaVersion: 1,");
+        line(output, "      kind: \"operational_log_event\",");
+        line(output, "      eventName: \"runtime.ready\",");
+        line(output, "      classification: \"ready\",");
+        line(output, "      requestId: \"startup\",");
+        line(output, "      traceId: null,");
+        line(output, "      semanticOperationId: \"runtime:start\",");
+        line(
+            output,
+            &format!(
+                "      sourceRevision: {},",
+                ts_string(&self.source_revision())
+            ),
+        );
+        line(output, "      attributes: { port },");
         line(output, "    }));");
         line(output, "  } catch (error) {");
         line(output, "    reportRuntimeFault(");
         line(output, "      \"RUNTIME_STARTUP_FAILED\",");
+        line(output, "      \"runtime:start\",");
         line(
             output,
-            "      \"The generated application could not start.\",",
+            &format!("      {},", ts_string(&self.source_revision())),
         );
-        line(output, "      { port },");
+        line(output, "      \"startup\",");
         line(output, "      error,");
         line(output, "    );");
         line(output, "    process.exit(1);");
@@ -3441,10 +3609,8 @@ impl<'project> TargetGenerator<'project> {
                     line(
                         output,
                         &format!(
-                            "{padding}throw new DomainFailure({}, {}, {});",
-                            ts_string(&statement.failure.text),
-                            self.object_literal(&statement.public_values),
-                            self.object_literal(&statement.internal_values)
+                            "{padding}throw new DomainFailure({});",
+                            self.domain_failure_arguments(statement),
                         ),
                     );
                 }
@@ -3691,10 +3857,8 @@ impl<'project> TargetGenerator<'project> {
                             .as_ref()
                             .expect("nested includes require a required root query");
                         return format!(
-                            "((value: unknown) => {{ if (value === null) throw new DomainFailure({}, {}, {}); return validate_{result}(value, {}); }})({operation})",
-                            ts_string(&missing.failure.text),
-                            self.object_literal(&missing.public_values),
-                            self.object_literal(&missing.internal_values),
+                            "((value: unknown) => {{ if (value === null) throw new DomainFailure({}); return validate_{result}(value, {}); }})({operation})",
+                            self.domain_failure_arguments(missing),
                             ts_string(&format!("database.{result}"))
                         );
                     }
@@ -3715,10 +3879,8 @@ impl<'project> TargetGenerator<'project> {
                             .as_ref()
                             .expect("owning-parent includes require a required child query");
                         return format!(
-                            "((value: unknown) => {{ if (value === null) throw new DomainFailure({}, {}, {}); return validate_{result}(value, {}); }})({operation})",
-                            ts_string(&missing.failure.text),
-                            self.object_literal(&missing.public_values),
-                            self.object_literal(&missing.internal_values),
+                            "((value: unknown) => {{ if (value === null) throw new DomainFailure({}); return validate_{result}(value, {}); }})({operation})",
+                            self.domain_failure_arguments(missing),
                             ts_string(&format!("database.{result}"))
                         );
                     }
@@ -3768,10 +3930,8 @@ impl<'project> TargetGenerator<'project> {
                             "included required parent queries have a missing failure binding",
                         );
                         format!(
-                            "((value: unknown) => {{ if (value === null) throw new DomainFailure({}, {}, {}); return validate_{result}(value, {}); }})({operation})",
-                            ts_string(&missing.failure.text),
-                            self.object_literal(&missing.public_values),
-                            self.object_literal(&missing.internal_values),
+                            "((value: unknown) => {{ if (value === null) throw new DomainFailure({}); return validate_{result}(value, {}); }})({operation})",
+                            self.domain_failure_arguments(missing),
                             ts_string(&format!("database.{result}"))
                         )
                     }
@@ -3789,10 +3949,8 @@ impl<'project> TargetGenerator<'project> {
                             .as_ref()
                             .expect("required queries have a missing failure binding");
                         format!(
-                            "((value: unknown) => {{ if (value === null) throw new DomainFailure({}, {}, {}); return validate_{name}(value, {}); }})(await persistence.query_required_{name}_by_{}({}))",
-                            ts_string(&missing.failure.text),
-                            self.object_literal(&missing.public_values),
-                            self.object_literal(&missing.internal_values),
+                            "((value: unknown) => {{ if (value === null) throw new DomainFailure({}); return validate_{name}(value, {}); }})(await persistence.query_required_{name}_by_{}({}))",
+                            self.domain_failure_arguments(missing),
                             ts_string(&format!("database.{name}")),
                             query.field.text,
                             self.expression(&query.value)
@@ -3879,10 +4037,8 @@ impl<'project> TargetGenerator<'project> {
                         .as_ref()
                         .expect("checked patch updates bind an empty failure");
                     return format!(
-                        "(await (async () => {{ const patchValue = {patch_value}; if (!({supplied})) throw new DomainFailure({}, {}, {}); return {mutation}; }})())",
-                        ts_string(&empty.failure.text),
-                        self.object_literal(&empty.public_values),
-                        self.object_literal(&empty.internal_values),
+                        "(await (async () => {{ const patchValue = {patch_value}; if (!({supplied})) throw new DomainFailure({}); return {mutation}; }})())",
+                        self.domain_failure_arguments(empty),
                     );
                 }
                 let changes = update
@@ -3958,6 +4114,7 @@ impl<'project> TargetGenerator<'project> {
                 self.expression(&binary.right)
             ),
             Expression::Grouped(grouped) => format!("({})", self.expression(&grouped.value)),
+            Expression::Attempt(attempt) => self.expression(&attempt.value),
             Expression::Missing(_) => "undefined".to_owned(),
         }
     }
@@ -4054,12 +4211,10 @@ impl<'project> TargetGenerator<'project> {
                 ));
             }
             return format!(
-                "(await (async () => {{ const parent = await persistence.query_optional_{parent_name}_by_{}({}); if (parent === null) throw new DomainFailure({}, {}, {}); {} return validate_{result}({{ parent, {} }}, {}); }})())",
+                "(await (async () => {{ const parent = await persistence.query_optional_{parent_name}_by_{}({}); if (parent === null) throw new DomainFailure({}); {} return validate_{result}({{ parent, {} }}, {}); }})())",
                 query.field.text,
                 self.expression(&query.value),
-                ts_string(&missing.failure.text),
-                self.object_literal(&missing.public_values),
-                self.object_literal(&missing.internal_values),
+                self.domain_failure_arguments(missing),
                 loads.join(" "),
                 fields.join(", "),
                 ts_string(&format!("database.{result}"))
@@ -4127,10 +4282,8 @@ impl<'project> TargetGenerator<'project> {
     ) -> String {
         let conflict_checks = self.constraint_binding_checks(entity, conflicts);
         format!(
-            "(await (async () => {{ try {{ const value = await {operation}; if (value === null) throw new DomainFailure({}, {}, {}); return validate_{entity}(value, {}); }} catch (error) {{ {conflict_checks} throw error; }} }})())",
-            ts_string(&missing.failure.text),
-            self.object_literal(&missing.public_values),
-            self.object_literal(&missing.internal_values),
+            "(await (async () => {{ try {{ const value = await {operation}; if (value === null) throw new DomainFailure({}); return validate_{entity}(value, {}); }} catch (error) {{ {conflict_checks} throw error; }} }})())",
+            self.domain_failure_arguments(missing),
             ts_string(&format!("database.{entity}")),
         )
     }
@@ -4157,7 +4310,7 @@ impl<'project> TargetGenerator<'project> {
             .filter_map(|binding| {
                 binding.constraint.as_ref().map(|constraint| {
                     format!(
-                        "if (error instanceof PersistenceFault && error.kind === \"constraint\" && error.constraint === {}) throw new DomainFailure({}, {}, {});",
+                        "if (error instanceof PersistenceFault && error.kind === \"constraint\" && error.constraint === {}) throw new DomainFailure({});",
                         ts_string(&if constraint.path.len() == 1 {
                             format!("{entity}.{}", constraint.path[0].text)
                         } else {
@@ -4168,9 +4321,7 @@ impl<'project> TargetGenerator<'project> {
                                 .collect::<Vec<_>>()
                                 .join(".")
                         }),
-                        ts_string(&binding.rejection.failure.text),
-                        self.object_literal(&binding.rejection.public_values),
-                        self.object_literal(&binding.rejection.internal_values),
+                        self.domain_failure_arguments(&binding.rejection),
                     )
                 })
             })
@@ -4180,10 +4331,8 @@ impl<'project> TargetGenerator<'project> {
             .find(|binding| binding.constraint.is_none())
         {
             checks.push(format!(
-                "if (error instanceof PersistenceFault && error.kind === \"constraint\") throw new DomainFailure({}, {}, {});",
-                ts_string(&binding.rejection.failure.text),
-                self.object_literal(&binding.rejection.public_values),
-                self.object_literal(&binding.rejection.internal_values),
+                "if (error instanceof PersistenceFault && error.kind === \"constraint\") throw new DomainFailure({});",
+                self.domain_failure_arguments(&binding.rejection),
             ));
         }
         checks.join(" ")
@@ -4223,12 +4372,51 @@ impl<'project> TargetGenerator<'project> {
     }
 
     fn object_literal(&self, fields: &[FieldInitialiser]) -> String {
+        self.object_literal_from(fields.iter())
+    }
+
+    fn object_literal_from<'field>(
+        &self,
+        fields: impl IntoIterator<Item = &'field FieldInitialiser>,
+    ) -> String {
         let fields = fields
-            .iter()
+            .into_iter()
             .map(|field| format!("{}: {}", field.name.text, self.expression(&field.value)))
             .collect::<Vec<_>>()
             .join(", ");
         format!("{{ {fields} }}")
+    }
+
+    fn domain_failure_arguments(&self, rejection: &jadpo_syntax::RejectStatement) -> String {
+        let Some(declaration) = self.failures.get(&rejection.failure.text) else {
+            return format!("{}, {{}}, {{}}", ts_string(&rejection.failure.text),);
+        };
+        let public_names = declaration
+            .public_fields
+            .iter()
+            .map(|field| field.name.text.as_str())
+            .collect::<BTreeSet<_>>();
+        let internal_names = declaration
+            .internal_fields
+            .iter()
+            .map(|field| field.name.text.as_str())
+            .collect::<BTreeSet<_>>();
+        format!(
+            "{}, {}, {}",
+            ts_string(&rejection.failure.text),
+            self.object_literal_from(
+                rejection
+                    .values
+                    .iter()
+                    .filter(|field| public_names.contains(field.name.text.as_str())),
+            ),
+            self.object_literal_from(
+                rejection
+                    .values
+                    .iter()
+                    .filter(|field| internal_names.contains(field.name.text.as_str())),
+            ),
+        )
     }
 
     fn ts_type(&self, reference: &TypeReference) -> String {
@@ -4478,11 +4666,7 @@ fn collect_query_expressions<'expression>(
                 collect_queries_from_expression(&statement.value, queries)
             }
             Statement::Reject(statement) => {
-                for field in statement
-                    .public_values
-                    .iter()
-                    .chain(&statement.internal_values)
-                {
+                for field in &statement.values {
                     collect_queries_from_expression(&field.value, queries);
                 }
             }
@@ -4548,7 +4732,7 @@ fn collect_queries_from_expression<'expression>(
                 collect_queries_from_expression(&conditional.change.value, queries);
             }
             if let Some(empty) = &update.empty {
-                for field in empty.public_values.iter().chain(&empty.internal_values) {
+                for field in &empty.values {
                     collect_queries_from_expression(&field.value, queries);
                 }
             }
@@ -4560,6 +4744,7 @@ fn collect_queries_from_expression<'expression>(
         }
         Expression::Unary(unary) => collect_queries_from_expression(&unary.value, queries),
         Expression::Grouped(grouped) => collect_queries_from_expression(&grouped.value, queries),
+        Expression::Attempt(attempt) => collect_queries_from_expression(&attempt.value, queries),
         Expression::Literal(_) | Expression::Name(_) | Expression::Missing(_) => {}
     }
 }
@@ -4580,11 +4765,7 @@ fn collect_update_expressions<'expression>(
                 collect_updates_from_expression(&statement.value, updates)
             }
             Statement::Reject(statement) => {
-                for field in statement
-                    .public_values
-                    .iter()
-                    .chain(&statement.internal_values)
-                {
+                for field in &statement.values {
                     collect_updates_from_expression(&field.value, updates);
                 }
             }
@@ -4661,7 +4842,7 @@ fn collect_updates_from_expression<'expression>(
                 collect_updates_from_expression(&conditional.change.value, updates);
             }
             if let Some(empty) = &update.empty {
-                for field in empty.public_values.iter().chain(&empty.internal_values) {
+                for field in &empty.values {
                     collect_updates_from_expression(&field.value, updates);
                 }
             }
@@ -4699,6 +4880,7 @@ fn collect_updates_from_expression<'expression>(
         }
         Expression::Unary(unary) => collect_updates_from_expression(&unary.value, updates),
         Expression::Grouped(grouped) => collect_updates_from_expression(&grouped.value, updates),
+        Expression::Attempt(attempt) => collect_updates_from_expression(&attempt.value, updates),
         Expression::Literal(_) | Expression::Name(_) | Expression::Missing(_) => {}
     }
 }
@@ -4709,9 +4891,8 @@ fn block_contains_persistence(block: &Block) -> bool {
         Statement::Assignment(statement) => expression_contains_persistence(&statement.value),
         Statement::Return(statement) => expression_contains_persistence(&statement.value),
         Statement::Reject(statement) => statement
-            .public_values
+            .values
             .iter()
-            .chain(&statement.internal_values)
             .any(|field| expression_contains_persistence(&field.value)),
         Statement::If(statement) => {
             expression_contains_persistence(&statement.condition)
@@ -4753,6 +4934,7 @@ fn expression_contains_persistence(expression: &Expression) -> bool {
         }
         Expression::Unary(unary) => expression_contains_persistence(&unary.value),
         Expression::Grouped(grouped) => expression_contains_persistence(&grouped.value),
+        Expression::Attempt(attempt) => expression_contains_persistence(&attempt.value),
         Expression::Literal(_) | Expression::Name(_) | Expression::Missing(_) => false,
     }
 }
@@ -4788,9 +4970,8 @@ fn block_contains_mutation(
             expression_contains_mutation(&statement.value, callables, visiting)
         }
         Statement::Reject(statement) => statement
-            .public_values
+            .values
             .iter()
-            .chain(&statement.internal_values)
             .any(|field| expression_contains_mutation(&field.value, callables, visiting)),
         Statement::If(statement) => {
             expression_contains_mutation(&statement.condition, callables, visiting)
@@ -4858,6 +5039,9 @@ fn expression_contains_mutation(
         Expression::Unary(unary) => expression_contains_mutation(&unary.value, callables, visiting),
         Expression::Grouped(grouped) => {
             expression_contains_mutation(&grouped.value, callables, visiting)
+        }
+        Expression::Attempt(attempt) => {
+            expression_contains_mutation(&attempt.value, callables, visiting)
         }
         Expression::Literal(_) | Expression::Name(_) | Expression::Missing(_) => false,
     }
@@ -4942,8 +5126,14 @@ mod tests {
         assert!(targets[0].contents.contains("function validate_Email"));
         assert!(targets[0]
             .contents
-            .contains("request.method === \"POST\" && url.pathname === \"/registrations\""));
+            .contains("request.method === \"POST\" && routePath"));
+        assert!(targets[0]
+            .contents
+            .contains("matchRoutePath(\"/registrations\", url.pathname)"));
         assert!(targets[0].contents.contains("internalContext"));
+        assert!(targets[0].contents.contains(
+            "throw new DomainFailure(\"InviteCodeRejected\", {  }, { invite_code: input.invite_code });"
+        ));
         assert!(!targets[0]
             .contents
             .contains("invite_code: error.internalContext"));
@@ -4970,11 +5160,14 @@ mod tests {
 
         assert!(targets[0]
             .contents
-            .contains("request.method === \"GET\" && url.pathname === \"/health\""));
+            .contains("request.method === \"GET\" && routePath"));
+        assert!(targets[0]
+            .contents
+            .contains("matchRoutePath(\"/health\", url.pathname)"));
         assert_eq!(
             targets[0]
                 .contents
-                .matches("url.pathname === \"/health\"")
+                .matches("matchRoutePath(\"/health\", url.pathname)")
                 .count(),
             1,
             "an authored health route should replace the compiler default"

@@ -214,6 +214,7 @@ pub struct CallableDeclaration {
     pub return_type: TypeReference,
     pub return_annotation_range: TextRange,
     pub failures: Vec<Name>,
+    pub failures_range: Option<TextRange>,
     pub body: Block,
     pub range: TextRange,
 }
@@ -344,8 +345,7 @@ pub struct ReturnStatement {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RejectStatement {
     pub failure: Name,
-    pub public_values: Vec<FieldInitialiser>,
-    pub internal_values: Vec<FieldInitialiser>,
+    pub values: Vec<FieldInitialiser>,
     pub range: TextRange,
 }
 
@@ -373,6 +373,7 @@ pub enum Expression {
     Query(QueryExpression),
     Update(UpdateExpression),
     Delete(DeleteExpression),
+    Attempt(AttemptExpression),
     Unary(UnaryExpression),
     Binary(BinaryExpression),
     Grouped(GroupedExpression),
@@ -390,12 +391,19 @@ impl Expression {
             Self::Query(expression) => expression.range,
             Self::Update(expression) => expression.range,
             Self::Delete(expression) => expression.range,
+            Self::Attempt(expression) => expression.range,
             Self::Unary(expression) => expression.range,
             Self::Binary(expression) => expression.range,
             Self::Grouped(expression) => expression.range,
             Self::Missing(range) => *range,
         }
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AttemptExpression {
+    pub value: Box<Expression>,
+    pub range: TextRange,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -604,8 +612,18 @@ pub struct RouteDeclaration {
     pub path: String,
     pub path_range: TextRange,
     pub public: bool,
+    pub path_fields: Vec<FieldDeclaration>,
     pub input: Option<TypeReference>,
     pub output: Option<TypeReference>,
     pub run: Option<InvocationExpression>,
+    pub inline_action: Option<InlineAction>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InlineAction {
+    pub failures: Vec<Name>,
+    pub failures_range: Option<TextRange>,
+    pub body: Block,
     pub range: TextRange,
 }

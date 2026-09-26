@@ -482,14 +482,7 @@ fn collect_block_references(
                 collect_initialisers(
                     source,
                     &statement.failure.text,
-                    &statement.public_values,
-                    globals,
-                    output,
-                );
-                collect_initialisers(
-                    source,
-                    &statement.failure.text,
-                    &statement.internal_values,
+                    &statement.values,
                     globals,
                     output,
                 );
@@ -636,6 +629,9 @@ fn collect_expression_references(
         }
         Expression::Grouped(grouped) => {
             collect_expression_references(source, &grouped.value, globals, output)
+        }
+        Expression::Attempt(attempt) => {
+            collect_expression_references(source, &attempt.value, globals, output)
         }
     }
 }

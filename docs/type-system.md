@@ -281,7 +281,7 @@ A database projection is a complete compiler-derived type, not a partial
 entity. Its selected fields retain their source field types:
 
 ```text
-var customers = query Customer {
+var customers = attempt query Customer {
     select id, email
 }
 ```
@@ -486,7 +486,7 @@ input RegisterCustomer {
 }
 
 action register_customer(input: RegisterCustomer) -> Customer {
-    return create Customer {
+    return attempt create Customer {
         email: input.email
     }
 }

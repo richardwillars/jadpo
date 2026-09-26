@@ -27,12 +27,13 @@ output TodoOwnerProfile {
     owner: UserProfile
 }
 
-failure TodoNotFound: NotFound { code "todo_not_found" }
+failure TodoNotFound {
+    kind NotFound code "todo_not_found" }
 
 action get_todo_owner_profile(input: FindTodo) -> TodoOwnerProfile
     fails TodoNotFound
 {
-    return query required Todo {
+    return attempt query required Todo {
         where: id == input.id
         include: owner.profile optional into: TodoOwnerProfile
         missing: TodoNotFound

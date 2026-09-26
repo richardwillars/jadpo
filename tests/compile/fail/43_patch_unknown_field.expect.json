@@ -4,7 +4,7 @@
   "diagnostics": [
     {
       "code": "TYPE_PATCH_UNKNOWN_FIELD",
-      "primary_match": "patch: input"
+      "primary_match": "input"
     }
   ]
 }

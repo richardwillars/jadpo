@@ -1,0 +1,12 @@
+value Result {
+    ok: Bool
+}
+
+failure Refused {
+    kind Rejected
+    code "refused"
+}
+
+action complete() -> Result fails Refused {
+    return Result { ok: true }
+}

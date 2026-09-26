@@ -172,7 +172,8 @@ value ReminderReceipt {
     accepted_at: DateTime
 }
 
-failure TodoNotFound: NotFound {
+failure TodoNotFound {
+    kind NotFound
     code "todo_not_found"
     message "Todo not found."
 
@@ -181,7 +182,8 @@ failure TodoNotFound: NotFound {
     }
 }
 
-failure UserNotFound: NotFound {
+failure UserNotFound {
+    kind NotFound
     code "user_not_found"
     message "User not found."
 
@@ -190,32 +192,38 @@ failure UserNotFound: NotFound {
     }
 }
 
-failure UserDisabled: NotPermitted {
+failure UserDisabled {
+    kind NotPermitted
     code "user_disabled"
     message "This account is not available."
 }
 
-failure EmptyPatch: InvalidValue {
+failure EmptyPatch {
+    kind InvalidValue
     code "empty_patch"
     message "Supply at least one field to change."
 }
 
-failure DueDateInPast: InvalidValue {
+failure DueDateInPast {
+    kind InvalidValue
     code "due_date_in_past"
     message "The due date must be in the future."
 }
 
-failure TodoMutationConflict: Conflict {
+failure TodoMutationConflict {
+    kind Conflict
     code "todo_mutation_conflict"
     message "The todo could not be changed."
 }
 
-failure ReminderRecipientRejected: Rejected {
+failure ReminderRecipientRejected {
+    kind Rejected
     code "reminder_recipient_rejected"
     message "The reminder recipient was rejected."
 }
 
-failure ReminderTemporarilyUnavailable: Unavailable {
+failure ReminderTemporarilyUnavailable {
+    kind Unavailable
     code "reminder_temporarily_unavailable"
     message "Reminder delivery is temporarily unavailable."
 }
@@ -247,7 +255,7 @@ action create_todo(input: CreateTodo, actor: Actor) -> TodoView
         reject DueDateInPast
     }
 
-    var todo = create Todo {
+    var todo = attempt create Todo {
         owner_id: actor.user_id
         title: input.title
         status: TodoStatus.open
@@ -264,7 +272,7 @@ action create_todo(input: CreateTodo, actor: Actor) -> TodoView
 action list_todos(input: ListTodos, actor: Actor) -> TodoPage {
     require policy Todo.read with actor
 
-    return query page Todo {
+    return attempt query page Todo {
         where: owner_id == actor.user_id
             and deleted_at == none
             and status matches optional input.status
@@ -282,12 +290,12 @@ action get_todo(todo_id: Todo.id, actor: Actor) -> TodoView
 {
     require policy Todo.read with actor
 
-    var todo = query required Todo {
+    var todo = attempt query required Todo {
         where: id == todo_id
             and owner_id == actor.user_id
             and deleted_at == none
         missing: TodoNotFound {
-            internal { todo_id: todo_id }
+            todo_id: todo_id
         }
     }
 
@@ -307,7 +315,7 @@ action patch_todo(todo_id: Todo.id, input: PatchTodo, actor: Actor) -> TodoView
         reject DueDateInPast
     }
 
-    var todo = update required Todo {
+    var todo = attempt update required Todo {
         where: id == todo_id
             and owner_id == actor.user_id
             and deleted_at == none
@@ -317,7 +325,7 @@ action patch_todo(todo_id: Todo.id, input: PatchTodo, actor: Actor) -> TodoView
             reminder_sent_at: none when input.due_at supplied
         }
         missing: TodoNotFound {
-            internal { todo_id: todo_id }
+            todo_id: todo_id
         }
         conflict: TodoMutationConflict
     }
@@ -330,7 +338,7 @@ action delete_todo(todo_id: Todo.id, actor: Actor) -> None
 {
     require policy Todo.delete with actor
 
-    update required Todo {
+    attempt update required Todo {
         where: id == todo_id
             and owner_id == actor.user_id
             and deleted_at == none
@@ -339,7 +347,7 @@ action delete_todo(todo_id: Todo.id, actor: Actor) -> None
             updated_at: clock.now
         }
         missing: TodoNotFound {
-            internal { todo_id: todo_id }
+            todo_id: todo_id
         }
         conflict: TodoMutationConflict
     }
@@ -354,14 +362,14 @@ action read_user_with_todos(user_id: User.id, actor: Actor) -> UserWithTodos
     require policy User.read with actor
     require policy Todo.read with actor through User.todos
 
-    return query required User {
+    return attempt query required User {
         where: id == user_id and status == UserStatus.active
         include: todos into: UserWithTodos
             where: deleted_at == none
             order_by: created_at asc, id asc
             limit: 100
         missing: UserNotFound {
-            internal { user_id: user_id }
+            user_id: user_id
         }
     }
 }
@@ -372,14 +380,14 @@ action disable_user(input: DisableUser, actor: Actor) -> None
     require actor.user_id == input.user_id
     require policy User.disable with actor
 
-    update required User {
+    attempt update required User {
         where: id == input.user_id and status == UserStatus.active
         set: {
             status: UserStatus.disabled
             disabled_at: clock.now
         }
         missing: UserNotFound {
-            internal { user_id: input.user_id }
+            user_id: input.user_id
         }
     }
 
@@ -390,7 +398,7 @@ action disable_user(input: DisableUser, actor: Actor) -> None
 action send_due_reminders(at: DateTime) -> None
     fails ReminderRecipientRejected, ReminderTemporarilyUnavailable
 {
-    var todos = query many Todo {
+    var todos = attempt query many Todo {
         where: status == TodoStatus.open
             and deleted_at == none
             and reminder_sent_at == none
@@ -410,7 +418,7 @@ action send_due_reminders(at: DateTime) -> None
                 due_at: todo.due_at
             }
 
-            update required Todo {
+            attempt update required Todo {
                 where: id == todo.id and reminder_sent_at == none
                 set: { reminder_sent_at: receipt.accepted_at }
             }
@@ -432,7 +440,7 @@ action purge_deleted_todos(at: DateTime) -> None {
 }
 
 route GET /health/live {
-    auth: public explicitly
+    auth: none
     run: liveness()
     output: PublicHealth
 }

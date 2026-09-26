@@ -679,7 +679,7 @@ output UserTodos {
     todos: List<Todo>
 }
 
-query required User {
+attempt query required User {
     where: id == input.id
     include: todos into: UserTodos order_by: id asc limit: 100 offset: 0
     missing: UserNotFound
@@ -696,7 +696,7 @@ load.
 The same include is accepted on a paginated many-parent query:
 
 ```text
-query many User {
+attempt query many User {
     where: group == input.group
     order_by: id asc
     limit: 20 offset: 0
@@ -718,7 +718,7 @@ output PatchItemReviewer {
     reviewer_id: User?
 }
 
-query required PatchItem {
+attempt query required PatchItem {
     where: id == input.id
     include: reviewer_id optional into: PatchItemReviewer
     missing: PatchItemNotFound
@@ -743,7 +743,7 @@ output TodoOwnerProfile {
     owner: UserProfile
 }
 
-query required Todo {
+attempt query required Todo {
     where: id == input.id
     include: owner.profile optional into: TodoOwnerProfile
     missing: TodoNotFound
@@ -790,7 +790,7 @@ entity under policy:
 action place_order(input: CreateOrder) -> Order
     fails CustomerNotFound, NotPermitted
 {
-    var customer = query required Customer {
+    var customer = attempt query required Customer {
         where: id == input.customer_id
         missing: CustomerNotFound
     }
@@ -855,7 +855,7 @@ entity methods or arbitrary library calls.
 Create:
 
 ```text
-var order = create Order {
+var order = attempt create Order {
     owner: current_user
     status: pending
     total: total
@@ -870,7 +870,7 @@ colon-separated binding form as required mutations.
 Query:
 
 ```text
-var orders = query Order {
+var orders = attempt query Order {
     where: owner == current_user
     and status == pending
     order_by: created_at desc
@@ -881,7 +881,7 @@ var orders = query Order {
 Accepted ordered many-result form:
 
 ```text
-var todos = query many Todo {
+var todos = attempt query many Todo {
     where: owner_id == input.owner_id
     order_by: id asc
     limit: 100 offset: 0
@@ -898,7 +898,7 @@ compound predicates remain pending.
 Required update:
 
 ```text
-update required Order {
+attempt update required Order {
     where: id == input.id
     set: {
         status: input.status
@@ -911,7 +911,7 @@ update required Order {
 Required delete:
 
 ```text
-delete required Order {
+attempt delete required Order {
     where: id == input.id
     missing: OrderNotFound
     conflict: OrderMutationConflict
@@ -931,7 +931,7 @@ one exists, must be explicit, auditable, and conspicuous.
 `query optional` expression:
 
 ```text
-var customer = query optional Customer {
+var customer = attempt query optional Customer {
     where: id == input.id
 }
 ```
@@ -946,12 +946,10 @@ with a two-row limit on SQLite and PostgreSQL.
 The required-one form is explicit about absence:
 
 ```text
-var customer = query required Customer {
+var customer = attempt query required Customer {
     where: id == input.customer_id
     missing: CustomerNotFound {
-        internal {
-            customer_id: input.customer_id
-        }
+        customer_id: input.customer_id
     }
 }
 ```
@@ -959,8 +957,8 @@ var customer = query required Customer {
 Its expression type is `Customer`, and `CustomerNotFound` must be declared in
 the enclosing action's `fails` clause and derive from `NotFound`. Missing rows
 reject that typed failure; they never throw an untyped exception. The optional
-failure body follows the same checked `public`/`internal` context rules as an
-explicit `reject` statement.
+failure body supplies the same exact flat context object as an explicit
+`reject` statement; the declaration owns the public/internal split.
 
 **Open:** zero-or-more queries returning `List<T>` still need explicit ordering
 and pagination semantics.
@@ -978,7 +976,7 @@ database failures explicit:
 action update_customer(input: UpdateCustomer) -> Customer
     fails CustomerNotFound, CustomerMutationConflict
 {
-    return update required Customer {
+    return attempt update required Customer {
         where: id == input.id
         set: {
             email: input.email
@@ -1009,7 +1007,7 @@ input CustomerChanges {
 action patch_customer(id: Customer.id, changes: CustomerChanges) -> Customer
     fails EmptyCustomerPatch, CustomerNotFound, CustomerMutationConflict
 {
-    return update required Customer {
+    return attempt update required Customer {
         where: id == id
         patch: changes
         empty: EmptyCustomerPatch
@@ -1053,7 +1051,7 @@ compares raw driver constraint names.
 that was removed:
 
 ```text
-delete required Customer {
+attempt delete required Customer {
     where: id == input.id
     missing: CustomerNotFound
     conflict: CustomerMutationConflict
@@ -1070,7 +1068,7 @@ or delete data.
 Selecting only some fields does not return a partially populated entity.
 
 ```text
-var customers = query Customer {
+var customers = attempt query Customer {
     select id, email
 }
 ```
@@ -1148,7 +1146,7 @@ action place_order(input: CreateOrder) -> Order
         reject CreditLimitExceeded
     }
 
-    var order = create Order {
+    var order = attempt create Order {
         owner: customer
         items: input.items
         total: total
@@ -1266,12 +1264,14 @@ ordinary business code to manipulate `Result<T, E>` wrappers everywhere.
 raised with `reject`.
 
 ```text
-failure NotOwner: NotPermitted {
+failure NotOwner {
+    kind NotPermitted
     code "not_owner"
     message "You cannot modify this order."
 }
 
-failure AlreadyShipped: Conflict {
+failure AlreadyShipped {
+    kind Conflict
     code "order_already_shipped"
     message "A shipped order cannot be cancelled."
 }
@@ -1296,7 +1296,8 @@ standard kind. The kind determines default HTTP status, public disclosure,
 retry classification, telemetry severity, and other boundary behaviour. The
 domain failure supplies stable application meaning and a public code.
 
-`failure` block spelling is provisional. See the
+The explicit `kind` member and declaration-owned public/internal schemas are
+accepted. See the
 [failure model](failure-model.md) for the standard catalogue, disclosure
 channels, operational faults, and non-HTTP mappings.
 
@@ -1513,7 +1514,7 @@ route POST /todos {
     input: CreateTodo
 
     action fails Unavailable {
-        var todo = create Todo {
+        var todo = attempt create Todo {
             owner: current_user
             title: input.title
             due_at: input.due_at
@@ -1538,7 +1539,7 @@ testing, policy, or transaction boundary is extracted to a named action:
 action create_todo(input: CreateTodo, actor: Actor) -> Todo
     fails Unavailable
 {
-    return create Todo {
+    return attempt create Todo {
         owner: actor
         title: input.title
         due_at: input.due_at
@@ -1613,7 +1614,7 @@ action place_order(input: CreateOrder) -> Order {
 
 ```text
 job overdue_reminders every 15m {
-    var todos = query Todo {
+    var todos = attempt query Todo {
         where: done == false
         and due_at < now
         and reminder_sent == false
@@ -1718,12 +1719,14 @@ entity Order {
     created_at: DateTime default now
 }
 
-failure EmptyBasket: InvalidValue {
+failure EmptyBasket {
+    kind InvalidValue
     code "empty_basket"
     message "Add at least one item."
 }
 
-failure CreditLimitExceeded: Conflict {
+failure CreditLimitExceeded {
+    kind Conflict
     code "credit_limit_exceeded"
     message "The order exceeds the available credit limit."
 }
@@ -1742,7 +1745,7 @@ action place_order(input: CreateOrder) -> Order
         reject CreditLimitExceeded
     }
 
-    var order = create Order {
+    var order = attempt create Order {
         owner: customer
         items: input.items
         total: total
@@ -1774,9 +1777,9 @@ resolve:
 3. Are functions strictly pure? Which effects may actions perform?
 4. How are transactions declared or inferred?
 5. How do partial entity updates consume omission-aware input safely?
-6. What are the exact propagation and handling rules for `fails` and `attempt`?
-7. What is the final failure declaration, public/internal payload, aliasing,
-   cause-wrapping, and `attempt` syntax?
+6. What is the exact handler-arm and replacement-value grammar after an
+   `attempt` prefix?
+7. What aliasing and cause-wrapping syntax is needed for mapped failures?
 8. Which collection operations exist, and are lambdas necessary?
 9. Are `while`, recursion, and unbounded collections permitted?
 10. How are money, currency, decimal arithmetic, dates, time zones, and durations
@@ -1821,10 +1824,11 @@ resolve:
 | Expected failure | declared `fails`, raised with `reject` |
 | Failure transport | standard kind maps automatically; no route status numbers |
 | Failure disclosure | safe code/message by default; public details are explicit |
-| Local failure mapping | proposed `attempt` block |
+| Fallible expression | explicit `attempt` prefix |
+| Local failure mapping | handler block spelling remains unresolved |
 | Persistence | `create`, `query`, `update`, `delete` language constructs |
 | External effects | declared `service`, `event`, and `job` constructs |
-| Route security | authenticated by default; public is explicit |
+| Route security | authenticated by default; exact opt-out is `auth: none` |
 | Validation | automatic at every trust boundary |
 | Formatting | non-semantic, canonical formatter at checkpoints |
 | Generated target code | never normal developer-facing source |

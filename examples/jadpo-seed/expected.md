@@ -12,8 +12,8 @@ The program compiles without diagnostics under the core grammar and semantic
 rules and executes through the generated P9 Bun target.
 
 It does not yet access a database or configure a production authentication
-provider. The route is explicitly public, so it does not rely on the future
-default-authentication runtime.
+provider. Both routes use the exact `auth: none` opt-out, so neither relies on
+the future default-authentication runtime.
 
 ## 2. Declaration nodes
 
@@ -34,6 +34,7 @@ InviteCodeRejected
 InviteCodeRejected.internal.invite_code
 register_customer
 POST /registrations
+GET /registrations/{email}
 ```
 
 Prelude nodes referenced by the program include:
@@ -117,7 +118,7 @@ The internal invite code never appears in the public response.
 
 `POST /registrations`:
 
-- is public only because `auth: public explicitly` appears;
+- is public only because `auth: none` appears;
 - validates incoming data as `RegisterCustomer`;
 - invokes `register_customer`;
 - validates and serialises exactly `RegistrationAccepted`;
@@ -127,6 +128,13 @@ The internal invite code never appears in the public response.
 - rejects unknown input fields under the boundary's canonical closed-shape
   policy;
 - emits no internal diagnostic field to the client.
+
+`GET /registrations/{email}`:
+
+- binds the placeholder one-to-one to `path.email: Customer.email`;
+- percent-decodes and validates the segment before authored behaviour runs;
+- exposes the validated value only as `path.email`; and
+- executes an inline action that returns the declared output shape.
 
 ## 8. Generated HTTP behaviour
 
@@ -168,8 +176,8 @@ Expected failure shape:
 }
 ```
 
-Malformed email and constraint-invalid invite codes fail at boundary validation
-before the action runs.
+Malformed email, invalid typed path values, and constraint-invalid invite codes
+fail at boundary validation before the action runs.
 
 The executable evidence is the [jadpo-seed Bun acceptance
 suite](../../tests/runtime/jadpo-seed.test.ts).
@@ -182,8 +190,8 @@ Later fixtures should derive at least these failures from the seed:
 - pass `Email` directly where `Customer.email` is required without explicit
   narrowing;
 - remove `InviteCodeRejected` from the action's `fails` clause;
-- omit `internal.invite_code` from the rejection;
+- omit `invite_code` from the flat rejection object;
 - add the internal invite code to an undeclared public response field;
 - replace the declared failure with a string or arbitrary exception;
 - add a numeric route status mapping;
-- remove `auth: public explicitly` and then assert the route is public.
+- remove `auth: none` and then assert the route is public.

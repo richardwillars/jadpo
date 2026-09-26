@@ -7,7 +7,7 @@ input FindCustomer {
 }
 
 action find_customer(input: FindCustomer) -> Customer? {
-    return query optional Customer {
+    return attempt query optional Customer {
         where: id == input.id
     }
 }

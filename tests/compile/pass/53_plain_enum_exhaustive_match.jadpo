@@ -31,7 +31,7 @@ action describe_delivery(input: DeliveryRequest) -> DeliveryMessage {
 }
 
 route POST /delivery-description {
-    auth: public explicitly
+    auth: none
     input: DeliveryRequest
     output: DeliveryMessage
     run: describe_delivery(input)

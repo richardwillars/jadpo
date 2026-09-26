@@ -7,7 +7,7 @@
       "primary_match": "supplier.email",
       "expected_type": "Customer.email",
       "received_type": "Supplier.email",
-      "context": "CustomerRejected.internal.email"
+      "context": "CustomerRejected.email"
     }
   ]
 }

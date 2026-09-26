@@ -3,6 +3,11 @@
 Each fixture is a `.jadpo` file paired with an `.expect.json` file of the same
 base name. The compiler test harness discovers these pairs recursively.
 
+After building the CLI, run `ruby tests/compile/verify.rb` from the repository
+root to verify pass/fail status, diagnostic aliases, and exact primary byte
+ranges for every pair. Selected semantic assertions are additionally exercised
+by the Rust compiler tests.
+
 Expectation format version 1 contains:
 
 ```json
@@ -42,7 +47,7 @@ Diagnostic codes in these fixtures are part of the compiler-facing contract.
 Renaming one requires updating the roadmap, relevant specification, and all
 affected fixture expectations together.
 
-The current sixty-three pairs comprise the original ten type/failure cases plus
+The current eighty-two pairs comprise the original ten type/failure cases plus
 coverage for optional omission, nullable widening, implicit narrowing,
 semantic-to-primitive unwrapping, incomplete records, invariant collections,
 transitive failure propagation, function/action separation, missing failure
@@ -76,3 +81,25 @@ scalars and nullable values, `some(value)` narrowing, fixed operator
 precedence, and authored `test`/`assert` blocks. Their failure cases cover
 invalid payload construction and patterns, incomplete matches, incompatible
 operators, and non-Boolean assertions.
+
+Fixtures 59–69 establish the executable P10.6 subset: explicit `kind` members,
+flat failure context, exact `fails` sets, mandatory `attempt` at fallible call
+sites, typed and exactly matched route placeholders, `auth: none`, and exactly
+one named or inline route behaviour. They also reject stale failure declarations
+overlapping public/internal context names, and unacknowledged persistence
+expressions. They also cover function-level failure propagation, fallible pure
+calls, inline-action exact failure sets, multi-placeholder typed paths, and the
+authenticated route default.
+Path fields also reject nullable, optional, constraint, reference, and
+persistence modifiers so transport decoding cannot silently acquire entity
+storage semantics.
+Duplicate members in a callable's exact `fails` set are rejected rather than
+silently deduplicated.
+An inline action's declared failure surface is also derived into route
+inventory and OpenAPI in the same way as a named action.
+Duplicate route items are diagnosed rather than silently replacing an earlier
+transport or behaviour declaration.
+
+Expectation files retain established compiler codes as migration aliases. CLI
+and LSP diagnostics expose the canonical lower-dotted `ruleId` alongside those
+aliases through diagnostic schema version 2.

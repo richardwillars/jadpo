@@ -4,7 +4,7 @@
   "diagnostics": [
     {
       "code": "TYPE_MATCH_NON_EXHAUSTIVE",
-      "primary_match": "match decision"
+      "primary_match": "match decision {\n        true => {\n            return MatchResult { description: \"Yes\" }\n        }\n    }"
     }
   ]
 }

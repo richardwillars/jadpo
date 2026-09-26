@@ -60,7 +60,7 @@ action describe_outcome(input: OutcomeRequest) -> OutcomeView {
 }
 
 route POST /outcome-description {
-    auth: public explicitly
+    auth: none
     input: OutcomeRequest
     output: OutcomeView
     run: describe_outcome(input)

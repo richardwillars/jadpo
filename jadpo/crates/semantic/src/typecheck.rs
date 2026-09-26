@@ -305,12 +305,47 @@ impl TypeChecker<'_> {
                         self.check_callable(callable, &file.source_name)
                     }
                     Declaration::Route(route) => {
+                        let mut environment = BTreeMap::new();
+                        if let Some(input) = &route.input {
+                            environment.insert("input".to_owned(), type_value(input));
+                        }
+                        if !route.path_fields.is_empty() {
+                            let path_type = format!("__route_path_{}", route.range.start);
+                            self.catalogue.records.insert(
+                                path_type.clone(),
+                                route
+                                    .path_fields
+                                    .iter()
+                                    .map(|field| {
+                                        (
+                                            field.name.text.clone(),
+                                            RecordField {
+                                                declared_type: type_value(&field.field_type),
+                                                optional: false,
+                                            },
+                                        )
+                                    })
+                                    .collect(),
+                            );
+                            environment.insert("path".to_owned(), simple_type(&path_type));
+                        }
                         if let Some(run) = &route.run {
-                            let mut environment = BTreeMap::new();
-                            if let Some(input) = &route.input {
-                                environment.insert("input".to_owned(), type_value(input));
-                            }
                             self.infer_invocation(run, &environment, &file.source_name);
+                        }
+                        if let Some(action) = &route.inline_action {
+                            let mut mutable_bindings = BTreeSet::new();
+                            let output = route
+                                .output
+                                .as_ref()
+                                .map(type_value)
+                                .unwrap_or_else(|| simple_type("Unit"));
+                            self.check_block(
+                                &action.body,
+                                &mut environment,
+                                &mut mutable_bindings,
+                                &output,
+                                &file.source_name,
+                            );
                         }
                     }
                     Declaration::Test(test) => {
@@ -460,15 +495,7 @@ impl TypeChecker<'_> {
                 Statement::Reject(statement) => {
                     self.check_reject_fields(
                         &statement.failure.text,
-                        "public",
-                        &statement.public_values,
-                        environment,
-                        source,
-                    );
-                    self.check_reject_fields(
-                        &statement.failure.text,
-                        "internal",
-                        &statement.internal_values,
+                        &statement.values,
                         environment,
                         source,
                     );
@@ -970,15 +997,7 @@ impl TypeChecker<'_> {
                 if let Some(missing) = &query.missing {
                     self.check_reject_fields(
                         &missing.failure.text,
-                        "public",
-                        &missing.public_values,
-                        environment,
-                        source,
-                    );
-                    self.check_reject_fields(
-                        &missing.failure.text,
-                        "internal",
-                        &missing.internal_values,
+                        &missing.values,
                         environment,
                         source,
                     );
@@ -1831,6 +1850,9 @@ impl TypeChecker<'_> {
             Expression::Grouped(grouped) => {
                 self.infer_expression(&grouped.value, environment, source)
             }
+            Expression::Attempt(attempt) => {
+                self.infer_expression(&attempt.value, environment, source)
+            }
             Expression::Missing(_) => None,
         };
 
@@ -2003,20 +2025,7 @@ impl TypeChecker<'_> {
         environment: &BTreeMap<String, TypeValue>,
         source: &str,
     ) {
-        self.check_reject_fields(
-            &binding.failure.text,
-            "public",
-            &binding.public_values,
-            environment,
-            source,
-        );
-        self.check_reject_fields(
-            &binding.failure.text,
-            "internal",
-            &binding.internal_values,
-            environment,
-            source,
-        );
+        self.check_reject_fields(&binding.failure.text, &binding.values, environment, source);
     }
 
     fn check_conflict_bindings(
@@ -2269,17 +2278,23 @@ impl TypeChecker<'_> {
     fn check_reject_fields(
         &mut self,
         failure: &str,
-        scope: &str,
         fields: &[FieldInitialiser],
         environment: &BTreeMap<String, TypeValue>,
         source: &str,
     ) {
-        let expected_fields = self
+        let mut expected_fields = self
             .catalogue
             .failure_fields
-            .get(&format!("{failure}.{scope}"))
+            .get(&format!("{failure}.public"))
             .cloned()
             .unwrap_or_default();
+        expected_fields.extend(
+            self.catalogue
+                .failure_fields
+                .get(&format!("{failure}.internal"))
+                .cloned()
+                .unwrap_or_default(),
+        );
         for field in fields {
             let inferred = self.infer_expression(&field.value, environment, source);
             if let (Some(received), Some(expected)) =
@@ -2365,10 +2380,14 @@ impl TypeChecker<'_> {
                 );
                 return None;
             };
-            current = TypeValue {
-                name: format!("{record_name}.{}", field.text),
-                arguments: declared.declared_type.arguments,
-                nullable: declared.declared_type.nullable,
+            current = if record_name.starts_with("__route_path_") {
+                declared.declared_type
+            } else {
+                TypeValue {
+                    name: format!("{record_name}.{}", field.text),
+                    arguments: declared.declared_type.arguments,
+                    nullable: declared.declared_type.nullable,
+                }
             };
         }
         Some(current)
@@ -2426,7 +2445,9 @@ impl TypeChecker<'_> {
         if received.arguments != expected.arguments {
             return false;
         }
-        if self.node_kind(&expected.name) == Some(NodeKind::PreludeType) {
+        if self.node_kind(&expected.name) == Some(NodeKind::PreludeType)
+            && self.node_kind(&received.name) != Some(NodeKind::Field)
+        {
             return false;
         }
         self.has_refinement_path(&received.name, &expected.name)
@@ -2504,6 +2525,9 @@ impl TypeChecker<'_> {
     }
 
     fn record_shape_name(&self, name: &str) -> Option<String> {
+        if self.catalogue.records.contains_key(name) {
+            return Some(name.to_owned());
+        }
         self.ancestors(name)
             .into_iter()
             .find(|candidate| self.catalogue.records.contains_key(candidate))
@@ -2777,9 +2801,9 @@ function email() -> Email { return Email("not-an-email") }
 entity User { id: Uuid identity inverse todos: many Todo via Todo.owner_id }
 entity Todo { id: Uuid identity owner_id: User.id references User.id on_delete cascade }
 output UserTodos { parent: User todos: List<Todo> }
-failure UserNotFound: NotFound { code "user_not_found" }
+failure UserNotFound { kind NotFound code "user_not_found" }
 action load(user_id: User.id) -> UserTodos fails UserNotFound {
-    return query required User {
+    return attempt query required User {
         where: id == user_id
         include: todos into: UserTodos order_by: id asc limit: 100 offset: 0
         missing: UserNotFound
@@ -2801,9 +2825,9 @@ action load(user_id: User.id) -> UserTodos fails UserNotFound {
 entity User { id: Uuid identity inverse todos: many Todo via Todo.owner_id }
 entity Todo { id: Uuid identity owner_id: User.id references User.id on_delete cascade }
 output UserTodos { parent: User todos: List<Todo> }
-failure UserNotFound: NotFound { code "user_not_found" }
+failure UserNotFound { kind NotFound code "user_not_found" }
 action load(user_id: User.id) -> UserTodos fails UserNotFound {
-    return query required User {
+    return attempt query required User {
         where: id == user_id
         include: todos into: UserTodos order_by: id asc limit: 0 offset: -1
         missing: UserNotFound
@@ -2833,7 +2857,7 @@ entity User {
 entity Todo { id: Uuid identity owner_id: User.id references User.id on_delete cascade }
 output UserTodos { parent: User todos: List<Todo> }
 action load(group: User.group) -> List<UserTodos> {
-    return query many User {
+    return attempt query many User {
         where: group == group
         order_by: id asc
         limit: 20 offset: 0
@@ -2912,9 +2936,9 @@ entity User {
 entity Todo { id: Uuid identity owner_id: User.id references User.id on_delete cascade }
 entity Note { id: Uuid identity owner_id: User.id references User.id on_delete cascade }
 output UserActivity { parent: User todos: List<Todo> notes: List<Note> }
-failure UserNotFound: NotFound { code "user_not_found" }
+failure UserNotFound { kind NotFound code "user_not_found" }
 action load(user_id: User.id) -> UserActivity fails UserNotFound {
-    return query required User {
+    return attempt query required User {
         where: id == user_id
         include: todos into: UserActivity order_by: id asc limit: 10 offset: 0
         include: notes into: UserActivity order_by: id desc limit: 5 offset: 0

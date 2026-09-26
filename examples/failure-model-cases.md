@@ -1,13 +1,14 @@
 # Failure-model acceptance cases
 
-**Status:** normative design examples; surface spelling remains provisional  
+**Status:** normative design examples; unresolved handler arms remain illustrative
 **Purpose:** define failure programs and boundary behaviours that a future
 compiler and runtime must accept or reject
 
 ## Shared declarations
 
 ```text
-failure CustomerNotFound: NotFound {
+failure CustomerNotFound {
+    kind NotFound
     code "customer_not_found"
     message "Customer not found."
 
@@ -16,7 +17,8 @@ failure CustomerNotFound: NotFound {
     }
 }
 
-failure CustomerNotVisible: NotVisible {
+failure CustomerNotVisible {
+    kind NotVisible
     code "customer_not_found"
     message "Customer not found."
 
@@ -26,7 +28,8 @@ failure CustomerNotVisible: NotVisible {
     }
 }
 
-failure EmailAlreadyUsed: Conflict {
+failure EmailAlreadyUsed {
+    kind Conflict
     code "email_already_used"
     message "That email cannot be used."
 
@@ -35,7 +38,8 @@ failure EmailAlreadyUsed: Conflict {
     }
 }
 
-failure QuantityUnavailable: Conflict {
+failure QuantityUnavailable {
+    kind Conflict
     code "quantity_unavailable"
     message "The requested quantity is unavailable."
 
@@ -49,12 +53,14 @@ failure QuantityUnavailable: Conflict {
     }
 }
 
-failure PaymentDeclined: Rejected {
+failure PaymentDeclined {
+    kind Rejected
     code "payment_declined"
     message "The payment was declined."
 }
 
-failure CheckoutUnavailable: Unavailable {
+failure CheckoutUnavailable {
+    kind Unavailable
     code "checkout_unavailable"
     message "Checkout is temporarily unavailable."
 }
@@ -71,15 +77,13 @@ codes.
 action load_customer(id: Customer.id) -> Customer
     fails CustomerNotFound
 {
-    var customer = query optional Customer {
+    var customer = attempt query optional Customer {
         where: id == id
     }
 
     if customer == none {
         reject CustomerNotFound {
-            internal {
-                customer_id: id
-            }
+            customer_id: id
         }
     }
 
@@ -94,9 +98,7 @@ context is supplied.
 
 ```text
 action load_customer(id: Customer.id) -> Customer {
-    reject CustomerNotFound {
-        internal { customer_id: id }
-    }
+    reject CustomerNotFound { customer_id: id }
 }
 ```
 
@@ -135,21 +137,20 @@ standard kind.
 ## 6. Automatic HTTP mapping
 
 ```text
-route GET /customers/:id {
-    input: GetCustomer
+route GET /customers/{id} {
+    path { id: Customer.id }
     output: CustomerOutput
-
-    return load_customer(input.id)
+    run: load_customer(path.id)
 }
 ```
 
-**Expected:** compiles. `CustomerNotFound: NotFound` automatically generates a
+**Expected:** compiles. `CustomerNotFound` of kind `NotFound` automatically generates a
 404 response and public error schema. The route does not repeat the status.
 
 ## 7. Manual status mapping
 
 ```text
-route GET /customers/:id {
+route GET /customers/{id} {
     CustomerNotFound => 404
 }
 ```
@@ -178,14 +179,9 @@ information are absent.
 
 ```text
 reject QuantityUnavailable {
-    public {
-        available: product.available_quantity
-    }
-
-    internal {
-        product_id: product.id
-        requested: input.quantity
-    }
+    available: product.available_quantity
+    product_id: product.id
+    requested: input.quantity
 }
 ```
 
@@ -196,9 +192,7 @@ receives it under `error.details`; internal fields remain absent.
 
 ```text
 reject QuantityUnavailable {
-    public {
-        available: product.available_quantity
-    }
+    available: product.available_quantity
 }
 ```
 
@@ -209,10 +203,8 @@ internal fields are missing.
 
 ```text
 reject CustomerNotFound {
-    internal {
-        customer_id: id
-        sql: raw_sql
-    }
+    customer_id: id
+    sql: raw_sql
 }
 ```
 
@@ -222,7 +214,8 @@ schema.
 ## 12. Secret in public payload
 
 ```text
-failure ProviderFailed: Unavailable {
+failure ProviderFailed {
+    kind Unavailable
     code "provider_failed"
 
     public {
@@ -236,7 +229,8 @@ failure ProviderFailed: Unavailable {
 ## 13. Internal does not mean plaintext logging
 
 ```text
-failure EmailAlreadyUsed: Conflict {
+failure EmailAlreadyUsed {
+    kind Conflict
     code "email_already_used"
 
     internal {
@@ -254,8 +248,8 @@ failure EmailAlreadyUsed: Conflict {
 action create_order(input: CreateOrder) -> Order
     fails CustomerNotFound
 {
-    var customer = load_customer(input.customer_id)
-    return create_order_for(customer, input)
+    var customer = attempt load_customer(input.customer_id)
+    return attempt create_order_for(customer, input)
 }
 ```
 
@@ -266,8 +260,8 @@ action create_order(input: CreateOrder) -> Order
 
 ```text
 action create_order(input: CreateOrder) -> Order {
-    var customer = load_customer(input.customer_id)
-    return create_order_for(customer, input)
+    var customer = attempt load_customer(input.customer_id)
+    return attempt create_order_for(customer, input)
 }
 ```
 
@@ -287,6 +281,9 @@ action checkout(order: Order) -> Payment
 }
 ```
 
+The handler-arm spelling above is illustrative until its exact grammar is
+accepted; the exhaustive mapping semantics are already fixed.
+
 **Expected:** compiles when the provider operation declares exactly the handled
 failure set. A newly added provider failure makes the mapping non-exhaustive and
 breaks compilation.
@@ -294,7 +291,8 @@ breaks compilation.
 ## 17. Provider message leakage
 
 ```text
-failure PaymentFailed: Rejected {
+failure PaymentFailed {
+    kind Rejected
     code "payment_failed"
 
     public {
@@ -310,7 +308,7 @@ internal by default.
 ## 18. Provider timeout
 
 ```text
-var charge = PaymentProvider.charge(order)
+var charge = attempt PaymentProvider.charge(order)
 ```
 
 Assume the operation times out.
@@ -326,7 +324,7 @@ declared `CheckoutUnavailable` when callers need that business outcome.
 action register_customer(input: RegisterCustomer) -> Customer
     fails EmailAlreadyUsed
 {
-    return create Customer {
+    return attempt create Customer {
         email: input.email
     }
 }
@@ -350,16 +348,14 @@ not guess which domain failure a driver error means.
 action get_customer(id: Customer.id) -> Customer
     fails CustomerNotVisible
 {
-    var customer = query visible Customer {
+    var customer = attempt query visible Customer {
         where: id == id
     }
 
     if customer == none {
         reject CustomerNotVisible {
-            internal {
-                customer_id: id
-                policy_reason: current_policy_reason
-            }
+            customer_id: id
+            policy_reason: current_policy_reason
         }
     }
 
@@ -407,12 +403,13 @@ construction is validated during compilation.
 ## 26. Dynamic validation
 
 ```text
-failure InvalidContactEmail: InvalidValue {
+failure InvalidContactEmail {
+    kind InvalidValue
     code "invalid_contact_email"
     message "Enter a valid contact email."
 }
 
-var email = Email(raw_text)
+var email = attempt Email(raw_text)
 ```
 
 **Expected:** dynamic construction creates a typed validation-failure

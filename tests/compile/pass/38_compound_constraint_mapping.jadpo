@@ -11,13 +11,15 @@ input CreateMembership {
     email: Membership.email
 }
 
-failure MembershipExists: Conflict { code "membership_exists" }
-failure MembershipConflict: Conflict { code "membership_conflict" }
+failure MembershipExists {
+    kind Conflict code "membership_exists" }
+failure MembershipConflict {
+    kind Conflict code "membership_conflict" }
 
 action create_membership(input: CreateMembership) -> Membership
     fails MembershipExists, MembershipConflict
 {
-    return create Membership {
+    return attempt create Membership {
         id: input.id
         tenant: input.tenant
         email: input.email

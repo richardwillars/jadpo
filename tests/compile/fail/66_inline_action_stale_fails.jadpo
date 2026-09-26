@@ -1,0 +1,16 @@
+value Result {
+    ok: Bool
+}
+
+failure Refused {
+    kind Rejected
+    code "refused"
+}
+
+route GET /result {
+    auth: none
+    output: Result
+    action fails Refused {
+        return Result { ok: true }
+    }
+}

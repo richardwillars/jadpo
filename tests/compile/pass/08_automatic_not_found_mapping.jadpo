@@ -6,7 +6,8 @@ output CustomerResult {
     found: Bool
 }
 
-failure CustomerNotFound: NotFound {
+failure CustomerNotFound {
+    kind NotFound
     code "customer_not_found"
     message "Customer not found."
 }
@@ -24,7 +25,7 @@ action find_customer(input: FindCustomer) -> CustomerResult
 }
 
 route POST /customers/find {
-    auth: public explicitly
+    auth: none
     input: FindCustomer
     output: CustomerResult
     run: find_customer(input)

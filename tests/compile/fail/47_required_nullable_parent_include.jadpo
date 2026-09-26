@@ -16,12 +16,13 @@ output PatchItemReviewer {
     reviewer_id: User
 }
 
-failure PatchItemNotFound: NotFound { code "patch_item_not_found" }
+failure PatchItemNotFound {
+    kind NotFound code "patch_item_not_found" }
 
 action get_patch_item_reviewer(input: FindPatchItem) -> PatchItemReviewer
     fails PatchItemNotFound
 {
-    return query required PatchItem {
+    return attempt query required PatchItem {
         where: id == input.id
         include: reviewer_id required into: PatchItemReviewer
         missing: PatchItemNotFound

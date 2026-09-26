@@ -102,6 +102,7 @@ The initial HTTP catalogue is deliberately opinionated:
 | `RateLimited` | 429 | Caller must wait before retrying | expected, retry metadata |
 | `Unavailable` | 503 | Required capability is temporarily unavailable | operational policy |
 | `TimedOut` | 504 | Required dependency exceeded its deadline | operational policy |
+| `OutcomeUnknown` | no default | The side effect may have committed, so blind retry is unsafe | requires explicit boundary decision |
 | `Misconfigured` | 500 | An internal deployment/configuration error occurred | alert, no blind retry |
 | `InternalFault` | 500 | An internal error occurred | alert and diagnose |
 
@@ -116,11 +117,12 @@ Applications may define domain-specific failures from the expected kinds.
 
 ## 4. Declaring a domain failure
 
-**Provisional syntax:** a failure names its standard kind, stable public code,
+An application failure names its standard kind, stable public code,
 optional safe message, public payload schema, and internal diagnostic schema:
 
 ```text
-failure CustomerNotFound: NotFound {
+failure CustomerNotFound {
+    kind NotFound
     code "customer_not_found"
     message "Customer not found."
 
@@ -144,7 +146,8 @@ A failure exposes no application data unless its declaration contains a
 `public` schema:
 
 ```text
-failure QuantityUnavailable: Conflict {
+failure QuantityUnavailable {
+    kind Conflict
     code "quantity_unavailable"
     message "The requested quantity is unavailable."
 
@@ -195,15 +198,13 @@ Expected domain failures are raised only with `reject`:
 action load_customer(id: Customer.id) -> Customer
     fails CustomerNotFound
 {
-    var customer = query optional Customer {
+    var customer = attempt query optional Customer {
         where: id == id
     }
 
     if customer == none {
         reject CustomerNotFound {
-            internal {
-                customer_id: id
-            }
+            customer_id: id
         }
     }
 
@@ -211,20 +212,25 @@ action load_customer(id: Customer.id) -> Customer
 }
 ```
 
-A rejection must populate every required public and internal field. Extra
-fields are invalid. The compiler attaches the failure declaration, rejection
-site, enclosing operation, and source node automatically.
+A rejection supplies one flat object and must populate every required public
+and internal field. Extra fields are invalid. The failure declaration owns the
+public/internal split, and a field name cannot occur in both schemas. The
+compiler attaches the failure declaration, rejection site, enclosing operation,
+and source node automatically.
 
 ### 5.2 Declared failure sets
 
-Every callable that may directly or transitively reject a domain failure must:
+Every callable's authored `fails` set must exactly equal its reachable,
+unhandled failure set. A callable that may directly or transitively reject a
+domain failure must:
 
 - list it in `fails`;
 - handle it locally; or
 - map it to another declared failure.
 
-An undeclared failure path is a compile error. The compiler derives the full
-failure graph rather than trusting handwritten route documentation.
+An undeclared failure path and a stale `fails` member are compile errors. Every
+fallible expression is explicitly prefixed with `attempt`; the compiler derives
+the full failure graph rather than trusting handwritten route documentation.
 
 ### 5.3 Propagation
 
@@ -237,18 +243,16 @@ stack.
 
 ### 5.4 Mapping and handling
 
-`attempt` is the proposed construct for local handling or mapping:
+`attempt` is the executable prefix for acknowledging a fallible expression:
 
 ```text
-var payment = attempt charge_card(order) {
-    CardDeclined => reject PaymentDeclined
-    ProviderUnavailable => reject CheckoutUnavailable
-}
+var payment = attempt charge_card(order)
 ```
 
-The exact `attempt` grammar remains open. Its required semantics are not open:
-handling is exhaustive, mapped failures are declared, causes can be retained
-internally, and an unhandled declared failure cannot disappear.
+The exact handler-arm grammar after `attempt` remains open. Its required
+semantics are not open: handling is exhaustive, mapped failures are declared,
+causes can be retained internally, and an unhandled declared failure cannot
+disappear.
 
 ## 6. HTTP boundary behaviour
 
@@ -259,15 +263,16 @@ standard kind provides the status and envelope. A route's possible error
 responses are derived from the operations it invokes.
 
 ```text
-route GET /customers/:id {
-    input: GetCustomer
+route GET /customers/{id} {
+    path {
+        id: Customer.id
+    }
     output: CustomerOutput
-
-    return load_customer(input.id)
+    run: load_customer(path.id)
 }
 ```
 
-If `load_customer` fails with `CustomerNotFound: NotFound`, the HTTP adapter
+If `load_customer` fails with `CustomerNotFound` of kind `NotFound`, the HTTP adapter
 returns 404 automatically and the generated OpenAPI document includes that
 response.
 
@@ -422,7 +427,8 @@ an inaccessible or tenant-invisible resource to the same public shape as a
 missing resource:
 
 ```text
-failure CustomerNotVisible: NotVisible {
+failure CustomerNotVisible {
+    kind NotVisible
     code "customer_not_found"
     message "Customer not found."
 
@@ -481,9 +487,11 @@ service PaymentProvider {
 }
 ```
 
-A declined card may become declared `PaymentDeclined: Rejected`. A provider
+A declined card may become declared `PaymentDeclined` of kind `Rejected`. A provider
 timeout normally becomes an operational `TimedOut` fault or a deliberate
-`CheckoutUnavailable: Unavailable` domain failure. Invalid credentials are a
+`CheckoutUnavailable` domain failure of kind `Unavailable`. An interrupted
+write whose commit state cannot be proved becomes `OutcomeUnknown`, never a
+blindly retryable timeout. Invalid credentials are a
 misconfiguration fault, never a client-visible “card declined.”
 
 Provider error text, proprietary codes, and response bodies remain internal
@@ -614,10 +622,10 @@ kind, rejection site, propagation path, boundary, and policy rule.
 
 The golden applications must resolve:
 
-- final declaration and `attempt` grammar;
+- exact handler-arm grammar after the accepted `attempt` prefix;
 - exact public envelope and validation-detail schema;
 - localisation ownership for human-facing messages;
-- the final standard-kind catalogue and whether 422 is used consistently;
+- later standard-kind catalogue additions and whether 422 is used consistently;
 - policy and syntax for reviewed status overrides, if any;
 - data-classification syntax for public and internal fields;
 - redaction, sampling, and retention policy declarations;

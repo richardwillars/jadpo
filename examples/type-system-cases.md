@@ -178,12 +178,11 @@ silently.
 route POST /customers {
     input: RegisterCustomer
     output: Customer
-
-    return register_customer(input)
+    run: register_customer(input)
 }
 
 action register_customer(input: RegisterCustomer) -> Customer {
-    return create Customer {
+    return attempt create Customer {
         email: input.email
         username: input.username
         referrer_id: input.referrer_id
@@ -208,7 +207,7 @@ input GetCustomer {
 action get_customer(input: GetCustomer) -> Customer
     fails CustomerNotFound, NotPermitted
 {
-    var customer = query required Customer {
+    var customer = attempt query required Customer {
         where: id == input.id
         missing: CustomerNotFound
     }
@@ -389,7 +388,7 @@ Use explicit validation and handle its typed failure.
 ## 23. Projection retains source field identity
 
 ```text
-var recipients = query Customer {
+var recipients = attempt query Customer {
     select id, email
 }
 

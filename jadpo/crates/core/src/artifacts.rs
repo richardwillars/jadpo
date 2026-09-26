@@ -1,5 +1,5 @@
-use crate::AnalyzedProject;
-use jadpo_diagnostics::Diagnostic;
+use crate::{checked_source_revision, AnalyzedProject};
+use jadpo_diagnostics::{catalogue_manifest_json, catalogue_reference_markdown, Diagnostic};
 use jadpo_semantic::checked_manifest_json;
 use jadpo_syntax::{
     CallableKind, Constraint, ConstraintKind, Declaration, EnumDeclaration, FieldDeclaration,
@@ -32,6 +32,8 @@ pub fn derive_artifacts(project_path: &Path, project: &AnalyzedProject) -> Vec<G
             model.public_failure_compatibility_json(),
         ),
         artifact("openapi/openapi.json", model.openapi_json()),
+        artifact("diagnostics/catalogue.json", catalogue_manifest_json()),
+        artifact("diagnostics/reference.md", catalogue_reference_markdown()),
     ]
 }
 
@@ -49,7 +51,32 @@ fn normalized_manifest(project_path: &Path, project: &AnalyzedProject) -> String
     for expression in &mut typing.expressions {
         expression.source = normalized_source(project_root, &expression.source);
     }
-    checked_manifest_json(&graph, &typing, &project.failures)
+    let graph_json = checked_manifest_json(&graph, &typing, &project.failures);
+    let operations = project
+        .syntax
+        .sources
+        .iter()
+        .flat_map(|source| {
+            source.file.declarations.iter().filter_map(|declaration| {
+                let Declaration::Route(route) = declaration else {
+                    return None;
+                };
+                Some(format!(
+                    "{{\"id\":{},\"source\":{},\"range\":{{\"start\":{},\"end\":{}}},\"route\":{}}}",
+                    json_string(&format!("route:{}:{}", method_name(route.method), route.path)),
+                    json_string(&normalized_source(project_root, &source.source_name)),
+                    route.range.start,
+                    route.range.end,
+                    json_string(&format!("{} {}", method_name(route.method), route.path)),
+                ))
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "{{\"schema_version\":2,\"source_revision\":{},\"operations\":[{operations}],\"semantic_graph\":{graph_json}}}",
+        json_string(&checked_source_revision(project_path, project))
+    )
 }
 
 fn normalized_source(project_root: &Path, source: &str) -> String {
@@ -174,9 +201,11 @@ struct RouteModel {
     method: &'static str,
     path: String,
     public: bool,
+    path_fields: Vec<(String, String)>,
     input: Option<String>,
     output: Option<String>,
     callable: Option<String>,
+    behavior: &'static str,
 }
 
 #[derive(Clone)]
@@ -242,6 +271,13 @@ impl<'project> ArtifactModel<'project> {
                             method,
                             path: declaration.path.clone(),
                             public: declaration.public,
+                            path_fields: declaration
+                                .path_fields
+                                .iter()
+                                .map(|field| {
+                                    (field.name.text.clone(), type_name(&field.field_type))
+                                })
+                                .collect(),
                             input: declaration.input.as_ref().map(type_name),
                             output: declaration.output.as_ref().map(type_name),
                             callable: declaration.run.as_ref().map(|run| {
@@ -252,6 +288,11 @@ impl<'project> ArtifactModel<'project> {
                                     .collect::<Vec<_>>()
                                     .join(".")
                             }),
+                            behavior: if declaration.inline_action.is_some() {
+                                "inline_action"
+                            } else {
+                                "run"
+                            },
                         });
                     }
                     Declaration::Failure(_) | Declaration::Test(_) => {}
@@ -277,14 +318,23 @@ impl<'project> ArtifactModel<'project> {
             .iter()
             .map(|route| {
                 let failures = self.route_failures(&route.key);
+                let path_fields = route.path_fields.iter().map(|(name, field_type)| {
+                    format!(
+                        "{{\"name\":{},\"type\":{}}}",
+                        json_string(name),
+                        json_string(field_type)
+                    )
+                });
                 format!(
-                    "{{\"route\":{},\"method\":{},\"path\":{},\"auth\":{},\"input\":{},\"output\":{},\"callable\":{},\"failures\":{}}}",
+                    "{{\"route\":{},\"method\":{},\"path\":{},\"auth\":{},\"path_fields\":{},\"input\":{},\"output\":{},\"behavior\":{},\"callable\":{},\"failures\":{}}}",
                     json_string(&route.key),
                     json_string(route.method),
                     json_string(&route.path),
-                    json_string(if route.public { "public_explicit" } else { "authenticated_default" }),
+                    json_string(if route.public { "none" } else { "authenticated_default" }),
+                    json_array(path_fields),
                     json_optional_string(route.input.as_deref()),
                     json_optional_string(route.output.as_deref()),
+                    json_string(route.behavior),
                     json_optional_string(route.callable.as_deref()),
                     json_array(failures.into_iter().map(|failure| {
                         format!(
@@ -457,11 +507,19 @@ impl<'project> ArtifactModel<'project> {
                     )
                 },
             );
+            let parameters = json_array(route.path_fields.iter().map(|(name, field_type)| {
+                format!(
+                    "{{\"name\":{},\"in\":\"path\",\"required\":true,\"schema\":{}}}",
+                    json_string(name),
+                    self.openapi_type_schema(field_type)
+                )
+            }));
             format!(
-                "{}:{{{}:{{\"operationId\":{},\"requestBody\":{},\"responses\":{{{}}}}}}}",
+                "{}:{{{}:{{\"operationId\":{},\"parameters\":{},\"requestBody\":{},\"responses\":{{{}}}}}}}",
                 json_string(&route.path),
                 json_string(&route.method.to_ascii_lowercase()),
                 json_string(route.callable.as_deref().unwrap_or(&route.key)),
+                parameters,
                 request_body,
                 responses.join(",")
             )
@@ -881,11 +939,13 @@ mod tests {
                 "validators/plan.json",
                 "compatibility/public-failure-codes.json",
                 "openapi/openapi.json",
+                "diagnostics/catalogue.json",
+                "diagnostics/reference.md",
             ]
         );
-        assert!(
-            artifact(&artifacts, "inventory/routes.json").contains("\"auth\":\"public_explicit\"")
-        );
+        assert!(artifact(&artifacts, "inventory/routes.json").contains("\"auth\":\"none\""));
+        assert!(artifact(&artifacts, "diagnostics/catalogue.json")
+            .contains("\"ruleId\":\"failure.attempt_required\""));
         assert!(
             artifact(&artifacts, "audit/failures.json").contains("\"internal_to_client\":false")
         );
@@ -905,6 +965,30 @@ mod tests {
         assert!(artifact(&artifacts, "openapi/openapi.json").contains(
             "\"DeliveryState\":{\"type\":\"string\",\"enum\":[\"pending\",\"sent\",\"failed\"]}"
         ));
+    }
+
+    #[test]
+    fn exposes_typed_route_paths_and_behavior_in_inventory_and_openapi() {
+        let fixture = repository_root().join("tests/compile/pass/59_p106_failure_route.jadpo");
+        let analyzed = analyze_project(&fixture).expect("route fixture should be analyzable");
+        let artifacts = derive_artifacts(&fixture, &analyzed);
+        let inventory = artifact(&artifacts, "inventory/routes.json");
+        assert!(inventory
+            .contains("\"path_fields\":[{\"name\":\"customer_id\",\"type\":\"Customer.id\"}]"));
+        assert!(inventory.contains("\"behavior\":\"run\""));
+
+        let openapi = artifact(&artifacts, "openapi/openapi.json");
+        assert!(openapi.contains("\"name\":\"customer_id\",\"in\":\"path\",\"required\":true"));
+        assert!(openapi.contains("\"format\":\"uuid\""));
+
+        let inline_fixture =
+            repository_root().join("tests/compile/pass/66_inline_action_failure_surface.jadpo");
+        let inline = analyze_project(&inline_fixture).expect("inline route should be analyzable");
+        let inline_artifacts = derive_artifacts(&inline_fixture, &inline);
+        assert!(artifact(&inline_artifacts, "inventory/routes.json")
+            .contains("\"name\":\"Refused\",\"code\":\"refused\",\"http_status\":422"));
+        assert!(artifact(&inline_artifacts, "openapi/openapi.json")
+            .contains("\"422\":{\"description\":\"Refused\""));
     }
 
     #[test]

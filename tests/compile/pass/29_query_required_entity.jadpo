@@ -6,7 +6,8 @@ input FindCustomer {
     id: Customer.id
 }
 
-failure CustomerNotFound: NotFound {
+failure CustomerNotFound {
+    kind NotFound
     code "customer_not_found"
 
     internal {
@@ -17,12 +18,10 @@ failure CustomerNotFound: NotFound {
 action find_customer(input: FindCustomer) -> Customer
     fails CustomerNotFound
 {
-    return query required Customer {
+    return attempt query required Customer {
         where: id == input.id
         missing: CustomerNotFound {
-            internal {
                 customer_id: input.id
-            }
         }
     }
 }

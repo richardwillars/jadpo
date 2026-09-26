@@ -1,0 +1,14 @@
+output Health {
+    ok: Bool
+}
+
+action health() -> Health {
+    return Health { ok: true }
+}
+
+route GET /health {
+    auth: none
+    output: Health
+    run: health()
+    run: health()
+}

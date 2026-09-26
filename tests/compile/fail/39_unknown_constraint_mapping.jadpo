@@ -5,12 +5,13 @@ entity Membership {
     constraint tenant_email: unique(tenant, email)
 }
 
-failure MembershipConflict: Conflict { code "membership_conflict" }
+failure MembershipConflict {
+    kind Conflict code "membership_conflict" }
 
 action create_membership(id: Membership.id, tenant: Membership.tenant, email: Membership.email) -> Membership
     fails MembershipConflict
 {
-    return create Membership {
+    return attempt create Membership {
         id: id
         tenant: tenant
         email: email

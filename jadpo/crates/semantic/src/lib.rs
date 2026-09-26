@@ -380,6 +380,7 @@ impl GraphBuilder {
             "NotFound",
             "NotPermitted",
             "NotVisible",
+            "OutcomeUnknown",
             "PreconditionFailed",
             "RateLimited",
             "Rejected",
@@ -1293,11 +1294,7 @@ impl GraphBuilder {
                     self.collect_expression_calls(caller, &statement.value, source)
                 }
                 Statement::Reject(statement) => {
-                    for field in statement
-                        .public_values
-                        .iter()
-                        .chain(statement.internal_values.iter())
-                    {
+                    for field in &statement.values {
                         self.collect_expression_calls(caller, &field.value, source);
                     }
                 }
@@ -1345,12 +1342,7 @@ impl GraphBuilder {
                     self.collect_expression_calls(caller, &field.value, source);
                 }
                 for conflict in &create.conflicts {
-                    for field in conflict
-                        .rejection
-                        .public_values
-                        .iter()
-                        .chain(conflict.rejection.internal_values.iter())
-                    {
+                    for field in &conflict.rejection.values {
                         self.collect_expression_calls(caller, &field.value, source);
                     }
                 }
@@ -1366,11 +1358,7 @@ impl GraphBuilder {
                     self.collect_expression_calls(caller, &include.pagination.offset, source);
                 }
                 if let Some(missing) = &query.missing {
-                    for field in missing
-                        .public_values
-                        .iter()
-                        .chain(missing.internal_values.iter())
-                    {
+                    for field in &missing.values {
                         self.collect_expression_calls(caller, &field.value, source);
                     }
                 }
@@ -1389,11 +1377,7 @@ impl GraphBuilder {
                     .chain(std::iter::once(&update.missing))
                     .chain(update.conflicts.iter().map(|conflict| &conflict.rejection))
                 {
-                    for field in binding
-                        .public_values
-                        .iter()
-                        .chain(binding.internal_values.iter())
-                    {
+                    for field in &binding.values {
                         self.collect_expression_calls(caller, &field.value, source);
                     }
                 }
@@ -1403,11 +1387,7 @@ impl GraphBuilder {
                 for binding in std::iter::once(&delete.missing)
                     .chain(delete.conflicts.iter().map(|conflict| &conflict.rejection))
                 {
-                    for field in binding
-                        .public_values
-                        .iter()
-                        .chain(binding.internal_values.iter())
-                    {
+                    for field in &binding.values {
                         self.collect_expression_calls(caller, &field.value, source);
                     }
                 }
@@ -1419,6 +1399,9 @@ impl GraphBuilder {
             Expression::Unary(unary) => self.collect_expression_calls(caller, &unary.value, source),
             Expression::Grouped(grouped) => {
                 self.collect_expression_calls(caller, &grouped.value, source)
+            }
+            Expression::Attempt(attempt) => {
+                self.collect_expression_calls(caller, &attempt.value, source)
             }
             Expression::Literal(_) | Expression::Name(_) | Expression::Missing(_) => {}
         }
@@ -1470,7 +1453,9 @@ impl GraphBuilder {
             let target_kind = kinds[&reference.target];
             let kind_matches = match reference.expected {
                 ReferenceKind::Type => target_kind.is_type(),
-                ReferenceKind::Failure => target_kind == NodeKind::Failure,
+                ReferenceKind::Failure => {
+                    matches!(target_kind, NodeKind::Failure | NodeKind::StandardFailure)
+                }
                 ReferenceKind::StandardFailure => target_kind == NodeKind::StandardFailure,
             };
             if !kind_matches {

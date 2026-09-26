@@ -14,7 +14,8 @@ value Result {
     ok: Bool
 }
 
-failure CustomerRejected: Rejected {
+failure CustomerRejected {
+    kind Rejected
     code "customer_rejected"
 
     internal {
@@ -26,8 +27,6 @@ action reject_supplier(supplier: Supplier) -> Result
     fails CustomerRejected
 {
     reject CustomerRejected {
-        internal {
             email: supplier.email
-        }
     }
 }

@@ -4,7 +4,7 @@
   "diagnostics": [
     {
       "code": "TYPE_PATCH_FIELD_NOT_OPTIONAL",
-      "primary_match": "patch: input"
+      "primary_match": "input"
     }
   ]
 }

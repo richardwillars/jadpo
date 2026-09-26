@@ -3,7 +3,7 @@ entity Customer {
 }
 
 function invalid_create(id: Customer.id) -> Customer {
-    return create Customer {
+    return attempt create Customer {
         id: id
     }
 }

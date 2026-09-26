@@ -8,18 +8,20 @@ input UpdateCustomer {
     email: Customer.email
 }
 
-failure CustomerNotFound: NotFound {
+failure CustomerNotFound {
+    kind NotFound
     code "customer_not_found"
 }
 
-failure CustomerConflict: Conflict {
+failure CustomerConflict {
+    kind Conflict
     code "customer_conflict"
 }
 
 action update_customer(input: UpdateCustomer) -> Customer
     fails CustomerNotFound, CustomerConflict
 {
-    return update required Customer {
+    return attempt update required Customer {
         where: id == input.id
         set: {
             email: input.email

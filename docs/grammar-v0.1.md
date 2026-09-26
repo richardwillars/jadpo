@@ -195,7 +195,8 @@ lazy-loading accessors.
 ## 8. Failure declarations
 
 ```ebnf
-failure_declaration = "failure", identifier, ":", identifier, "{",
+failure_declaration = "failure", identifier, "{",
+                        "kind", identifier,
                         "code", string_literal,
                         [ "message", string_literal ],
                         [ public_schema ],
@@ -206,9 +207,12 @@ public_schema       = "public", record_body ;
 internal_schema     = "internal", record_body ;
 ```
 
-The identifier after `:` must resolve to a standard failure kind. `public` and
-`internal` schemas use field declarations but cannot use `optional` in the first
-slice. Public codes are stable contract values.
+The identifier after `kind` must resolve to a standard failure kind. `public`
+and `internal` schemas use field declarations but cannot use `optional` in the
+first slice. Their field names must be disjoint, and public codes are stable
+contract values. Rejection sites supply one flat object containing exactly the
+combined public and internal fields; the declaration remains the sole owner of
+which values may cross the public boundary.
 
 Compatible-code alias syntax is deferred under `FAIL-002`; the seed does not
 need it.
@@ -258,16 +262,15 @@ return_statement    = "return", expression ;
 
 reject_statement    = "reject", identifier, [ rejection_body ] ;
 
-rejection_body      = "{", [ public_values ], [ internal_values ], "}" ;
-public_values       = "public", object_body ;
-internal_values     = "internal", object_body ;
+rejection_body      = object_body ;
 
 if_statement        = "if", expression, block, [ "else", block ] ;
 ```
 
 There are no semicolons. Assignment is distinguished by the single `=` after a
 bare local name; equality uses `==`, and arbitrary expression statements are
-not accepted. Loops, `match`, and `attempt` are outside the first slice.
+not accepted. Loops remain outside the first slice. `attempt` is an expression
+prefix, not a statement or handler form.
 
 `var` bindings and parameters are immutable. Only a local introduced with
 `var mut` may be reassigned, and every assigned value must be compatible with
@@ -280,8 +283,10 @@ interior mutation.
 ```ebnf
 expression          = equality_expression ;
 
-equality_expression = primary_expression,
-                      { ( "==" | "!=" ), primary_expression } ;
+equality_expression = prefix_expression,
+                      { ( "==" | "!=" ), prefix_expression } ;
+
+prefix_expression   = [ "attempt" ], primary_expression ;
 
 primary_expression  = literal
                     | named_expression
@@ -316,9 +321,7 @@ pagination_clause   = "limit", ":", integer_literal,
                       "offset", ":", integer_literal ;
 query_cardinality   = "optional" | "required" | "many" ;
 order_direction     = "asc" | "desc" ;
-failure_binding     = identifier,
-                      [ "{", [ "public", object_body ],
-                              [ "internal", object_body ], "}" ] ;
+failure_binding     = identifier, [ object_body ] ;
 update_expression   = "update", "required", identifier, "{",
                       "where", ":", identifier, "==", expression,
                       ( "set", ":", object_body
@@ -357,6 +360,12 @@ Name resolution distinguishes validated type construction from callable
 invocation. A qualified name without a suffix represents a binding or field
 access. A qualified name followed by an object body is record construction.
 
+Every invocation or persistence expression that can fail must be prefixed with
+`attempt`. The callable's `fails` clause must then equal its complete reachable,
+unhandled failure set. Missing failures and stale declarations are both compile
+errors. The exact handler-arm syntax for locally mapping an attempted failure is
+still unresolved and therefore is not accepted by this grammar.
+
 `RegistrationAccepted { email: input.email }` constructs a complete record.
 `create Customer { ... }` is the P10 persistent-create expression. Its target
 must be an entity, its object body must be complete, and the expression has the
@@ -391,7 +400,7 @@ compound predicates remain outside this slice.
 A required parent query may explicitly include one or more inverse collections:
 
 ```text
-query required User {
+attempt query required User {
     where: id == input.id
     include: todos into: UserActivity order_by: id asc limit: 100 offset: 0
     include: notes into: UserActivity order_by: id desc limit: 20 offset: 0
@@ -414,7 +423,7 @@ A `many` parent query may include the same nested shape only when the parent
 query itself has deterministic ordering and explicit pagination:
 
 ```text
-query many User {
+attempt query many User {
     where: group == input.group
     order_by: id asc
     limit: 20 offset: 0
@@ -433,7 +442,7 @@ and N+1 execution.
 A required child query may instead traverse one owning reference to its parent:
 
 ```text
-query required PatchItem {
+attempt query required PatchItem {
     where: id == input.id
     include: reviewer_id optional into: PatchItemReviewer
     missing: PatchItemNotFound
@@ -451,7 +460,7 @@ query count of two.
 A required parent query may load a declared optional inverse:
 
 ```text
-query required User {
+attempt query required User {
     where: id == input.id
     include: profile optional into: UserProfile
     missing: UserNotFound
@@ -466,7 +475,7 @@ The first nested slice accepts exactly two hops: a non-nullable owning reference
 followed by a declared optional inverse:
 
 ```text
-query required Todo {
+attempt query required Todo {
     where: id == input.id
     include: owner.profile optional into: TodoOwnerProfile
     missing: TodoNotFound
@@ -515,29 +524,40 @@ route_declaration   = "route", http_method, route_path, "{",
 http_method         = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" ;
 route_path          = path_token ;
 
-route_item          = "auth", ":", "public", "explicitly"
+route_item          = "auth", ":", "none"
+                    | "path", route_path_schema
                     | "input", ":", type_expression
                     | "output", ":", type_expression
-                    | "run", ":", qualified_name, invocation_suffix ;
+                    | "run", ":", qualified_name, invocation_suffix
+                    | inline_action ;
+
+route_path_schema   = "{", { field_declaration }, "}" ;
+inline_action       = "action", [ fails_clause ], block ;
 ```
 
-The lexer reads the non-whitespace token after the method as `path_token`.
-Typed path parameters are deferred under `ROUTE-001`, so the seed uses a static
-path.
+The first route item above is spelled `auth: none`; the older
+`auth: public explicitly` form is not accepted. Authentication is required when
+`auth: none` is absent.
 
-Authentication is required when the `auth: public explicitly` item is absent.
-The compiler records the inherited authentication rule even before an
-authentication runtime exists.
+The lexer reads the non-whitespace token after the method as `path_token`.
+Every `{name}` placeholder must have exactly one same-named typed field in the
+`path { ... }` block, and every path field must have exactly one placeholder.
+Path fields contain only a required semantic type; nullable/optional fields,
+constraints, references, and persistence modifiers are invalid there.
+Handler expressions access those bindings as `path.name`. Matching is exact;
+each matched segment is percent-decoded and nominally validated before the
+handler runs.
 
 Every route item uses `:` between its name and value. Space-only forms such as
 `input CreateOrder` are syntax errors rather than alternate spellings.
 
-A core route has at most one input, output, and run item. Their textual order is
-not semantic; the formatter will eventually choose the canonical order shown by
-the seed.
+A core route has at most one path, input, and output item and exactly one
+behaviour: either `run:` or one inline `action`, never both. Their textual order
+is not semantic; the formatter chooses a canonical order.
 
-Reachable action failures are derived through `run`. Routes do not contain
-numeric status mappings.
+Reachable failures are derived through `run` or the inline action's exact
+`fails` set. Routes do not contain numeric status mappings. Query, header, and
+body binding grammar remains unresolved and is not inferred from the path form.
 
 ## 13. Core prelude
 
@@ -553,7 +573,8 @@ Bytes
 Uuid
 ```
 
-It also recognises the initial standard failure kinds from the
+It also recognises the initial standard failure kinds, including
+`RateLimited`, `Unavailable`, `TimedOut`, and `OutcomeUnknown`, from the
 [failure model](failure-model.md). Application declarations cannot shadow
 prelude names.
 
@@ -604,11 +625,11 @@ for:
 - enums and `match`;
 - loops and recursion;
 - arbitrary assignment;
-- `attempt` and local failure mapping;
+- local failure-handler arms and failure mapping after `attempt`;
 - compound many-result predicates and general patch-condition expressions;
 - services, events, and jobs;
 - policies and `require`;
-- path/query/header route bindings;
+- query/header/body route bindings;
 - defaults and compound non-unique indexes;
 - relationship paths deeper than two, nested to-many paths without per-hop
   bounds, and required inverse-one declarations without an enforceable totality
@@ -633,9 +654,12 @@ The [Jadpo seed](../examples/jadpo-seed/app.jadpo) exercises:
 - an entity and field type references;
 - input and output record declarations;
 - field refinement chains;
-- a standard-kind domain failure with internal context;
-- an action with `fails`, `if`, validated construction, `reject`, and `return`;
-- an explicitly public static route;
+- a standard-kind domain failure with flat rejection context and a declaration-
+  owned internal field;
+- an action with exact `fails`, `if`, validated construction, `reject`,
+  `attempt`, and `return`;
+- explicit `auth: none` routes using named and inline behaviour, including a
+  typed path binding;
 - automatic failure-to-boundary metadata.
 
 Every token in that file is covered by this grammar. Its semantic expectations

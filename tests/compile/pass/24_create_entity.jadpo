@@ -13,7 +13,7 @@ input CreateCustomer {
 }
 
 action create_customer(input: CreateCustomer) -> Customer {
-    return create Customer {
+    return attempt create Customer {
         id: input.id
         email: input.email
     }

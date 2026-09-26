@@ -41,7 +41,7 @@ pub enum TokenKind {
     StringLiteral,
     BooleanLiteral,
     NoneLiteral,
-    Path,
+    RoutePath,
 
     Type,
     Enum,
@@ -57,6 +57,7 @@ pub enum TokenKind {
     Module,
     Import,
     Code,
+    Kind,
     Message,
     Public,
     Internal,
@@ -69,6 +70,7 @@ pub enum TokenKind {
     Mut,
     Return,
     Reject,
+    Attempt,
     If,
     Else,
     Match,
@@ -77,6 +79,7 @@ pub enum TokenKind {
     Or,
     Not,
     Auth,
+    Path,
     Explicitly,
     Run,
     Min,
@@ -277,8 +280,8 @@ impl<'source> Lexer<'source> {
     }
 
     fn lex_path(&mut self, start: usize) {
-        self.advance_while(|character| !character.is_whitespace() && character != '{');
-        self.push(TokenKind::Path, start);
+        self.advance_while(|character| !character.is_whitespace());
+        self.push(TokenKind::RoutePath, start);
     }
 
     fn route_path_position(&self) -> bool {
@@ -464,6 +467,7 @@ fn keyword_kind(text: &str) -> TokenKind {
         "module" => TokenKind::Module,
         "import" => TokenKind::Import,
         "code" => TokenKind::Code,
+        "kind" => TokenKind::Kind,
         "message" => TokenKind::Message,
         "public" => TokenKind::Public,
         "internal" => TokenKind::Internal,
@@ -476,6 +480,7 @@ fn keyword_kind(text: &str) -> TokenKind {
         "mut" => TokenKind::Mut,
         "return" => TokenKind::Return,
         "reject" => TokenKind::Reject,
+        "attempt" => TokenKind::Attempt,
         "if" => TokenKind::If,
         "else" => TokenKind::Else,
         "match" => TokenKind::Match,
@@ -484,6 +489,7 @@ fn keyword_kind(text: &str) -> TokenKind {
         "or" => TokenKind::Or,
         "not" => TokenKind::Not,
         "auth" => TokenKind::Auth,
+        "path" => TokenKind::Path,
         "explicitly" => TokenKind::Explicitly,
         "run" => TokenKind::Run,
         "min" => TokenKind::Min,
@@ -563,7 +569,7 @@ mod tests {
         assert!(result
             .tokens
             .iter()
-            .any(|token| token.kind == TokenKind::Path));
+            .any(|token| token.kind == TokenKind::RoutePath));
         assert_eq!(
             result.tokens.last().map(|token| token.kind),
             Some(TokenKind::Eof)
@@ -576,7 +582,7 @@ mod tests {
         let mut paths = Vec::new();
         collect_sources(&root, &mut paths);
 
-        assert_eq!(paths.len(), 63);
+        assert_eq!(paths.len(), 82);
         for path in paths {
             let source = fs::read_to_string(&path).expect("fixture should be readable");
             let result = lex(&path, &source);

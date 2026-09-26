@@ -1,7 +1,9 @@
-failure First: Conflict {
+failure First {
+    kind Conflict
     code "same"
 }
 
-failure Second: Conflict {
+failure Second {
+    kind Conflict
     code "same"
 }

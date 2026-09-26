@@ -1,5 +1,5 @@
 use crate::SemanticGraph;
-use jadpo_diagnostics::{Diagnostic, SourceSpan};
+use jadpo_diagnostics::{Diagnostic, SourceSpan, TextEdit};
 use jadpo_syntax::{
     Block, CallableKind, Declaration, Expression, FieldDeclaration, FieldInitialiser, HttpMethod,
     InvocationExpression, ParsedSyntax, RejectStatement, Statement, TextRange,
@@ -51,12 +51,20 @@ struct FailureShape {
 struct CallSite {
     callee: String,
     range: TextRange,
+    attempted: bool,
 }
 
 #[derive(Clone, Debug)]
 struct RejectSite {
     statement: RejectStatement,
     binding: FailureBinding,
+}
+
+#[derive(Clone, Debug)]
+struct PersistenceSite {
+    range: TextRange,
+    acknowledgement_range: TextRange,
+    attempted: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -74,7 +82,9 @@ struct CallableFacts {
     declared: BTreeSet<String>,
     calls: Vec<CallSite>,
     rejects: Vec<RejectSite>,
-    persistence: Vec<TextRange>,
+    persistence: Vec<PersistenceSite>,
+    failures_range: Option<TextRange>,
+    declaration_range: TextRange,
     source: String,
 }
 
@@ -104,6 +114,24 @@ impl FailureChecker {
             for declaration in &file.file.declarations {
                 match declaration {
                     Declaration::Failure(declaration) => {
+                        let public_names = declaration
+                            .public_fields
+                            .iter()
+                            .map(|field| field.name.text.as_str())
+                            .collect::<BTreeSet<_>>();
+                        for field in &declaration.internal_fields {
+                            if public_names.contains(field.name.text.as_str()) {
+                                self.push_code(
+                                    "FAIL_CONTEXT_FIELD_OVERLAP",
+                                    format!(
+                                        "failure context field `{}` cannot be both public and internal",
+                                        field.name.text
+                                    ),
+                                    &file.source_name,
+                                    field.name.range,
+                                );
+                            }
+                        }
                         let code = declaration
                             .code
                             .as_ref()
@@ -118,6 +146,11 @@ impl FailureChecker {
                                         "failure code `{code}` is already used by `{first_name}`"
                                     ),
                                 )
+                                .with_related(SourceSpan {
+                                    source: first_source.clone(),
+                                    start: first_range.start,
+                                    end: first_range.end,
+                                })
                                 .with_note(format!(
                                     "first code is at {first_source}:{}..{}",
                                     first_range.start, first_range.end
@@ -163,6 +196,20 @@ impl FailureChecker {
                         );
                     }
                     Declaration::Callable(declaration) => {
+                        let mut declared = BTreeSet::new();
+                        for failure in &declaration.failures {
+                            if !declared.insert(failure.text.clone()) {
+                                self.push_code(
+                                    "FAIL_DUPLICATE_DECLARATION",
+                                    format!(
+                                        "`{}` lists `{}` more than once in `fails`",
+                                        declaration.name.text, failure.text
+                                    ),
+                                    &file.source_name,
+                                    failure.range,
+                                );
+                            }
+                        }
                         let mut calls = Vec::new();
                         let mut rejects = Vec::new();
                         let mut persistence = Vec::new();
@@ -176,14 +223,12 @@ impl FailureChecker {
                             declaration.name.text.clone(),
                             CallableFacts {
                                 kind: declaration.kind,
-                                declared: declaration
-                                    .failures
-                                    .iter()
-                                    .map(|failure| failure.text.clone())
-                                    .collect(),
+                                declared,
                                 calls,
                                 rejects,
                                 persistence,
+                                failures_range: declaration.failures_range,
+                                declaration_range: declaration.range,
                                 source: file.source_name.clone(),
                             },
                         );
@@ -193,6 +238,50 @@ impl FailureChecker {
                             self.routes.push((
                                 format!("{} {}", method_name(declaration.method), declaration.path),
                                 joined_name(&run.callee.path),
+                            ));
+                        }
+                        if let Some(action) = &declaration.inline_action {
+                            let route_name = format!(
+                                "{} {} inline action",
+                                method_name(declaration.method),
+                                declaration.path
+                            );
+                            let mut calls = Vec::new();
+                            let mut rejects = Vec::new();
+                            let mut persistence = Vec::new();
+                            let mut declared = BTreeSet::new();
+                            for failure in &action.failures {
+                                if !declared.insert(failure.text.clone()) {
+                                    self.push_code(
+                                        "FAIL_DUPLICATE_DECLARATION",
+                                        format!(
+                                            "inline action for `{} {}` lists `{}` more than once in `fails`",
+                                            method_name(declaration.method),
+                                            declaration.path,
+                                            failure.text
+                                        ),
+                                        &file.source_name,
+                                        failure.range,
+                                    );
+                                }
+                            }
+                            collect_block(&action.body, &mut calls, &mut rejects, &mut persistence);
+                            self.callables.insert(
+                                route_name.clone(),
+                                CallableFacts {
+                                    kind: CallableKind::Action,
+                                    declared,
+                                    calls,
+                                    rejects,
+                                    persistence,
+                                    failures_range: action.failures_range,
+                                    declaration_range: action.range,
+                                    source: file.source_name.clone(),
+                                },
+                            );
+                            self.routes.push((
+                                format!("{} {}", method_name(declaration.method), declaration.path),
+                                route_name,
                             ));
                         }
                     }
@@ -211,18 +300,38 @@ impl FailureChecker {
         }
 
         for (name, facts) in self.callables.clone() {
+            let mut reachable = BTreeSet::new();
             if facts.kind == CallableKind::Function {
-                for range in &facts.persistence {
+                for site in &facts.persistence {
                     self.push_code(
                         "EFFECT_FUNCTION_PERSISTENCE",
                         format!("function `{name}` cannot perform persistence operations"),
                         &facts.source,
-                        *range,
+                        site.range,
+                    );
+                }
+            }
+            for site in &facts.persistence {
+                if !site.attempted {
+                    self.push_diagnostic(
+                        Diagnostic::error(
+                            "FAIL_ATTEMPT_REQUIRED",
+                            "fallible persistence expression must be acknowledged with `attempt`",
+                        )
+                        .with_edit(TextEdit {
+                            source: facts.source.clone(),
+                            start: site.range.start,
+                            end: site.range.start,
+                            replacement: "attempt ".to_owned(),
+                        }),
+                        &facts.source,
+                        site.acknowledgement_range,
                     );
                 }
             }
             for reject in &facts.rejects {
                 let failure = &reject.statement.failure.text;
+                reachable.insert(failure.clone());
                 if !facts.declared.contains(failure) {
                     self.push_code(
                         "FAIL_UNDECLARED_PROPAGATION",
@@ -232,14 +341,6 @@ impl FailureChecker {
                             reject.statement.range.start,
                             reject.statement.failure.range.end,
                         ),
-                    );
-                }
-                if facts.kind == CallableKind::Function {
-                    self.push_code(
-                        "EFFECT_FUNCTION_REJECT",
-                        format!("function `{name}` cannot reject domain failures"),
-                        &facts.source,
-                        reject.statement.range,
                     );
                 }
                 self.validate_reject_payload(&reject.statement, &facts.source);
@@ -292,7 +393,27 @@ impl FailureChecker {
                         call.range,
                     );
                 }
+                if !callee.declared.is_empty() && !call.attempted {
+                    self.push_diagnostic(
+                        Diagnostic::error(
+                            "FAIL_ATTEMPT_REQUIRED",
+                            format!(
+                                "fallible call to `{}` must be acknowledged with `attempt`",
+                                call.callee
+                            ),
+                        )
+                        .with_edit(TextEdit {
+                            source: facts.source.clone(),
+                            start: call.range.start,
+                            end: call.range.start,
+                            replacement: "attempt ".to_owned(),
+                        }),
+                        &facts.source,
+                        call.range,
+                    );
+                }
                 for failure in &callee.declared {
+                    reachable.insert(failure.clone());
                     if !facts.declared.contains(failure) {
                         self.push_code(
                             "FAIL_UNDECLARED_PROPAGATION",
@@ -305,6 +426,46 @@ impl FailureChecker {
                         );
                     }
                 }
+            }
+
+            let stale = facts
+                .declared
+                .difference(&reachable)
+                .cloned()
+                .collect::<Vec<_>>();
+            if !stale.is_empty() {
+                let range = facts.failures_range.unwrap_or(facts.declaration_range);
+                let replacement = if reachable.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "fails {}",
+                        reachable.iter().cloned().collect::<Vec<_>>().join(", ")
+                    )
+                };
+                let diagnostic = Diagnostic::error(
+                    "FAIL_STALE_DECLARATION",
+                    format!(
+                        "`{name}` declares unreachable problem(s): {}",
+                        stale.join(", ")
+                    ),
+                )
+                .with_edit(TextEdit {
+                    source: facts.source.clone(),
+                    start: range.start,
+                    end: range.end,
+                    replacement,
+                })
+                .with_context("callable", name.clone())
+                .with_context(
+                    "declared",
+                    facts.declared.iter().cloned().collect::<Vec<_>>().join(","),
+                )
+                .with_context(
+                    "reachable",
+                    reachable.iter().cloned().collect::<Vec<_>>().join(","),
+                );
+                self.push_diagnostic(diagnostic, &facts.source, range);
             }
 
             self.result.callables.push(CallableFailureSet {
@@ -345,28 +506,20 @@ impl FailureChecker {
         let Some(shape) = self.failures.get(&reject.failure.text).cloned() else {
             return;
         };
-        self.validate_scope(
+        let mut expected = shape.public_fields;
+        expected.extend(shape.internal_fields);
+        self.validate_context(
             &shape.contract.name,
-            "public",
-            &shape.public_fields,
-            &reject.public_values,
-            reject.range,
-            source,
-        );
-        self.validate_scope(
-            &shape.contract.name,
-            "internal",
-            &shape.internal_fields,
-            &reject.internal_values,
+            &expected,
+            &reject.values,
             reject.range,
             source,
         );
     }
 
-    fn validate_scope(
+    fn validate_context(
         &mut self,
         failure: &str,
-        scope: &str,
         expected: &BTreeMap<String, FieldDeclaration>,
         supplied: &[FieldInitialiser],
         rejection_range: TextRange,
@@ -378,7 +531,7 @@ impl FailureChecker {
                 self.push_code(
                     "FAIL_DUPLICATE_CONTEXT_FIELD",
                     format!(
-                        "rejection `{failure}` supplies `{scope}.{}` more than once",
+                        "rejection `{failure}` supplies `{}` more than once",
                         field.name.text
                     ),
                     source,
@@ -388,10 +541,7 @@ impl FailureChecker {
             if !expected.contains_key(&field.name.text) {
                 self.push_code(
                     "FAIL_UNKNOWN_CONTEXT_FIELD",
-                    format!(
-                        "failure `{failure}` does not declare `{scope}.{}`",
-                        field.name.text
-                    ),
+                    format!("failure `{failure}` does not declare `{}`", field.name.text),
                     source,
                     field.name.range,
                 );
@@ -401,7 +551,7 @@ impl FailureChecker {
             if !declaration.optional && !seen.contains(field) {
                 self.push_code(
                     "FAIL_MISSING_CONTEXT_FIELD",
-                    format!("rejection `{failure}` must supply `{scope}.{field}`"),
+                    format!("rejection `{failure}` must supply `{field}`"),
                     source,
                     rejection_range,
                 );
@@ -433,7 +583,7 @@ fn collect_block(
     block: &Block,
     calls: &mut Vec<CallSite>,
     rejects: &mut Vec<RejectSite>,
-    persistence: &mut Vec<TextRange>,
+    persistence: &mut Vec<PersistenceSite>,
 ) {
     for statement in &block.statements {
         match statement {
@@ -451,11 +601,7 @@ fn collect_block(
                     statement: statement.clone(),
                     binding: FailureBinding::Direct,
                 });
-                for field in statement
-                    .public_values
-                    .iter()
-                    .chain(statement.internal_values.iter())
-                {
+                for field in &statement.values {
                     collect_expression(&field.value, calls, rejects, persistence);
                 }
             }
@@ -484,11 +630,21 @@ fn collect_expression(
     expression: &Expression,
     calls: &mut Vec<CallSite>,
     rejects: &mut Vec<RejectSite>,
-    persistence: &mut Vec<TextRange>,
+    persistence: &mut Vec<PersistenceSite>,
+) {
+    collect_expression_inner(expression, calls, rejects, persistence, false);
+}
+
+fn collect_expression_inner(
+    expression: &Expression,
+    calls: &mut Vec<CallSite>,
+    rejects: &mut Vec<RejectSite>,
+    persistence: &mut Vec<PersistenceSite>,
+    attempted: bool,
 ) {
     match expression {
         Expression::Invocation(invocation) => {
-            calls.push(call_site(invocation));
+            calls.push(call_site(invocation, attempted));
             for argument in &invocation.arguments {
                 collect_expression(argument, calls, rejects, persistence);
             }
@@ -499,7 +655,11 @@ fn collect_expression(
             }
         }
         Expression::Create(create) => {
-            persistence.push(create.range);
+            persistence.push(PersistenceSite {
+                range: create.range,
+                acknowledgement_range: TextRange::new(create.range.start, create.range.start + 6),
+                attempted,
+            });
             for field in &create.fields {
                 collect_expression(&field.value, calls, rejects, persistence);
             }
@@ -514,7 +674,11 @@ fn collect_expression(
             }
         }
         Expression::Query(query) => {
-            persistence.push(query.range);
+            persistence.push(PersistenceSite {
+                range: query.range,
+                acknowledgement_range: TextRange::new(query.range.start, query.range.start + 5),
+                attempted,
+            });
             collect_expression(&query.value, calls, rejects, persistence);
             if let Some(pagination) = &query.pagination {
                 collect_expression(&pagination.limit, calls, rejects, persistence);
@@ -529,17 +693,17 @@ fn collect_expression(
                     statement: missing.clone(),
                     binding: FailureBinding::RequiredQueryMissing,
                 });
-                for field in missing
-                    .public_values
-                    .iter()
-                    .chain(missing.internal_values.iter())
-                {
+                for field in &missing.values {
                     collect_expression(&field.value, calls, rejects, persistence);
                 }
             }
         }
         Expression::Update(update) => {
-            persistence.push(update.range);
+            persistence.push(PersistenceSite {
+                range: update.range,
+                acknowledgement_range: TextRange::new(update.range.start, update.range.start + 6),
+                attempted,
+            });
             collect_expression(&update.value, calls, rejects, persistence);
             for change in &update.changes {
                 collect_expression(&change.value, calls, rejects, persistence);
@@ -574,7 +738,11 @@ fn collect_expression(
             }
         }
         Expression::Delete(delete) => {
-            persistence.push(delete.range);
+            persistence.push(PersistenceSite {
+                range: delete.range,
+                acknowledgement_range: TextRange::new(delete.range.start, delete.range.start + 6),
+                attempted,
+            });
             collect_expression(&delete.value, calls, rejects, persistence);
             collect_failure_binding(
                 &delete.missing,
@@ -601,6 +769,9 @@ fn collect_expression(
         Expression::Grouped(grouped) => {
             collect_expression(&grouped.value, calls, rejects, persistence)
         }
+        Expression::Attempt(attempt) => {
+            collect_expression_inner(&attempt.value, calls, rejects, persistence, true)
+        }
         Expression::Literal(_) | Expression::Name(_) | Expression::Missing(_) => {}
     }
 }
@@ -610,25 +781,22 @@ fn collect_failure_binding(
     kind: FailureBinding,
     calls: &mut Vec<CallSite>,
     rejects: &mut Vec<RejectSite>,
-    persistence: &mut Vec<TextRange>,
+    persistence: &mut Vec<PersistenceSite>,
 ) {
     rejects.push(RejectSite {
         statement: binding.clone(),
         binding: kind,
     });
-    for field in binding
-        .public_values
-        .iter()
-        .chain(binding.internal_values.iter())
-    {
+    for field in &binding.values {
         collect_expression(&field.value, calls, rejects, persistence);
     }
 }
 
-fn call_site(invocation: &InvocationExpression) -> CallSite {
+fn call_site(invocation: &InvocationExpression, attempted: bool) -> CallSite {
     CallSite {
         callee: joined_name(&invocation.callee.path),
         range: invocation.range,
+        attempted,
     }
 }
 
@@ -705,14 +873,28 @@ mod tests {
         check_failures(&[parsed], &graph)
     }
 
+    fn apply_preferred_edit(source: &str, diagnostic: &jadpo_diagnostics::Diagnostic) -> String {
+        let edit = diagnostic
+            .recommended_next_step
+            .edits
+            .first()
+            .expect("automatic repair should contain an edit");
+        format!(
+            "{}{}{}",
+            &source[..edit.start],
+            edit.replacement,
+            &source[edit.end..]
+        )
+    }
+
     #[test]
     fn derives_route_status_from_failure_kind() {
         let result = check(
             r#"
 value Result { ok: Bool }
-failure Missing: NotFound { code "missing" }
+failure Missing { kind NotFound code "missing" }
 action find() -> Result fails Missing { reject Missing }
-route GET /result { auth: public explicitly output: Result run: find() }
+route GET /result { auth: none output: Result run: find() }
 "#,
         );
         assert!(result.diagnostics.is_empty(), "{:#?}", result.diagnostics);
@@ -726,7 +908,7 @@ route GET /result { auth: public explicitly output: Result run: find() }
         let result = check(
             r#"
 value Result { ok: Bool }
-failure Closed: Conflict { code "closed" }
+failure Closed { kind Conflict code "closed" }
 action register() -> Result { reject Closed }
 "#,
         );
@@ -739,9 +921,9 @@ action register() -> Result { reject Closed }
         let result = check(
             r#"
 entity Account { id: Uuid identity }
-failure Refused: Rejected { code "refused" }
+failure Refused { kind Rejected code "refused" }
 action add(id: Account.id) -> Account fails Refused {
-    return create Account { id: id } conflict: Refused
+    return attempt create Account { id: id } conflict: Refused
 }
 "#,
         );
@@ -750,5 +932,46 @@ action add(id: Account.id) -> Account fails Refused {
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "FAIL_MUTATION_CONFLICT_NOT_CONFLICT"));
+    }
+
+    #[test]
+    fn preferred_attempt_repair_removes_only_the_named_diagnostic() {
+        let source = r#"
+value Result { ok: Bool }
+failure Refused { kind Rejected code "refused" }
+action child() -> Result fails Refused { reject Refused }
+action parent() -> Result fails Refused { return child() }
+"#;
+        let before = check(source);
+        let diagnostic = before
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == "FAIL_ATTEMPT_REQUIRED")
+            .expect("unacknowledged call should be diagnosed");
+        let repaired = apply_preferred_edit(source, diagnostic);
+        let after = check(&repaired);
+
+        assert!(after.diagnostics.is_empty(), "{:#?}", after.diagnostics);
+        assert_eq!(before.contracts, after.contracts);
+    }
+
+    #[test]
+    fn preferred_stale_fails_repair_preserves_the_public_failure_contract() {
+        let source = r#"
+value Result { ok: Bool }
+failure Refused { kind Rejected code "refused" }
+action parent() -> Result fails Refused { return Result { ok: true } }
+"#;
+        let before = check(source);
+        let diagnostic = before
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == "FAIL_STALE_DECLARATION")
+            .expect("stale failure should be diagnosed");
+        let repaired = apply_preferred_edit(source, diagnostic);
+        let after = check(&repaired);
+
+        assert!(after.diagnostics.is_empty(), "{:#?}", after.diagnostics);
+        assert_eq!(before.contracts, after.contracts);
     }
 }

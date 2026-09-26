@@ -3,13 +3,15 @@ entity Customer {
     email: Text
 }
 
-failure CustomerNotFound: NotFound { code "customer_not_found" }
-failure CustomerConflict: Conflict { code "customer_conflict" }
+failure CustomerNotFound {
+    kind NotFound code "customer_not_found" }
+failure CustomerConflict {
+    kind Conflict code "customer_conflict" }
 
 action update_customer(id: Customer.id, email: Customer.email) -> Customer
     fails CustomerNotFound, CustomerConflict
 {
-    return update required Customer {
+    return attempt update required Customer {
         where: id == id
         set: {
             id: id
