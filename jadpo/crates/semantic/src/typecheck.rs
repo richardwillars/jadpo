@@ -374,16 +374,7 @@ impl TypeChecker<'_> {
         for parameter in &callable.parameters {
             let parameter_type = type_value(&parameter.parameter_type);
             if self.is_primitive_signature_type(&parameter_type) {
-                self.push_diagnostic(
-                    "TYPE_PRIMITIVE_SIGNATURE",
-                    format!(
-                        "parameter `{}` uses primitive type `{}`; declare an application type",
-                        parameter.name.text,
-                        parameter_type.display()
-                    ),
-                    source,
-                    parameter.range,
-                );
+                self.push_diagnostic("TYPE_PRIMITIVE_SIGNATURE", source, parameter.range);
             }
             environment.insert(parameter.name.text.clone(), parameter_type);
         }
@@ -392,10 +383,6 @@ impl TypeChecker<'_> {
         if self.is_primitive_signature_type(&return_type) {
             self.push_diagnostic(
                 "TYPE_PRIMITIVE_SIGNATURE",
-                format!(
-                    "return position uses primitive type `{}`; declare an application type",
-                    return_type.display()
-                ),
                 source,
                 callable.return_annotation_range,
             );
@@ -448,25 +435,9 @@ impl TypeChecker<'_> {
                 Statement::Assignment(assignment) => {
                     let expected = environment.get(&assignment.target.text).cloned();
                     if expected.is_none() {
-                        self.push_diagnostic(
-                            "TYPE_ASSIGN_UNKNOWN",
-                            format!(
-                                "cannot assign to unknown local `{}`",
-                                assignment.target.text
-                            ),
-                            source,
-                            assignment.range,
-                        );
+                        self.push_diagnostic("TYPE_ASSIGN_UNKNOWN", source, assignment.range);
                     } else if !mutable_bindings.contains(&assignment.target.text) {
-                        self.push_diagnostic(
-                            "TYPE_ASSIGN_IMMUTABLE",
-                            format!(
-                                "cannot assign to immutable value `{}`; only locals declared with `var mut` may be reassigned",
-                                assignment.target.text
-                            ),
-                            source,
-                            assignment.range,
-                        );
+                        self.push_diagnostic("TYPE_ASSIGN_IMMUTABLE", source, assignment.range);
                     }
                     if let (Some(received), Some(expected)) = (
                         self.infer_expression(&assignment.value, environment, source),
@@ -579,7 +550,6 @@ impl TypeChecker<'_> {
             if wildcard_seen {
                 self.push_diagnostic(
                     "TYPE_MATCH_UNREACHABLE_PATTERN",
-                    "match patterns after `_` are unreachable",
                     source,
                     arm.pattern.range(),
                 );
@@ -589,7 +559,6 @@ impl TypeChecker<'_> {
                     if !seen.insert("_".to_owned()) {
                         self.push_diagnostic(
                             "TYPE_MATCH_DUPLICATE_PATTERN",
-                            "wildcard pattern `_` appears more than once",
                             source,
                             arm.pattern.range(),
                         );
@@ -610,16 +579,12 @@ impl TypeChecker<'_> {
                             {
                                 self.push_diagnostic(
                                     "TYPE_MATCH_UNKNOWN_VARIANT",
-                                    format!(
-                                        "`{pattern_name}` is not a variant of `{expected_enum}`"
-                                    ),
                                     source,
                                     pattern.range,
                                 );
                             } else if !seen.insert(variant.to_owned()) {
                                 self.push_diagnostic(
                                     "TYPE_MATCH_DUPLICATE_PATTERN",
-                                    format!("variant `{pattern_name}` is matched more than once"),
                                     source,
                                     pattern.range,
                                 );
@@ -632,30 +597,15 @@ impl TypeChecker<'_> {
                             {
                                 self.push_diagnostic(
                                     "TYPE_MATCH_VARIANT_BINDINGS_REQUIRED",
-                                    format!(
-                                        "payload variant `{pattern_name}` requires a `{{ ... }}` pattern"
-                                    ),
                                     source,
                                     pattern.range,
                                 );
                             }
                         } else {
-                            self.push_diagnostic(
-                                "TYPE_MATCH_PATTERN_TYPE",
-                                format!(
-                                    "match over `{expected_enum}` requires `{expected_enum}.variant` patterns"
-                                ),
-                                source,
-                                pattern.range,
-                            );
+                            self.push_diagnostic("TYPE_MATCH_PATTERN_TYPE", source, pattern.range);
                         }
                     } else {
-                        self.push_diagnostic(
-                            "TYPE_MATCH_PATTERN_TYPE",
-                            "named match patterns require an enum subject",
-                            source,
-                            pattern.range,
-                        );
+                        self.push_diagnostic("TYPE_MATCH_PATTERN_TYPE", source, pattern.range);
                     }
                 }
                 jadpo_syntax::MatchPattern::Variant(pattern) => {
@@ -672,9 +622,6 @@ impl TypeChecker<'_> {
                             if variant.contains('.') || fields.is_none() {
                                 self.push_diagnostic(
                                     "TYPE_MATCH_UNKNOWN_VARIANT",
-                                    format!(
-                                        "`{pattern_name}` is not a variant of `{expected_enum}`"
-                                    ),
                                     source,
                                     pattern.target.range,
                                 );
@@ -682,9 +629,6 @@ impl TypeChecker<'_> {
                                 if !seen.insert(variant.to_owned()) {
                                     self.push_diagnostic(
                                         "TYPE_MATCH_DUPLICATE_PATTERN",
-                                        format!(
-                                            "variant `{pattern_name}` is matched more than once"
-                                        ),
                                         source,
                                         pattern.target.range,
                                     );
@@ -695,10 +639,6 @@ impl TypeChecker<'_> {
                                     if !bound.insert(binding.text.clone()) {
                                         self.push_diagnostic(
                                             "TYPE_MATCH_DUPLICATE_BINDING",
-                                            format!(
-                                                "variant field `{}` is bound more than once",
-                                                binding.text
-                                            ),
                                             source,
                                             binding.range,
                                         );
@@ -717,10 +657,6 @@ impl TypeChecker<'_> {
                                     } else {
                                         self.push_diagnostic(
                                             "TYPE_MATCH_UNKNOWN_BINDING",
-                                            format!(
-                                                "variant `{pattern_name}` has no field `{}`",
-                                                binding.text
-                                            ),
                                             source,
                                             binding.range,
                                         );
@@ -730,9 +666,6 @@ impl TypeChecker<'_> {
                         } else {
                             self.push_diagnostic(
                                 "TYPE_MATCH_PATTERN_TYPE",
-                                format!(
-                                    "match over `{expected_enum}` requires `{expected_enum}.variant` patterns"
-                                ),
                                 source,
                                 pattern.target.range,
                             );
@@ -740,7 +673,6 @@ impl TypeChecker<'_> {
                     } else {
                         self.push_diagnostic(
                             "TYPE_MATCH_PATTERN_TYPE",
-                            "variant match patterns require an enum subject",
                             source,
                             pattern.target.range,
                         );
@@ -751,20 +683,10 @@ impl TypeChecker<'_> {
                         continue;
                     };
                     if !subject.nullable {
-                        self.push_diagnostic(
-                            "TYPE_MATCH_SOME_NON_OPTIONAL",
-                            "`some(...)` requires a nullable match subject",
-                            source,
-                            pattern.range,
-                        );
+                        self.push_diagnostic("TYPE_MATCH_SOME_NON_OPTIONAL", source, pattern.range);
                     }
                     if some_seen {
-                        self.push_diagnostic(
-                            "TYPE_MATCH_DUPLICATE_PATTERN",
-                            "`some(...)` appears more than once",
-                            source,
-                            pattern.range,
-                        );
+                        self.push_diagnostic("TYPE_MATCH_DUPLICATE_PATTERN", source, pattern.range);
                     }
                     some_seen = true;
                     pattern_bindings.push((
@@ -782,25 +704,11 @@ impl TypeChecker<'_> {
                         let root = self.representation_root(&subject.name);
                         let nullable_none = pattern_type.name == "none" && subject.nullable;
                         if !nullable_none && root.as_deref() != Some(pattern_type.name.as_str()) {
-                            self.push_diagnostic(
-                                "TYPE_MATCH_PATTERN_TYPE",
-                                format!(
-                                    "literal pattern has type `{}`, but match subject has type `{}`",
-                                    pattern_type.display(),
-                                    subject.display()
-                                ),
-                                source,
-                                pattern.range,
-                            );
+                            self.push_diagnostic("TYPE_MATCH_PATTERN_TYPE", source, pattern.range);
                         }
                     }
                     if !seen.insert(pattern.text.clone()) {
-                        self.push_diagnostic(
-                            "TYPE_MATCH_DUPLICATE_PATTERN",
-                            format!("literal `{}` is matched more than once", pattern.text),
-                            source,
-                            pattern.range,
-                        );
+                        self.push_diagnostic("TYPE_MATCH_DUPLICATE_PATTERN", source, pattern.range);
                     }
                 }
             }
@@ -838,23 +746,7 @@ impl TypeChecker<'_> {
                 missing.push("none".to_owned());
             }
             if !missing.is_empty() {
-                self.push_diagnostic(
-                    "TYPE_MATCH_NON_EXHAUSTIVE",
-                    format!(
-                        "match over `{enum_name}` is missing: {}",
-                        missing
-                            .iter()
-                            .map(|variant| if variant == "none" {
-                                "none".to_owned()
-                            } else {
-                                format!("{enum_name}.{variant}")
-                            })
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                    source,
-                    statement.range,
-                );
+                self.push_diagnostic("TYPE_MATCH_NON_EXHAUSTIVE", source, statement.range);
             }
         } else if let Some(subject) = subject_type {
             if self.representation_root(&subject.name).as_deref() == Some("Bool") {
@@ -866,20 +758,10 @@ impl TypeChecker<'_> {
                     missing.push("none");
                 }
                 if !missing.is_empty() {
-                    self.push_diagnostic(
-                        "TYPE_MATCH_NON_EXHAUSTIVE",
-                        format!("match over `Bool` is missing: {}", missing.join(", ")),
-                        source,
-                        statement.range,
-                    );
+                    self.push_diagnostic("TYPE_MATCH_NON_EXHAUSTIVE", source, statement.range);
                 }
             } else if !(subject.nullable && some_seen && seen.contains("none")) {
-                self.push_diagnostic(
-                    "TYPE_MATCH_WILDCARD_REQUIRED",
-                    "match over an open value requires a final `_` arm",
-                    source,
-                    statement.range,
-                );
+                self.push_diagnostic("TYPE_MATCH_WILDCARD_REQUIRED", source, statement.range);
             }
         }
     }
@@ -923,12 +805,7 @@ impl TypeChecker<'_> {
             Expression::Create(create) => {
                 let target = joined_name(&create.target.path);
                 if !self.catalogue.entities.contains(&target) {
-                    self.push_diagnostic(
-                        "TYPE_CREATE_NOT_ENTITY",
-                        format!("`create` requires an entity, but `{target}` is not persistent"),
-                        source,
-                        create.target.range,
-                    );
+                    self.push_diagnostic("TYPE_CREATE_NOT_ENTITY", source, create.target.range);
                 }
                 self.check_construction(
                     &target,
@@ -944,12 +821,7 @@ impl TypeChecker<'_> {
             Expression::Query(query) => {
                 let target = joined_name(&query.target.path);
                 if !self.catalogue.entities.contains(&target) {
-                    self.push_diagnostic(
-                        "TYPE_QUERY_NOT_ENTITY",
-                        format!("`query` requires an entity, but `{target}` is not persistent"),
-                        source,
-                        query.target.range,
-                    );
+                    self.push_diagnostic("TYPE_QUERY_NOT_ENTITY", source, query.target.range);
                 }
                 let expected = self
                     .catalogue
@@ -961,10 +833,6 @@ impl TypeChecker<'_> {
                     if expected.declared_type.nullable {
                         self.push_diagnostic(
                             "TYPE_QUERY_NULLABLE_FIELD_UNSUPPORTED",
-                            format!(
-                                "query predicates cannot yet target nullable field `{target}.{}`",
-                                query.field.text
-                            ),
                             source,
                             query.field.range,
                         );
@@ -985,12 +853,7 @@ impl TypeChecker<'_> {
                     }
                 } else {
                     if self.catalogue.records.contains_key(&target) {
-                        self.push_diagnostic(
-                            "TYPE_QUERY_UNKNOWN_FIELD",
-                            format!("entity `{target}` has no field `{}`", query.field.text),
-                            source,
-                            query.field.range,
-                        );
+                        self.push_diagnostic("TYPE_QUERY_UNKNOWN_FIELD", source, query.field.range);
                     }
                     self.infer_expression(&query.value, environment, source);
                 }
@@ -1011,10 +874,6 @@ impl TypeChecker<'_> {
                     {
                         self.push_diagnostic(
                             "TYPE_QUERY_UNKNOWN_ORDER_FIELD",
-                            format!(
-                                "entity `{target}` has no ordering field `{}`",
-                                order.field.text
-                            ),
                             source,
                             order.field.range,
                         );
@@ -1026,10 +885,6 @@ impl TypeChecker<'_> {
                     {
                         self.push_diagnostic(
                             "TYPE_QUERY_ORDER_NOT_DETERMINISTIC",
-                            format!(
-                                "many-result query ordering field `{target}.{}` must be identity or unique",
-                                order.field.text
-                            ),
                             source,
                             order.field.range,
                         );
@@ -1044,7 +899,6 @@ impl TypeChecker<'_> {
                     if query.includes.len() != 1 {
                         self.push_diagnostic(
                             "TYPE_NESTED_INCLUDE_SINGLE",
-                            "a nested include must be the only relationship in the bounded depth-two slice",
                             source,
                             first_include.range,
                         );
@@ -1052,17 +906,14 @@ impl TypeChecker<'_> {
                     if query.cardinality != jadpo_syntax::QueryCardinality::Required {
                         self.push_diagnostic(
                             "TYPE_NESTED_INCLUDE_REQUIRED_QUERY",
-                            "a nested include currently requires a `query required` root",
                             source,
                             first_include.range,
                         );
                     }
-                    if first_include.cardinality
-                        != jadpo_syntax::QueryIncludeCardinality::Optional
+                    if first_include.cardinality != jadpo_syntax::QueryIncludeCardinality::Optional
                     {
                         self.push_diagnostic(
                             "TYPE_NESTED_INCLUDE_CARDINALITY",
-                            "the second hop in the first nested slice must be an optional inverse",
                             source,
                             first_include.range,
                         );
@@ -1071,17 +922,11 @@ impl TypeChecker<'_> {
                         .catalogue
                         .owning_references
                         .get(&target)
-                        .and_then(|references| {
-                            references.get(&first_include.relationship.text)
-                        })
+                        .and_then(|references| references.get(&first_include.relationship.text))
                         .cloned();
                     let Some(reference) = reference else {
                         self.push_diagnostic(
                             "TYPE_NESTED_INCLUDE_FIRST_HOP",
-                            format!(
-                                "entity `{target}` has no owning reference `{}` for the first nested hop",
-                                first_include.relationship.text
-                            ),
                             source,
                             first_include.relationship.range,
                         );
@@ -1090,7 +935,6 @@ impl TypeChecker<'_> {
                     if reference.nullable {
                         self.push_diagnostic(
                             "TYPE_NESTED_INCLUDE_NULLABLE_FIRST_HOP",
-                            "the first nested hop must be a non-nullable owning reference",
                             source,
                             first_include.relationship.range,
                         );
@@ -1101,17 +945,12 @@ impl TypeChecker<'_> {
                         .get(&reference.parent)
                         .and_then(|relationships| relationships.get(&nested_name.text))
                         .filter(|inverse| {
-                            inverse.cardinality
-                                == jadpo_syntax::InverseCardinality::Optional
+                            inverse.cardinality == jadpo_syntax::InverseCardinality::Optional
                         })
                         .cloned();
                     let Some(nested_inverse) = nested_inverse else {
                         self.push_diagnostic(
                             "TYPE_NESTED_INCLUDE_SECOND_HOP",
-                            format!(
-                                "entity `{}` has no optional inverse `{}` for the second nested hop",
-                                reference.parent, nested_name.text
-                            ),
                             source,
                             nested_name.range,
                         );
@@ -1122,9 +961,6 @@ impl TypeChecker<'_> {
                     {
                         self.push_diagnostic(
                             "TYPE_INCLUDE_RESULT_NOT_OUTPUT",
-                            format!(
-                                "included relationship result `{result_name}` must be an output declaration"
-                            ),
                             source,
                             first_include.result.range,
                         );
@@ -1138,7 +974,9 @@ impl TypeChecker<'_> {
                         .is_some_and(|field| field.declared_type == simple_type(&target));
                     let inner_name = inner_type
                         .as_ref()
-                        .filter(|field_type| !field_type.nullable && field_type.arguments.is_empty())
+                        .filter(|field_type| {
+                            !field_type.nullable && field_type.arguments.is_empty()
+                        })
                         .map(|field_type| field_type.name.clone());
                     let inner_output_ok = inner_name.as_ref().is_some_and(|name| {
                         self.catalogue.record_kinds.get(name)
@@ -1149,9 +987,7 @@ impl TypeChecker<'_> {
                         .and_then(|name| self.catalogue.records.get(name));
                     let inner_parent_ok = inner_shape
                         .and_then(|fields| fields.get("parent"))
-                        .is_some_and(|field| {
-                            field.declared_type == simple_type(&reference.parent)
-                        });
+                        .is_some_and(|field| field.declared_type == simple_type(&reference.parent));
                     let mut leaf_type = simple_type(&nested_inverse.child);
                     leaf_type.nullable = true;
                     let inner_leaf_ok = inner_shape
@@ -1166,13 +1002,6 @@ impl TypeChecker<'_> {
                     {
                         self.push_diagnostic(
                             "TYPE_NESTED_INCLUDE_RESULT_SHAPE",
-                            format!(
-                                "output `{result_name}` must contain `parent: {target}` and `{}` pointing to an output with `parent: {}` and `{}: {}?`",
-                                first_include.relationship.text,
-                                reference.parent,
-                                nested_name.text,
-                                nested_inverse.child
-                            ),
                             source,
                             first_include.result.range,
                         );
@@ -1191,15 +1020,13 @@ impl TypeChecker<'_> {
                             relationships.get(&first_include.relationship.text)
                         })
                         .filter(|inverse| {
-                            inverse.cardinality
-                                == jadpo_syntax::InverseCardinality::Optional
+                            inverse.cardinality == jadpo_syntax::InverseCardinality::Optional
                         })
                         .cloned()?;
                     let result_name = joined_name(&first_include.result.path);
                     if query.includes.len() != 1 {
                         self.push_diagnostic(
                             "TYPE_INVERSE_ONE_SINGLE",
-                            "an optional inverse include must be the only relationship in the first slice",
                             source,
                             first_include.range,
                         );
@@ -1207,17 +1034,14 @@ impl TypeChecker<'_> {
                     if query.cardinality != jadpo_syntax::QueryCardinality::Required {
                         self.push_diagnostic(
                             "TYPE_INVERSE_ONE_REQUIRED_QUERY",
-                            "an optional inverse include currently requires a `query required` parent",
                             source,
                             first_include.range,
                         );
                     }
-                    if first_include.cardinality
-                        != jadpo_syntax::QueryIncludeCardinality::Optional
+                    if first_include.cardinality != jadpo_syntax::QueryIncludeCardinality::Optional
                     {
                         self.push_diagnostic(
                             "TYPE_INVERSE_ONE_CARDINALITY",
-                            "an inverse declared `optional` must be included as `optional`",
                             source,
                             first_include.range,
                         );
@@ -1227,9 +1051,6 @@ impl TypeChecker<'_> {
                     {
                         self.push_diagnostic(
                             "TYPE_INCLUDE_RESULT_NOT_OUTPUT",
-                            format!(
-                                "included relationship result `{result_name}` must be an output declaration"
-                            ),
                             source,
                             first_include.result.range,
                         );
@@ -1243,17 +1064,9 @@ impl TypeChecker<'_> {
                     let related_ok = shape
                         .and_then(|fields| fields.get(&first_include.relationship.text))
                         .is_some_and(|field| field.declared_type == related_type);
-                    if shape.map_or(true, |fields| fields.len() != 2)
-                        || !parent_ok
-                        || !related_ok
-                    {
+                    if shape.map_or(true, |fields| fields.len() != 2) || !parent_ok || !related_ok {
                         self.push_diagnostic(
                             "TYPE_INVERSE_ONE_RESULT_SHAPE",
-                            format!(
-                                "output `{result_name}` must contain exactly `parent: {target}` and `{}: {}`",
-                                first_include.relationship.text,
-                                related_type.display()
-                            ),
                             source,
                             first_include.result.range,
                         );
@@ -1262,268 +1075,230 @@ impl TypeChecker<'_> {
                 });
                 let owning_result = if nested_result.is_none() && inverse_one_result.is_none() {
                     query.includes.first().and_then(|first_include| {
-                    if first_include.cardinality
-                        == jadpo_syntax::QueryIncludeCardinality::Many
-                    {
-                        return None;
-                    }
-                    let result_name = joined_name(&first_include.result.path);
-                    if query.includes.len() != 1 {
-                        self.push_diagnostic(
-                            "TYPE_PARENT_INCLUDE_SINGLE",
-                            "an owning-parent include must be the only relationship in the first slice",
-                            source,
-                            first_include.range,
-                        );
-                    }
-                    if query.cardinality != jadpo_syntax::QueryCardinality::Required {
-                        self.push_diagnostic(
-                            "TYPE_PARENT_INCLUDE_REQUIRED_QUERY",
-                            "an owning-parent include currently requires a `query required` child",
-                            source,
-                            first_include.range,
-                        );
-                    }
-                    let reference = self
-                        .catalogue
-                        .owning_references
-                        .get(&target)
-                        .and_then(|references| {
-                            references.get(&first_include.relationship.text)
-                        })
-                        .cloned();
-                    let Some(reference) = reference else {
-                        self.push_diagnostic(
-                            "TYPE_PARENT_INCLUDE_UNKNOWN_REFERENCE",
-                            format!(
-                                "entity `{target}` has no owning reference `{}`",
-                                first_include.relationship.text
-                            ),
-                            source,
-                            first_include.relationship.range,
-                        );
-                        return Some(simple_type(&result_name));
-                    };
-                    if first_include.cardinality
-                        == jadpo_syntax::QueryIncludeCardinality::Required
-                        && reference.nullable
-                    {
-                        self.push_diagnostic(
-                            "TYPE_PARENT_INCLUDE_NULLABLE_REFERENCE",
-                            format!(
-                                "nullable reference `{target}.{}` must be included as `optional`",
-                                first_include.relationship.text
-                            ),
-                            source,
-                            first_include.range,
-                        );
-                    }
-                    if self.catalogue.record_kinds.get(&result_name)
-                        != Some(&jadpo_syntax::RecordKind::Output)
-                    {
-                        self.push_diagnostic(
-                            "TYPE_INCLUDE_RESULT_NOT_OUTPUT",
-                            format!(
-                                "included relationship result `{result_name}` must be an output declaration"
-                            ),
-                            source,
-                            first_include.result.range,
-                        );
-                    }
-                    let mut related_type = simple_type(&reference.parent);
-                    related_type.nullable = first_include.cardinality
-                        == jadpo_syntax::QueryIncludeCardinality::Optional;
-                    let shape = self.catalogue.records.get(&result_name);
-                    let parent_ok = shape
-                        .and_then(|fields| fields.get("parent"))
-                        .is_some_and(|field| field.declared_type == simple_type(&target));
-                    let related_ok = shape
-                        .and_then(|fields| fields.get(&first_include.relationship.text))
-                        .is_some_and(|field| field.declared_type == related_type);
-                    if shape.map_or(true, |fields| fields.len() != 2)
-                        || !parent_ok
-                        || !related_ok
-                    {
-                        self.push_diagnostic(
-                            "TYPE_PARENT_INCLUDE_RESULT_SHAPE",
-                            format!(
-                                "output `{result_name}` must contain exactly `parent: {target}` and `{}: {}`",
-                                first_include.relationship.text,
-                                related_type.display()
-                            ),
-                            source,
-                            first_include.result.range,
-                        );
-                    }
-                    Some(simple_type(&result_name))
+                        if first_include.cardinality == jadpo_syntax::QueryIncludeCardinality::Many
+                        {
+                            return None;
+                        }
+                        let result_name = joined_name(&first_include.result.path);
+                        if query.includes.len() != 1 {
+                            self.push_diagnostic(
+                                "TYPE_PARENT_INCLUDE_SINGLE",
+                                source,
+                                first_include.range,
+                            );
+                        }
+                        if query.cardinality != jadpo_syntax::QueryCardinality::Required {
+                            self.push_diagnostic(
+                                "TYPE_PARENT_INCLUDE_REQUIRED_QUERY",
+                                source,
+                                first_include.range,
+                            );
+                        }
+                        let reference = self
+                            .catalogue
+                            .owning_references
+                            .get(&target)
+                            .and_then(|references| references.get(&first_include.relationship.text))
+                            .cloned();
+                        let Some(reference) = reference else {
+                            self.push_diagnostic(
+                                "TYPE_PARENT_INCLUDE_UNKNOWN_REFERENCE",
+                                source,
+                                first_include.relationship.range,
+                            );
+                            return Some(simple_type(&result_name));
+                        };
+                        if first_include.cardinality
+                            == jadpo_syntax::QueryIncludeCardinality::Required
+                            && reference.nullable
+                        {
+                            self.push_diagnostic(
+                                "TYPE_PARENT_INCLUDE_NULLABLE_REFERENCE",
+                                source,
+                                first_include.range,
+                            );
+                        }
+                        if self.catalogue.record_kinds.get(&result_name)
+                            != Some(&jadpo_syntax::RecordKind::Output)
+                        {
+                            self.push_diagnostic(
+                                "TYPE_INCLUDE_RESULT_NOT_OUTPUT",
+                                source,
+                                first_include.result.range,
+                            );
+                        }
+                        let mut related_type = simple_type(&reference.parent);
+                        related_type.nullable = first_include.cardinality
+                            == jadpo_syntax::QueryIncludeCardinality::Optional;
+                        let shape = self.catalogue.records.get(&result_name);
+                        let parent_ok = shape
+                            .and_then(|fields| fields.get("parent"))
+                            .is_some_and(|field| field.declared_type == simple_type(&target));
+                        let related_ok = shape
+                            .and_then(|fields| fields.get(&first_include.relationship.text))
+                            .is_some_and(|field| field.declared_type == related_type);
+                        if shape.map_or(true, |fields| fields.len() != 2)
+                            || !parent_ok
+                            || !related_ok
+                        {
+                            self.push_diagnostic(
+                                "TYPE_PARENT_INCLUDE_RESULT_SHAPE",
+                                source,
+                                first_include.result.range,
+                            );
+                        }
+                        Some(simple_type(&result_name))
                     })
                 } else {
                     None
                 };
-                let included_result = nested_result.or(inverse_one_result).or(owning_result).or_else(|| query.includes.first().map(|first_include| {
-                    let result_name = first_include
-                        .result
-                        .path
-                        .iter()
-                        .map(|part| part.text.as_str())
-                        .collect::<Vec<_>>()
-                        .join(".");
-                    let included_type = || {
-                        if query.cardinality == jadpo_syntax::QueryCardinality::Many {
-                            TypeValue {
-                                name: "List".to_owned(),
-                                arguments: vec![simple_type(&result_name)],
-                                nullable: false,
-                            }
-                        } else {
-                            simple_type(&result_name)
-                        }
-                    };
-                    if query.cardinality == jadpo_syntax::QueryCardinality::Optional {
-                        self.push_diagnostic(
-                            "TYPE_INCLUDE_REQUIRED_PARENT",
-                            "relationship includes require a `required` or paginated `many` parent query",
-                            source,
-                            first_include.range,
-                        );
-                    }
-                    if query.cardinality == jadpo_syntax::QueryCardinality::Many
-                        && query.pagination.is_none()
-                    {
-                        self.push_diagnostic(
-                            "TYPE_INCLUDE_PARENT_PAGINATION_REQUIRED",
-                            "a many-parent relationship load requires explicit parent `limit` and `offset`",
-                            source,
-                            first_include.range,
-                        );
-                    }
-                    let mut seen_relationships = BTreeSet::new();
-                    let mut included_children = Vec::new();
-                    for include in &query.includes {
-                        if include.cardinality
-                            != jadpo_syntax::QueryIncludeCardinality::Many
-                        {
-                            self.push_diagnostic(
-                                "TYPE_INCLUDE_MIXED_CARDINALITY",
-                                "to-many inverse includes cannot be mixed with owning-parent includes",
-                                source,
-                                include.range,
-                            );
-                            continue;
-                        }
-                        self.check_query_pagination(
-                            &include.pagination,
-                            environment,
-                            source,
-                        );
-                        let include_result_name = joined_name(&include.result.path);
-                        if include_result_name != result_name {
-                            self.push_diagnostic(
-                                "TYPE_INCLUDE_RESULT_MISMATCH",
-                                format!(
-                                    "all relationships in one query must use the same output shape `{result_name}`"
-                                ),
-                                source,
-                                include.result.range,
-                            );
-                        }
-                        if !seen_relationships.insert(include.relationship.text.clone()) {
-                            self.push_diagnostic(
-                                "TYPE_INCLUDE_DUPLICATE_RELATIONSHIP",
-                                format!(
-                                    "relationship `{}` is included more than once",
-                                    include.relationship.text
-                                ),
-                                source,
-                                include.relationship.range,
-                            );
-                        }
-                        let inverse = self
-                            .catalogue
-                            .inverses
-                            .get(&target)
-                            .and_then(|relationships| {
-                                relationships.get(&include.relationship.text)
-                            })
-                            .cloned();
-                        let Some(inverse) = inverse else {
-                            self.push_diagnostic(
-                                "TYPE_INCLUDE_UNKNOWN_RELATIONSHIP",
-                                format!(
-                                    "entity `{target}` has no inverse relationship `{}`",
-                                    include.relationship.text
-                                ),
-                                source,
-                                include.relationship.range,
-                            );
-                            continue;
-                        };
-                        if !self
-                            .catalogue
-                            .ordered_keys
-                            .get(&inverse.child)
-                            .is_some_and(|fields| fields.contains(&include.order.field.text))
-                        {
-                            self.push_diagnostic(
-                                "TYPE_INCLUDE_ORDER_NOT_DETERMINISTIC",
-                                format!(
-                                    "included relationship ordering field `{}.{}` must be identity or unique",
-                                    inverse.child, include.order.field.text
-                                ),
-                                source,
-                                include.order.field.range,
-                            );
-                        }
-                        included_children.push((include, inverse));
-                    }
-                    if self.catalogue.record_kinds.get(&result_name)
-                        != Some(&jadpo_syntax::RecordKind::Output)
-                    {
-                        self.push_diagnostic(
-                            "TYPE_INCLUDE_RESULT_NOT_OUTPUT",
-                            format!("included relationship result `{result_name}` must be an output declaration"),
-                            source,
-                            first_include.result.range,
-                        );
-                    }
-                    let shape = self.catalogue.records.get(&result_name);
-                    let parent_ok = shape
-                        .and_then(|fields| fields.get("parent"))
-                        .is_some_and(|field| field.declared_type == simple_type(&target));
-                    let children_ok = included_children.iter().all(|(include, inverse)| {
-                        shape
-                            .and_then(|fields| fields.get(&include.relationship.text))
-                            .is_some_and(|field| {
-                                field.declared_type
-                                    == TypeValue {
+                let included_result = nested_result
+                    .or(inverse_one_result)
+                    .or(owning_result)
+                    .or_else(|| {
+                        query.includes.first().map(|first_include| {
+                            let result_name = first_include
+                                .result
+                                .path
+                                .iter()
+                                .map(|part| part.text.as_str())
+                                .collect::<Vec<_>>()
+                                .join(".");
+                            let included_type = || {
+                                if query.cardinality == jadpo_syntax::QueryCardinality::Many {
+                                    TypeValue {
                                         name: "List".to_owned(),
-                                        arguments: vec![simple_type(&inverse.child)],
+                                        arguments: vec![simple_type(&result_name)],
                                         nullable: false,
                                     }
-                            })
+                                } else {
+                                    simple_type(&result_name)
+                                }
+                            };
+                            if query.cardinality == jadpo_syntax::QueryCardinality::Optional {
+                                self.push_diagnostic(
+                                    "TYPE_INCLUDE_REQUIRED_PARENT",
+                                    source,
+                                    first_include.range,
+                                );
+                            }
+                            if query.cardinality == jadpo_syntax::QueryCardinality::Many
+                                && query.pagination.is_none()
+                            {
+                                self.push_diagnostic(
+                                    "TYPE_INCLUDE_PARENT_PAGINATION_REQUIRED",
+                                    source,
+                                    first_include.range,
+                                );
+                            }
+                            let mut seen_relationships = BTreeSet::new();
+                            let mut included_children = Vec::new();
+                            for include in &query.includes {
+                                if include.cardinality
+                                    != jadpo_syntax::QueryIncludeCardinality::Many
+                                {
+                                    self.push_diagnostic(
+                                        "TYPE_INCLUDE_MIXED_CARDINALITY",
+                                        source,
+                                        include.range,
+                                    );
+                                    continue;
+                                }
+                                self.check_query_pagination(
+                                    &include.pagination,
+                                    environment,
+                                    source,
+                                );
+                                let include_result_name = joined_name(&include.result.path);
+                                if include_result_name != result_name {
+                                    self.push_diagnostic(
+                                        "TYPE_INCLUDE_RESULT_MISMATCH",
+                                        source,
+                                        include.result.range,
+                                    );
+                                }
+                                if !seen_relationships.insert(include.relationship.text.clone()) {
+                                    self.push_diagnostic(
+                                        "TYPE_INCLUDE_DUPLICATE_RELATIONSHIP",
+                                        source,
+                                        include.relationship.range,
+                                    );
+                                }
+                                let inverse = self
+                                    .catalogue
+                                    .inverses
+                                    .get(&target)
+                                    .and_then(|relationships| {
+                                        relationships.get(&include.relationship.text)
+                                    })
+                                    .cloned();
+                                let Some(inverse) = inverse else {
+                                    self.push_diagnostic(
+                                        "TYPE_INCLUDE_UNKNOWN_RELATIONSHIP",
+                                        source,
+                                        include.relationship.range,
+                                    );
+                                    continue;
+                                };
+                                if !self.catalogue.ordered_keys.get(&inverse.child).is_some_and(
+                                    |fields| fields.contains(&include.order.field.text),
+                                ) {
+                                    self.push_diagnostic(
+                                        "TYPE_INCLUDE_ORDER_NOT_DETERMINISTIC",
+                                        source,
+                                        include.order.field.range,
+                                    );
+                                }
+                                included_children.push((include, inverse));
+                            }
+                            if self.catalogue.record_kinds.get(&result_name)
+                                != Some(&jadpo_syntax::RecordKind::Output)
+                            {
+                                self.push_diagnostic(
+                                    "TYPE_INCLUDE_RESULT_NOT_OUTPUT",
+                                    source,
+                                    first_include.result.range,
+                                );
+                            }
+                            let shape = self.catalogue.records.get(&result_name);
+                            let parent_ok = shape
+                                .and_then(|fields| fields.get("parent"))
+                                .is_some_and(|field| field.declared_type == simple_type(&target));
+                            let children_ok = included_children.iter().all(|(include, inverse)| {
+                                shape
+                                    .and_then(|fields| fields.get(&include.relationship.text))
+                                    .is_some_and(|field| {
+                                        field.declared_type
+                                            == TypeValue {
+                                                name: "List".to_owned(),
+                                                arguments: vec![simple_type(&inverse.child)],
+                                                nullable: false,
+                                            }
+                                    })
+                            });
+                            if shape.map_or(true, |fields| fields.len() != query.includes.len() + 1)
+                                || !parent_ok
+                                || !children_ok
+                            {
+                                let _fields = included_children
+                                    .iter()
+                                    .map(|(include, inverse)| {
+                                        format!(
+                                            "{}: List<{}>",
+                                            include.relationship.text, inverse.child
+                                        )
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("`, `");
+                                self.push_diagnostic(
+                                    "TYPE_INCLUDE_RESULT_SHAPE",
+                                    source,
+                                    first_include.result.range,
+                                );
+                            }
+                            included_type()
+                        })
                     });
-                    if shape.map_or(true, |fields| fields.len() != query.includes.len() + 1)
-                        || !parent_ok
-                        || !children_ok
-                    {
-                        let fields = included_children
-                            .iter()
-                            .map(|(include, inverse)| {
-                                format!("{}: List<{}>", include.relationship.text, inverse.child)
-                            })
-                            .collect::<Vec<_>>()
-                            .join("`, `");
-                        self.push_diagnostic(
-                            "TYPE_INCLUDE_RESULT_SHAPE",
-                            format!(
-                                "output `{result_name}` must contain exactly `parent: {target}` and `{fields}` for the included relationships"
-                            ),
-                            source,
-                            first_include.result.range,
-                        );
-                    }
-                    included_type()
-                }));
                 if let Some(result) = included_result {
                     Some(result)
                 } else {
@@ -1545,12 +1320,7 @@ impl TypeChecker<'_> {
             Expression::Update(update) => {
                 let target = joined_name(&update.target.path);
                 if !self.catalogue.entities.contains(&target) {
-                    self.push_diagnostic(
-                        "TYPE_UPDATE_NOT_ENTITY",
-                        format!("`update` requires an entity, but `{target}` is not persistent"),
-                        source,
-                        update.target.range,
-                    );
+                    self.push_diagnostic("TYPE_UPDATE_NOT_ENTITY", source, update.target.range);
                 }
                 self.check_mutation_predicate(
                     "update",
@@ -1561,26 +1331,13 @@ impl TypeChecker<'_> {
                     source,
                 );
                 if update.changes.is_empty() && update.patch.is_none() {
-                    self.push_diagnostic(
-                        "TYPE_UPDATE_FIELD_REQUIRED",
-                        "an update requires at least one field in `set:` or an omission-aware `patch:` input",
-                        source,
-                        update.range,
-                    );
+                    self.push_diagnostic("TYPE_UPDATE_FIELD_REQUIRED", source, update.range);
                 }
                 let expected_fields = self.catalogue.records.get(&target).cloned();
                 let mut changed_fields = BTreeSet::new();
                 for change in &update.changes {
                     if !changed_fields.insert(change.name.text.clone()) {
-                        self.push_diagnostic(
-                            "TYPE_UPDATE_DUPLICATE_FIELD",
-                            format!(
-                                "update field `{target}.{}` appears more than once",
-                                change.name.text
-                            ),
-                            source,
-                            change.range,
-                        );
+                        self.push_diagnostic("TYPE_UPDATE_DUPLICATE_FIELD", source, change.range);
                     }
                     let Some(expected) = expected_fields
                         .as_ref()
@@ -1588,7 +1345,6 @@ impl TypeChecker<'_> {
                     else {
                         self.push_diagnostic(
                             "TYPE_UPDATE_UNKNOWN_FIELD",
-                            format!("entity `{target}` has no field `{}`", change.name.text),
                             source,
                             change.name.range,
                         );
@@ -1613,15 +1369,7 @@ impl TypeChecker<'_> {
                 for conditional in &update.conditional_changes {
                     let change = &conditional.change;
                     if !changed_fields.insert(change.name.text.clone()) {
-                        self.push_diagnostic(
-                            "TYPE_UPDATE_DUPLICATE_FIELD",
-                            format!(
-                                "update field `{target}.{}` appears more than once",
-                                change.name.text
-                            ),
-                            source,
-                            change.range,
-                        );
+                        self.push_diagnostic("TYPE_UPDATE_DUPLICATE_FIELD", source, change.range);
                     }
                     let Some(expected) = expected_fields
                         .as_ref()
@@ -1629,7 +1377,6 @@ impl TypeChecker<'_> {
                     else {
                         self.push_diagnostic(
                             "TYPE_UPDATE_UNKNOWN_FIELD",
-                            format!("entity `{target}` has no field `{}`", change.name.text),
                             source,
                             change.name.range,
                         );
@@ -1653,12 +1400,7 @@ impl TypeChecker<'_> {
                 }
                 if let Some(patch) = &update.patch {
                     if patch.path.len() != 1 {
-                        self.push_diagnostic(
-                            "TYPE_PATCH_INPUT_BINDING",
-                            "`patch:` requires a direct input binding",
-                            source,
-                            patch.range,
-                        );
+                        self.push_diagnostic("TYPE_PATCH_INPUT_BINDING", source, patch.range);
                     }
                     let patch_expression = Expression::Name(patch.clone());
                     if let Some(received) =
@@ -1667,22 +1409,13 @@ impl TypeChecker<'_> {
                         if self.catalogue.record_kinds.get(&received.name)
                             != Some(&jadpo_syntax::RecordKind::Input)
                         {
-                            self.push_diagnostic(
-                                "TYPE_PATCH_NOT_INPUT",
-                                format!(
-                                    "`patch:` requires an input record, but received `{}`",
-                                    received.display()
-                                ),
-                                source,
-                                patch.range,
-                            );
+                            self.push_diagnostic("TYPE_PATCH_NOT_INPUT", source, patch.range);
                         } else if let Some(patch_fields) =
                             self.catalogue.records.get(&received.name).cloned()
                         {
                             if patch_fields.is_empty() {
                                 self.push_diagnostic(
                                     "TYPE_PATCH_FIELD_REQUIRED",
-                                    "a patch input requires at least one optional field",
                                     source,
                                     patch.range,
                                 );
@@ -1691,10 +1424,6 @@ impl TypeChecker<'_> {
                                 if !patch_field.optional {
                                     self.push_diagnostic(
                                         "TYPE_PATCH_FIELD_NOT_OPTIONAL",
-                                        format!(
-                                            "patch input field `{}.{field_name}` must be declared `optional` so omission remains distinct from a supplied value",
-                                            received.name
-                                        ),
                                         source,
                                         patch.range,
                                     );
@@ -1705,10 +1434,6 @@ impl TypeChecker<'_> {
                                 else {
                                     self.push_diagnostic(
                                         "TYPE_PATCH_UNKNOWN_FIELD",
-                                        format!(
-                                            "entity `{target}` has no field `{field_name}` supplied by patch input `{}`",
-                                            received.name
-                                        ),
                                         source,
                                         patch.range,
                                     );
@@ -1733,10 +1458,6 @@ impl TypeChecker<'_> {
                                 if !valid_binding {
                                     self.push_diagnostic(
                                         "TYPE_PATCH_CONDITION_BINDING",
-                                        format!(
-                                            "patch-derived condition must use `{}.<field> supplied`",
-                                            patch.path[0].text
-                                        ),
                                         source,
                                         supplied.range,
                                     );
@@ -1746,10 +1467,6 @@ impl TypeChecker<'_> {
                                 if !patch_fields.contains_key(supplied_field) {
                                     self.push_diagnostic(
                                         "TYPE_PATCH_CONDITION_UNKNOWN_FIELD",
-                                        format!(
-                                            "patch input `{}` has no field `{supplied_field}`",
-                                            received.name
-                                        ),
                                         source,
                                         supplied.range,
                                     );
@@ -1759,9 +1476,6 @@ impl TypeChecker<'_> {
                                 if changed_fields.contains(patch_field) {
                                     self.push_diagnostic(
                                         "TYPE_PATCH_DERIVED_OVERLAP",
-                                        format!(
-                                            "field `{target}.{patch_field}` cannot be written by both `patch:` and derived `set:`"
-                                        ),
                                         source,
                                         patch.range,
                                     );
@@ -1780,12 +1494,7 @@ impl TypeChecker<'_> {
             Expression::Delete(delete) => {
                 let target = joined_name(&delete.target.path);
                 if !self.catalogue.entities.contains(&target) {
-                    self.push_diagnostic(
-                        "TYPE_DELETE_NOT_ENTITY",
-                        format!("`delete` requires an entity, but `{target}` is not persistent"),
-                        source,
-                        delete.target.range,
-                    );
+                    self.push_diagnostic("TYPE_DELETE_NOT_ENTITY", source, delete.target.range);
                 }
                 self.check_mutation_predicate(
                     "delete",
@@ -1806,30 +1515,14 @@ impl TypeChecker<'_> {
                     match unary.operator {
                         jadpo_syntax::UnaryOperator::Not => {
                             if value.nullable || root.as_deref() != Some("Bool") {
-                                self.push_diagnostic(
-                                    "TYPE_UNARY_OPERAND",
-                                    format!(
-                                        "`not` requires `Bool`, received `{}`",
-                                        value.display()
-                                    ),
-                                    source,
-                                    unary.range,
-                                );
+                                self.push_diagnostic("TYPE_UNARY_OPERAND", source, unary.range);
                             }
                             Some(simple_type("Bool"))
                         }
                         jadpo_syntax::UnaryOperator::Negate => {
                             if value.nullable || !matches!(root.as_deref(), Some("Int" | "Decimal"))
                             {
-                                self.push_diagnostic(
-                                    "TYPE_UNARY_OPERAND",
-                                    format!(
-                                        "numeric negation requires `Int` or `Decimal`, received `{}`",
-                                        value.display()
-                                    ),
-                                    source,
-                                    unary.range,
-                                );
+                                self.push_diagnostic("TYPE_UNARY_OPERAND", source, unary.range);
                             }
                             Some(root.map_or_else(|| simple_type("Int"), |root| simple_type(&root)))
                         }
@@ -1882,16 +1575,7 @@ impl TypeChecker<'_> {
         match binary.operator {
             BinaryOperator::Equal | BinaryOperator::NotEqual => {
                 if !comparable {
-                    self.push_diagnostic(
-                        "TYPE_INCOMPARABLE",
-                        format!(
-                            "values of type `{}` and `{}` cannot be compared",
-                            left.display(),
-                            right.display()
-                        ),
-                        source,
-                        binary.range,
-                    );
+                    self.push_diagnostic("TYPE_INCOMPARABLE", source, binary.range);
                 }
                 Some(simple_type("Bool"))
             }
@@ -1900,16 +1584,7 @@ impl TypeChecker<'_> {
                     || left_root.as_deref() != Some("Bool")
                     || right_root.as_deref() != Some("Bool")
                 {
-                    self.push_diagnostic(
-                        "TYPE_LOGICAL_OPERAND",
-                        format!(
-                            "logical operators require two `Bool` values, received `{}` and `{}`",
-                            left.display(),
-                            right.display()
-                        ),
-                        source,
-                        binary.range,
-                    );
+                    self.push_diagnostic("TYPE_LOGICAL_OPERAND", source, binary.range);
                 }
                 Some(simple_type("Bool"))
             }
@@ -1922,16 +1597,7 @@ impl TypeChecker<'_> {
                     Some("Int" | "Decimal" | "Text" | "DateTime")
                 );
                 if !non_nullable || !comparable || !ordered || left_root != right_root {
-                    self.push_diagnostic(
-                        "TYPE_ORDERING_OPERAND",
-                        format!(
-                            "ordering requires compatible non-null Text, numeric, or DateTime values; received `{}` and `{}`",
-                            left.display(),
-                            right.display()
-                        ),
-                        source,
-                        binary.range,
-                    );
+                    self.push_diagnostic("TYPE_ORDERING_OPERAND", source, binary.range);
                 }
                 Some(simple_type("Bool"))
             }
@@ -1946,16 +1612,7 @@ impl TypeChecker<'_> {
                     && left_root.as_deref() == Some("Text")
                     && right_root.as_deref() == Some("Text");
                 if !non_nullable || (!numeric && !text_add) {
-                    self.push_diagnostic(
-                        "TYPE_ARITHMETIC_OPERAND",
-                        format!(
-                            "arithmetic requires numeric values (or two Text values for `+`); received `{}` and `{}`",
-                            left.display(),
-                            right.display()
-                        ),
-                        source,
-                        binary.range,
-                    );
+                    self.push_diagnostic("TYPE_ARITHMETIC_OPERAND", source, binary.range);
                 }
                 if text_add {
                     Some(simple_type("Text"))
@@ -1973,7 +1630,7 @@ impl TypeChecker<'_> {
 
     fn check_mutation_predicate(
         &mut self,
-        operation: &str,
+        _operation: &str,
         target: &str,
         field: &Name,
         value: &Expression,
@@ -1988,12 +1645,7 @@ impl TypeChecker<'_> {
             .cloned();
         let Some(expected) = expected else {
             if self.catalogue.records.contains_key(target) {
-                self.push_diagnostic(
-                    "TYPE_MUTATION_UNKNOWN_PREDICATE_FIELD",
-                    format!("entity `{target}` has no field `{}`", field.text),
-                    source,
-                    field.range,
-                );
+                self.push_diagnostic("TYPE_MUTATION_UNKNOWN_PREDICATE_FIELD", source, field.range);
             }
             self.infer_expression(value, environment, source);
             return;
@@ -2001,10 +1653,6 @@ impl TypeChecker<'_> {
         if expected.declared_type.nullable {
             self.push_diagnostic(
                 "TYPE_MUTATION_NULLABLE_FIELD_UNSUPPORTED",
-                format!(
-                    "{operation} predicates cannot yet target nullable field `{target}.{}`",
-                    field.text
-                ),
                 source,
                 field.range,
             );
@@ -2051,24 +1699,10 @@ impl TypeChecker<'_> {
                 },
             );
             if !seen.insert(key.clone()) {
-                self.push_diagnostic(
-                    "TYPE_CONFLICT_DUPLICATE_BINDING",
-                    if key == "<fallback>" {
-                        "a mutation may declare at most one fallback conflict binding".to_owned()
-                    } else {
-                        format!("constraint `{key}` is mapped more than once")
-                    },
-                    source,
-                    range,
-                );
+                self.push_diagnostic("TYPE_CONFLICT_DUPLICATE_BINDING", source, range);
             }
             if key != "<fallback>" && !self.catalogue.persistence_constraints.contains(&key) {
-                self.push_diagnostic(
-                    "TYPE_CONFLICT_UNKNOWN_CONSTRAINT",
-                    format!("`{key}` is not a compiler-known persistence constraint"),
-                    source,
-                    range,
-                );
+                self.push_diagnostic("TYPE_CONFLICT_UNKNOWN_CONSTRAINT", source, range);
             }
         }
     }
@@ -2082,16 +1716,7 @@ impl TypeChecker<'_> {
         let callee = joined_name(&invocation.callee.path);
         if let Some(signature) = self.catalogue.callables.get(&callee).cloned() {
             if signature.parameters.len() != invocation.arguments.len() {
-                self.push_diagnostic(
-                    "TYPE_ARGUMENT_COUNT",
-                    format!(
-                        "`{callee}` expects {} argument(s), but {} were supplied",
-                        signature.parameters.len(),
-                        invocation.arguments.len()
-                    ),
-                    source,
-                    invocation.range,
-                );
+                self.push_diagnostic("TYPE_ARGUMENT_COUNT", source, invocation.range);
             }
             for (argument, expected) in invocation.arguments.iter().zip(&signature.parameters) {
                 if let Some(received) = self.infer_expression(argument, environment, source) {
@@ -2111,12 +1736,7 @@ impl TypeChecker<'_> {
             return None;
         }
         if invocation.arguments.len() != 1 {
-            self.push_diagnostic(
-                "TYPE_CONSTRUCTOR_ARGUMENT_COUNT",
-                format!("validated constructor `{callee}` requires exactly one argument"),
-                source,
-                invocation.range,
-            );
+            self.push_diagnostic("TYPE_CONSTRUCTOR_ARGUMENT_COUNT", source, invocation.range);
             return Some(simple_type(&callee));
         }
 
@@ -2124,25 +1744,12 @@ impl TypeChecker<'_> {
         let argument_type = self.infer_expression(argument, environment, source);
         if let Some(argument_type) = &argument_type {
             if !self.constructor_input_compatible(argument_type, &callee) {
-                self.push_diagnostic(
-                    "TYPE_CONSTRUCTOR_INPUT",
-                    format!(
-                        "cannot validate `{}` as `{callee}` because their representations differ",
-                        argument_type.display()
-                    ),
-                    source,
-                    argument.range(),
-                );
+                self.push_diagnostic("TYPE_CONSTRUCTOR_INPUT", source, argument.range());
             }
         }
         if let Expression::Literal(literal) = argument {
-            if let Some(reason) = self.invalid_literal_reason(&callee, literal) {
-                self.push_diagnostic(
-                    "TYPE_INVALID_LITERAL",
-                    format!("literal is not valid for `{callee}`: {reason}"),
-                    source,
-                    invocation.range,
-                );
+            if let Some(_reason) = self.invalid_literal_reason(&callee, literal) {
+                self.push_diagnostic("TYPE_INVALID_LITERAL", source, invocation.range);
             }
         }
         Some(simple_type(&callee))
@@ -2158,12 +1765,7 @@ impl TypeChecker<'_> {
         use_field_identity: bool,
     ) {
         let Some(expected_fields) = self.catalogue.records.get(target).cloned() else {
-            self.push_diagnostic(
-                "TYPE_NOT_RECORD",
-                format!("`{target}` is not a constructible record"),
-                source,
-                range,
-            );
+            self.push_diagnostic("TYPE_NOT_RECORD", source, range);
             return;
         };
         let supplied = fields
@@ -2173,22 +1775,12 @@ impl TypeChecker<'_> {
 
         for (name, expected) in &expected_fields {
             if !expected.optional && !supplied.contains(name.as_str()) {
-                self.push_diagnostic(
-                    "TYPE_MISSING_FIELD",
-                    format!("construction of `{target}` is missing required field `{name}`"),
-                    source,
-                    range,
-                );
+                self.push_diagnostic("TYPE_MISSING_FIELD", source, range);
             }
         }
         for field in fields {
             let Some(expected) = expected_fields.get(&field.name.text) else {
-                self.push_diagnostic(
-                    "TYPE_UNKNOWN_FIELD",
-                    format!("`{}` has no field `{}`", target, field.name.text),
-                    source,
-                    field.name.range,
-                );
+                self.push_diagnostic("TYPE_UNKNOWN_FIELD", source, field.name.range);
                 continue;
             };
             if let Some(received) = self.infer_expression(&field.value, environment, source) {
@@ -2208,7 +1800,7 @@ impl TypeChecker<'_> {
 
     fn check_variant_construction(
         &mut self,
-        target: &str,
+        _target: &str,
         expected_fields: &BTreeMap<String, RecordField>,
         supplied_fields: &[FieldInitialiser],
         range: TextRange,
@@ -2221,35 +1813,17 @@ impl TypeChecker<'_> {
             .collect::<BTreeSet<_>>();
         for (name, expected) in expected_fields {
             if !expected.optional && !supplied.contains(name.as_str()) {
-                self.push_diagnostic(
-                    "TYPE_MISSING_VARIANT_FIELD",
-                    format!("construction of `{target}` is missing required field `{name}`"),
-                    source,
-                    range,
-                );
+                self.push_diagnostic("TYPE_MISSING_VARIANT_FIELD", source, range);
             }
         }
         let mut seen = BTreeSet::new();
         for field in supplied_fields {
             if !seen.insert(field.name.text.clone()) {
-                self.push_diagnostic(
-                    "TYPE_DUPLICATE_VARIANT_FIELD",
-                    format!(
-                        "variant field `{}` is supplied more than once",
-                        field.name.text
-                    ),
-                    source,
-                    field.name.range,
-                );
+                self.push_diagnostic("TYPE_DUPLICATE_VARIANT_FIELD", source, field.name.range);
                 continue;
             }
             let Some(expected) = expected_fields.get(&field.name.text) else {
-                self.push_diagnostic(
-                    "TYPE_UNKNOWN_VARIANT_FIELD",
-                    format!("`{target}` has no field `{}`", field.name.text),
-                    source,
-                    field.name.range,
-                );
+                self.push_diagnostic("TYPE_UNKNOWN_VARIANT_FIELD", source, field.name.range);
                 continue;
             };
             if let Some(received) = self.infer_expression(&field.value, environment, source) {
@@ -2323,46 +1897,22 @@ impl TypeChecker<'_> {
                 if variants.contains_key(&variant.text) {
                     return Some(simple_type(&first.text));
                 }
-                self.push_diagnostic(
-                    "TYPE_UNKNOWN_ENUM_VARIANT",
-                    format!("enum `{}` has no variant `{}`", first.text, variant.text),
-                    source,
-                    variant.range,
-                );
+                self.push_diagnostic("TYPE_UNKNOWN_ENUM_VARIANT", source, variant.range);
                 return None;
             }
         }
         let Some(mut current) = environment.get(&first.text).cloned() else {
-            self.push_diagnostic(
-                "TYPE_UNKNOWN_VALUE",
-                format!("unknown value `{}`", first.text),
-                source,
-                first.range,
-            );
+            self.push_diagnostic("TYPE_UNKNOWN_VALUE", source, first.range);
             return None;
         };
 
         for field in &path[1..] {
             if current.nullable {
-                self.push_diagnostic(
-                    "TYPE_NULLABLE_SELECTION",
-                    format!(
-                        "cannot select field `{}` from nullable type `{}` without handling `none`",
-                        field.text,
-                        current.display()
-                    ),
-                    source,
-                    field.range,
-                );
+                self.push_diagnostic("TYPE_NULLABLE_SELECTION", source, field.range);
                 return None;
             }
             let Some(record_name) = self.record_shape_name(&current.name) else {
-                self.push_diagnostic(
-                    "TYPE_FIELD_ON_NON_RECORD",
-                    format!("type `{}` has no selectable fields", current.display()),
-                    source,
-                    field.range,
-                );
+                self.push_diagnostic("TYPE_FIELD_ON_NON_RECORD", source, field.range);
                 return None;
             };
             let declared = self
@@ -2372,12 +1922,7 @@ impl TypeChecker<'_> {
                 .and_then(|fields| fields.get(&field.text))
                 .cloned();
             let Some(declared) = declared else {
-                self.push_diagnostic(
-                    "TYPE_UNKNOWN_FIELD",
-                    format!("`{record_name}` has no field `{}`", field.text),
-                    source,
-                    field.range,
-                );
+                self.push_diagnostic("TYPE_UNKNOWN_FIELD", source, field.range);
                 return None;
             };
             current = if record_name.starts_with("__route_path_") {
@@ -2407,28 +1952,9 @@ impl TypeChecker<'_> {
         let both_fields = self.node_kind(&received.name) == Some(NodeKind::Field)
             && self.node_kind(&expected.name) == Some(NodeKind::Field);
         if both_fields && shared_parent.is_some() {
-            self.push_diagnostic(
-                "TYPE_SIBLING_MISMATCH",
-                format!(
-                    "expected `{}`, received sibling `{}`; shared parent is `{}`",
-                    expected.display(),
-                    received.display(),
-                    shared_parent.unwrap()
-                ),
-                source,
-                range,
-            );
+            self.push_diagnostic("TYPE_SIBLING_MISMATCH", source, range);
         } else {
-            self.push_diagnostic(
-                "TYPE_MISMATCH",
-                format!(
-                    "expected `{}`, received `{}`",
-                    expected.display(),
-                    received.display()
-                ),
-                source,
-                range,
-            );
+            self.push_diagnostic("TYPE_MISMATCH", source, range);
         }
     }
 
@@ -2604,14 +2130,8 @@ impl TypeChecker<'_> {
             .collect()
     }
 
-    fn push_diagnostic(
-        &mut self,
-        code: &'static str,
-        message: impl Into<String>,
-        source: &str,
-        range: TextRange,
-    ) {
-        let mut diagnostic = Diagnostic::error(code, message);
+    fn push_diagnostic(&mut self, code: &'static str, source: &str, range: TextRange) {
+        let mut diagnostic = Diagnostic::error(code);
         diagnostic.primary = Some(SourceSpan {
             source: source.to_owned(),
             start: range.start,
@@ -2626,7 +2146,7 @@ impl TypeChecker<'_> {
         environment: &BTreeMap<String, TypeValue>,
         source: &str,
     ) {
-        for (label, expression, minimum) in [
+        for (_label, expression, minimum) in [
             ("limit", pagination.limit.as_ref(), 1_i64),
             ("offset", pagination.offset.as_ref(), 0_i64),
         ] {
@@ -2636,9 +2156,6 @@ impl TypeChecker<'_> {
             let Expression::Literal(literal) = expression else {
                 self.push_diagnostic(
                     "TYPE_QUERY_PAGINATION_CONSTANT_REQUIRED",
-                    format!(
-                        "query `{label}` must be an integer literal in the first pagination slice"
-                    ),
                     source,
                     expression.range(),
                 );
@@ -2648,14 +2165,7 @@ impl TypeChecker<'_> {
                 .then(|| literal.text.parse::<i64>().ok())
                 .flatten();
             if !value.is_some_and(|value| value >= minimum) {
-                self.push_diagnostic(
-                    "TYPE_QUERY_PAGINATION_RANGE",
-                    format!(
-                        "query `{label}` must be an integer greater than or equal to {minimum}"
-                    ),
-                    source,
-                    literal.range,
-                );
+                self.push_diagnostic("TYPE_QUERY_PAGINATION_RANGE", source, literal.range);
             }
         }
     }

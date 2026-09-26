@@ -59,11 +59,8 @@ pub fn accept_index_recommendation(
     path: &str,
 ) -> Result<(PathBuf, PathBuf), Diagnostic> {
     validate_schema_identities(project, analyzed)?.ok_or_else(|| {
-        Diagnostic::error(
-            "INDEX_ACCEPT_REGISTRY_MISSING",
-            "schema identity registry does not exist",
-        )
-        .with_note("run `jadpo schema init <project>` before accepting an index")
+        Diagnostic::error("INDEX_ACCEPT_REGISTRY_MISSING")
+            .with_note("run `jadpo schema init <project>` before accepting an index")
     })?;
     let recommendation = derive_index_recommendations(analyzed)
         .into_iter()
@@ -71,35 +68,20 @@ pub fn accept_index_recommendation(
             format!("{}.{}", recommendation.entity, recommendation.field) == path
         })
         .ok_or_else(|| {
-            Diagnostic::error(
-                "INDEX_RECOMMENDATION_UNKNOWN",
-                format!("there is no current index recommendation for `{path}`"),
+            Diagnostic::error("INDEX_RECOMMENDATION_UNKNOWN").with_note(
+                "run `jadpo schema index-recommend <project>` to inspect current evidence",
             )
-            .with_note("run `jadpo schema index-recommend <project>` to inspect current evidence")
         })?;
 
     let (source_path, field) = find_field(analyzed, &recommendation.entity, &recommendation.field)
-        .ok_or_else(|| {
-            Diagnostic::error(
-                "INDEX_RECOMMENDATION_FIELD_MISSING",
-                format!("could not locate recommended field `{path}` in checked source"),
-            )
-        })?;
-    let original = fs::read_to_string(&source_path).map_err(|error| {
-        Diagnostic::error(
-            "INDEX_ACCEPT_SOURCE_READ_FAILED",
-            format!("could not read {}: {error}", source_path.display()),
-        )
-    })?;
+        .ok_or_else(|| Diagnostic::error("INDEX_RECOMMENDATION_FIELD_MISSING"))?;
+    let original = fs::read_to_string(&source_path)
+        .map_err(|_error| Diagnostic::error("INDEX_ACCEPT_SOURCE_READ_FAILED"))?;
     let insertion = index_insertion_offset(&original, &field)?;
     let mut updated = original.clone();
     updated.insert_str(insertion.0, insertion.1);
-    fs::write(&source_path, &updated).map_err(|error| {
-        Diagnostic::error(
-            "INDEX_ACCEPT_SOURCE_WRITE_FAILED",
-            format!("could not write {}: {error}", source_path.display()),
-        )
-    })?;
+    fs::write(&source_path, &updated)
+        .map_err(|_error| Diagnostic::error("INDEX_ACCEPT_SOURCE_WRITE_FAILED"))?;
 
     let result = (|| {
         let updated_project = analyze_project(project)?;
@@ -112,20 +94,11 @@ pub fn accept_index_recommendation(
             .map(|diagnostic| diagnostic.code)
             .collect::<Vec<_>>();
         if !diagnostics.is_empty() {
-            return Err(Diagnostic::error(
-                "INDEX_ACCEPT_CHECK_FAILED",
-                format!(
-                    "accepted index did not produce a valid checked project: {}",
-                    diagnostics.join(", ")
-                ),
-            ));
+            return Err(Diagnostic::error("INDEX_ACCEPT_CHECK_FAILED"));
         }
         let (registry, added) = register_schema_additions(project, &updated_project)?;
         if added != 1 {
-            return Err(Diagnostic::error(
-                "INDEX_ACCEPT_IDENTITY_COUNT",
-                format!("accepting one index registered {added} schema identities"),
-            ));
+            return Err(Diagnostic::error("INDEX_ACCEPT_IDENTITY_COUNT"));
         }
         Ok(registry)
     })();
@@ -133,15 +106,8 @@ pub fn accept_index_recommendation(
     match result {
         Ok(registry) => Ok((source_path, registry)),
         Err(diagnostic) => {
-            fs::write(&source_path, original).map_err(|error| {
-                Diagnostic::error(
-                    "INDEX_ACCEPT_ROLLBACK_FAILED",
-                    format!(
-                        "could not restore {} after failed acceptance: {error}",
-                        source_path.display()
-                    ),
-                )
-            })?;
+            fs::write(&source_path, original)
+                .map_err(|_error| Diagnostic::error("INDEX_ACCEPT_ROLLBACK_FAILED"))?;
             Err(diagnostic)
         }
     }
@@ -350,18 +316,10 @@ fn index_insertion_offset<'a>(
     if field.optional {
         let field_source = source
             .get(field.range.start..field.range.end)
-            .ok_or_else(|| {
-                Diagnostic::error(
-                    "INDEX_ACCEPT_RANGE_INVALID",
-                    "field source range is invalid",
-                )
-            })?;
-        let relative = field_source.rfind("optional").ok_or_else(|| {
-            Diagnostic::error(
-                "INDEX_ACCEPT_RANGE_INVALID",
-                "optional field range does not contain its modifier",
-            )
-        })?;
+            .ok_or_else(|| Diagnostic::error("INDEX_ACCEPT_RANGE_INVALID"))?;
+        let relative = field_source
+            .rfind("optional")
+            .ok_or_else(|| Diagnostic::error("INDEX_ACCEPT_RANGE_INVALID"))?;
         return Ok((field.range.start + relative, "index "));
     }
     Ok((field.range.end, " index"))

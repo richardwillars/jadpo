@@ -355,7 +355,6 @@ struct GraphBuilder {
 
 #[derive(Clone, Debug, Default)]
 struct ModuleScope {
-    module: String,
     imported_names: BTreeSet<String>,
 }
 
@@ -403,10 +402,7 @@ impl GraphBuilder {
             for file in files {
                 if let Some(export) = file.file.exports.first() {
                     self.diagnostics.push(with_span(
-                        Diagnostic::error(
-                            "MOD_PUBLIC_REQUIRES_MODULE",
-                            "module-public declarations require an explicit module header",
-                        ),
+                        Diagnostic::error("MOD_PUBLIC_REQUIRES_MODULE"),
                         &file.source_name,
                         export.range,
                     ));
@@ -419,10 +415,7 @@ impl GraphBuilder {
         for file in files {
             let Some(module) = &file.file.module else {
                 self.diagnostics.push(with_span(
-                    Diagnostic::error(
-                        "MOD_MODULE_REQUIRED",
-                        "every source file must declare a module once any file opts into modules",
-                    ),
+                    Diagnostic::error("MOD_MODULE_REQUIRED"),
                     &file.source_name,
                     file.file.range,
                 ));
@@ -431,11 +424,8 @@ impl GraphBuilder {
             let name = name_expression(&module.path);
             if let Some(previous) = files_by_module.get(&name) {
                 self.diagnostics.push(with_span(
-                    Diagnostic::error(
-                        "MOD_DUPLICATE_MODULE",
-                        format!("module `{name}` is already declared"),
-                    )
-                    .with_note(format!("first module file is {}", previous.source_name)),
+                    Diagnostic::error("MOD_DUPLICATE_MODULE")
+                        .with_note(format!("first module file is {}", previous.source_name)),
                     &file.source_name,
                     module.range,
                 ));
@@ -467,10 +457,7 @@ impl GraphBuilder {
                 let target_name = name_expression(&import.module);
                 if target_name == module_name {
                     self.diagnostics.push(with_span(
-                        Diagnostic::error(
-                            "MOD_SELF_IMPORT",
-                            format!("module `{module_name}` cannot import itself"),
-                        ),
+                        Diagnostic::error("MOD_SELF_IMPORT"),
                         &file.source_name,
                         import.range,
                     ));
@@ -478,10 +465,7 @@ impl GraphBuilder {
                 }
                 let Some(target) = files_by_module.get(&target_name).copied() else {
                     self.diagnostics.push(with_span(
-                        Diagnostic::error(
-                            "MOD_UNKNOWN_MODULE",
-                            format!("unknown imported module `{target_name}`"),
-                        ),
+                        Diagnostic::error("MOD_UNKNOWN_MODULE"),
                         &file.source_name,
                         import.range,
                     ));
@@ -507,13 +491,7 @@ impl GraphBuilder {
                 for name in &import.names {
                     if local_names.contains(name.text.as_str()) {
                         self.diagnostics.push(with_span(
-                            Diagnostic::error(
-                                "MOD_IMPORT_CONFLICT",
-                                format!(
-                                    "imported name `{}` conflicts with a declaration in module `{module_name}`",
-                                    name.text
-                                ),
-                            ),
+                            Diagnostic::error("MOD_IMPORT_CONFLICT"),
                             &file.source_name,
                             name.range,
                         ));
@@ -521,17 +499,14 @@ impl GraphBuilder {
                     }
                     if !imported_names.insert(name.text.clone()) {
                         self.diagnostics.push(with_span(
-                            Diagnostic::error(
-                                "MOD_DUPLICATE_IMPORT",
-                                format!("name `{}` is imported more than once", name.text),
-                            ),
+                            Diagnostic::error("MOD_DUPLICATE_IMPORT"),
                             &file.source_name,
                             name.range,
                         ));
                         continue;
                     }
                     if !target_exports.contains(name.text.as_str()) {
-                        let (code, message) = if target_declarations.contains(name.text.as_str()) {
+                        let (code, _message) = if target_declarations.contains(name.text.as_str()) {
                             (
                                 "MOD_PRIVATE_IMPORT",
                                 format!(
@@ -549,7 +524,7 @@ impl GraphBuilder {
                             )
                         };
                         self.diagnostics.push(with_span(
-                            Diagnostic::error(code, message),
+                            Diagnostic::error(code),
                             &file.source_name,
                             name.range,
                         ));
@@ -574,13 +549,8 @@ impl GraphBuilder {
                 imports,
                 exports,
             });
-            self.module_scopes.insert(
-                file.source_name.clone(),
-                ModuleScope {
-                    module: module_name,
-                    imported_names,
-                },
-            );
+            self.module_scopes
+                .insert(file.source_name.clone(), ModuleScope { imported_names });
         }
 
         let mut emitted = BTreeSet::new();
@@ -619,10 +589,7 @@ impl GraphBuilder {
                     .find(|import| cyclic.contains(&name_expression(&import.module)))
                 {
                     self.diagnostics.push(with_span(
-                        Diagnostic::error(
-                            "MOD_IMPORT_CYCLE",
-                            format!("module import cycle involving `{module_name}`"),
-                        ),
+                        Diagnostic::error("MOD_IMPORT_CYCLE"),
                         &file.source_name,
                         import.range,
                     ));
@@ -667,10 +634,7 @@ impl GraphBuilder {
                         );
                         for field in &variant.fields {
                             if !field.persistence.is_empty() || field.reference.is_some() {
-                                let diagnostic = Diagnostic::error(
-                                    "DATA_MODIFIER_NON_ENTITY",
-                                    "persistence modifiers and relationships are valid only on entity fields",
-                                );
+                                let diagnostic = Diagnostic::error("DATA_MODIFIER_NON_ENTITY");
                                 self.diagnostics.push(with_span(
                                     diagnostic,
                                     &file.source_name,
@@ -710,10 +674,7 @@ impl GraphBuilder {
                         if declaration.kind != RecordKind::Entity
                             && (!field.persistence.is_empty() || field.reference.is_some())
                         {
-                            let diagnostic = Diagnostic::error(
-                                "DATA_MODIFIER_NON_ENTITY",
-                                "persistence modifiers and relationships are valid only on entity fields",
-                            );
+                            let diagnostic = Diagnostic::error("DATA_MODIFIER_NON_ENTITY");
                             self.diagnostics.push(with_span(
                                 diagnostic,
                                 &file.source_name,
@@ -722,24 +683,15 @@ impl GraphBuilder {
                         }
                         if field.persistence.contains(&PersistenceModifier::Identity) {
                             if field.field_type.nullable {
-                                let diagnostic = Diagnostic::error(
-                                    "DATA_IDENTITY_NULLABLE",
-                                    "an entity identity field cannot be nullable",
-                                );
+                                let diagnostic = Diagnostic::error("DATA_IDENTITY_NULLABLE");
                                 self.diagnostics.push(with_span(
                                     diagnostic,
                                     &file.source_name,
                                     field.range,
                                 ));
                             }
-                            if let Some(previous) = identity_field {
-                                let diagnostic = Diagnostic::error(
-                                    "DATA_MULTIPLE_IDENTITIES",
-                                    format!(
-                                        "entity `{}` already declares identity field `{previous}`",
-                                        declaration.name.text
-                                    ),
-                                );
+                            if let Some(_previous) = identity_field {
+                                let diagnostic = Diagnostic::error("DATA_MULTIPLE_IDENTITIES");
                                 self.diagnostics.push(with_span(
                                     diagnostic,
                                     &file.source_name,
@@ -806,10 +758,7 @@ impl GraphBuilder {
                         );
                         if constraint.fields.len() < 2 {
                             self.diagnostics.push(with_span(
-                                Diagnostic::error(
-                                    "DATA_COMPOUND_CONSTRAINT_FIELDS",
-                                    "a compound persistence constraint requires at least two fields",
-                                ),
+                                Diagnostic::error("DATA_COMPOUND_CONSTRAINT_FIELDS"),
                                 &file.source_name,
                                 constraint.range,
                             ));
@@ -818,13 +767,7 @@ impl GraphBuilder {
                         for field_name in &constraint.fields {
                             if !seen_fields.insert(field_name.text.as_str()) {
                                 self.diagnostics.push(with_span(
-                                    Diagnostic::error(
-                                        "DATA_CONSTRAINT_DUPLICATE_FIELD",
-                                        format!(
-                                            "constraint `{}` repeats field `{}`",
-                                            constraint.name.text, field_name.text
-                                        ),
-                                    ),
+                                    Diagnostic::error("DATA_CONSTRAINT_DUPLICATE_FIELD"),
                                     &file.source_name,
                                     field_name.range,
                                 ));
@@ -832,15 +775,7 @@ impl GraphBuilder {
                             }
                             let Some(field) = fields.get(field_name.text.as_str()) else {
                                 self.diagnostics.push(with_span(
-                                    Diagnostic::error(
-                                        "DATA_CONSTRAINT_UNKNOWN_FIELD",
-                                        format!(
-                                            "constraint `{}` names unknown field `{}.{}`",
-                                            constraint.name.text,
-                                            declaration.name.text,
-                                            field_name.text
-                                        ),
-                                    ),
+                                    Diagnostic::error("DATA_CONSTRAINT_UNKNOWN_FIELD"),
                                     &file.source_name,
                                     field_name.range,
                                 ));
@@ -848,10 +783,7 @@ impl GraphBuilder {
                             };
                             if field.field_type.nullable {
                                 self.diagnostics.push(with_span(
-                                    Diagnostic::error(
-                                        "DATA_CONSTRAINT_NULLABLE_FIELD",
-                                        "compound unique constraints require non-nullable fields for cross-adapter semantics",
-                                    ),
+                                    Diagnostic::error("DATA_CONSTRAINT_NULLABLE_FIELD"),
                                     &file.source_name,
                                     field_name.range,
                                 ));
@@ -865,10 +797,7 @@ impl GraphBuilder {
                         shape.sort_unstable();
                         if !constraint_shapes.insert(shape) {
                             self.diagnostics.push(with_span(
-                                Diagnostic::error(
-                                    "DATA_DUPLICATE_CONSTRAINT_SHAPE",
-                                    "another compound constraint already covers the same fields",
-                                ),
+                                Diagnostic::error("DATA_DUPLICATE_CONSTRAINT_SHAPE"),
                                 &file.source_name,
                                 constraint.range,
                             ));
@@ -1013,10 +942,7 @@ impl GraphBuilder {
                     || !reference.target.arguments.is_empty()
                     || reference.target.nullable
                 {
-                    let diagnostic = Diagnostic::error(
-                        "DATA_RELATIONSHIP_TARGET_FIELD",
-                        "relationship target must be a non-nullable entity field such as `User.id`",
-                    );
+                    let diagnostic = Diagnostic::error("DATA_RELATIONSHIP_TARGET_FIELD");
                     self.diagnostics
                         .push(with_span(diagnostic, source, reference.target.range));
                     continue;
@@ -1032,12 +958,7 @@ impl GraphBuilder {
                     .iter()
                     .find(|candidate| candidate.name.text == target_field_name)
                 else {
-                    let diagnostic = Diagnostic::error(
-                        "DATA_RELATIONSHIP_TARGET_FIELD",
-                        format!(
-                            "entity `{target_entity_name}` has no relationship target field `{target_field_name}`"
-                        ),
-                    );
+                    let diagnostic = Diagnostic::error("DATA_RELATIONSHIP_TARGET_FIELD");
                     self.diagnostics
                         .push(with_span(diagnostic, source, reference.target.range));
                     continue;
@@ -1051,12 +972,7 @@ impl GraphBuilder {
                             .persistence
                             .contains(&PersistenceModifier::Unique))
                 {
-                    let diagnostic = Diagnostic::error(
-                        "DATA_RELATIONSHIP_TARGET_NOT_KEY",
-                        format!(
-                            "relationship target `{target_entity_name}.{target_field_name}` must be a non-nullable identity or unique field"
-                        ),
-                    );
+                    let diagnostic = Diagnostic::error("DATA_RELATIONSHIP_TARGET_NOT_KEY");
                     self.diagnostics
                         .push(with_span(diagnostic, source, reference.target.range));
                 }
@@ -1068,13 +984,7 @@ impl GraphBuilder {
                     .map(|part| part.text.as_str())
                     .collect::<Vec<_>>();
                 if source_type != target_parts || !field.field_type.arguments.is_empty() {
-                    let diagnostic = Diagnostic::error(
-                        "DATA_RELATIONSHIP_TYPE_MISMATCH",
-                        format!(
-                            "relationship field `{entity_name}.{}` must use nominal type `{target_entity_name}.{target_field_name}`",
-                            field.name.text
-                        ),
-                    );
+                    let diagnostic = Diagnostic::error("DATA_RELATIONSHIP_TYPE_MISMATCH");
                     self.diagnostics
                         .push(with_span(diagnostic, source, field.field_type.range));
                 }
@@ -1082,10 +992,7 @@ impl GraphBuilder {
                 if reference.on_delete == ReferenceDeleteAction::SetNull
                     && !field.field_type.nullable
                 {
-                    let diagnostic = Diagnostic::error(
-                        "DATA_RELATIONSHIP_SET_NULL_REQUIRED",
-                        "`on_delete set_null` requires a nullable relationship field",
-                    );
+                    let diagnostic = Diagnostic::error("DATA_RELATIONSHIP_SET_NULL_REQUIRED");
                     self.diagnostics
                         .push(with_span(diagnostic, source, reference.range));
                 }
@@ -1106,13 +1013,7 @@ impl GraphBuilder {
                         .iter()
                         .any(|field| field.name.text == inverse.name.text)
                 {
-                    let diagnostic = Diagnostic::error(
-                        "DATA_INVERSE_DUPLICATE_NAME",
-                        format!(
-                            "entity `{entity_name}` already has a field or inverse named `{}`",
-                            inverse.name.text
-                        ),
-                    );
+                    let diagnostic = Diagnostic::error("DATA_INVERSE_DUPLICATE_NAME");
                     self.diagnostics
                         .push(with_span(diagnostic, source, inverse.name.range));
                 }
@@ -1128,10 +1029,7 @@ impl GraphBuilder {
                     || inverse.via.nullable
                     || via_parts.first().copied() != Some(inverse.target.text.as_str())
                 {
-                    let diagnostic = Diagnostic::error(
-                        "DATA_INVERSE_VIA_FIELD",
-                        "inverse `via` must name a field on the declared child entity, such as `Todo.owner_id`",
-                    );
+                    let diagnostic = Diagnostic::error("DATA_INVERSE_VIA_FIELD");
                     self.diagnostics
                         .push(with_span(diagnostic, source, inverse.via.range));
                     continue;
@@ -1146,12 +1044,7 @@ impl GraphBuilder {
                     .iter()
                     .find(|field| field.name.text == child_field_name)
                 else {
-                    let diagnostic = Diagnostic::error(
-                        "DATA_INVERSE_VIA_FIELD",
-                        format!(
-                            "entity `{child_name}` has no relationship field `{child_field_name}`"
-                        ),
-                    );
+                    let diagnostic = Diagnostic::error("DATA_INVERSE_VIA_FIELD");
                     self.diagnostics
                         .push(with_span(diagnostic, source, inverse.via.range));
                     continue;
@@ -1161,13 +1054,7 @@ impl GraphBuilder {
                         && reference.target.path[0].text == *entity_name
                 });
                 if !points_back {
-                    let diagnostic = Diagnostic::error(
-                        "DATA_INVERSE_NOT_OWNING_REFERENCE",
-                        format!(
-                            "inverse `{entity_name}.{}` must use an owning reference on `{child_name}.{child_field_name}` that points back to `{entity_name}`",
-                            inverse.name.text
-                        ),
-                    );
+                    let diagnostic = Diagnostic::error("DATA_INVERSE_NOT_OWNING_REFERENCE");
                     self.diagnostics
                         .push(with_span(diagnostic, source, inverse.via.range));
                 }
@@ -1179,13 +1066,7 @@ impl GraphBuilder {
                         )
                     })
                 {
-                    let diagnostic = Diagnostic::error(
-                        "DATA_INVERSE_OPTIONAL_NOT_UNIQUE",
-                        format!(
-                            "optional inverse `{entity_name}.{}` requires `{child_name}.{child_field_name}` to be identity or unique",
-                            inverse.name.text
-                        ),
-                    );
+                    let diagnostic = Diagnostic::error("DATA_INVERSE_OPTIONAL_NOT_UNIQUE");
                     self.diagnostics
                         .push(with_span(diagnostic, source, inverse.via.range));
                 }
@@ -1224,12 +1105,7 @@ impl GraphBuilder {
                             .is_some_and(|target| !emitted.contains(&target.text))
                     })
                 }) {
-                    let diagnostic = Diagnostic::error(
-                        "DATA_RELATIONSHIP_CYCLE",
-                        format!(
-                            "relationship dependency cycle involving entity `{entity_name}` cannot be emitted as a fresh schema"
-                        ),
-                    );
+                    let diagnostic = Diagnostic::error("DATA_RELATIONSHIP_CYCLE");
                     self.diagnostics
                         .push(with_span(diagnostic, source, reference.range));
                 }
@@ -1239,11 +1115,7 @@ impl GraphBuilder {
 
     fn add_node(&mut self, node: PendingNode) {
         if let Some(previous) = self.nodes.get(&node.name) {
-            let diagnostic = Diagnostic::error(
-                "SEM_DUPLICATE_DECLARATION",
-                format!("semantic name `{}` is already declared", node.name),
-            )
-            .with_note(format!(
+            let diagnostic = Diagnostic::error("SEM_DUPLICATE_DECLARATION").with_note(format!(
                 "first declaration is at {}:{}..{}",
                 previous.source, previous.range.start, previous.range.end
             ));
@@ -1432,10 +1304,7 @@ impl GraphBuilder {
 
         for reference in self.references {
             let Some(target) = ids.get(&reference.target).copied() else {
-                let diagnostic = Diagnostic::error(
-                    "SEM_UNKNOWN_NAME",
-                    format!("unknown semantic name `{}`", reference.target),
-                );
+                let diagnostic = Diagnostic::error("SEM_UNKNOWN_NAME");
                 self.diagnostics
                     .push(with_span(diagnostic, &reference.source, reference.range));
                 continue;
@@ -1459,14 +1328,7 @@ impl GraphBuilder {
                 ReferenceKind::StandardFailure => target_kind == NodeKind::StandardFailure,
             };
             if !kind_matches {
-                let diagnostic = Diagnostic::error(
-                    "SEM_WRONG_NAME_KIND",
-                    format!(
-                        "`{}` has kind `{}`, which is not valid in this position",
-                        reference.target,
-                        target_kind.as_str()
-                    ),
-                );
+                let diagnostic = Diagnostic::error("SEM_WRONG_NAME_KIND");
                 self.diagnostics
                     .push(with_span(diagnostic, &reference.source, reference.range));
                 continue;
@@ -1488,10 +1350,7 @@ impl GraphBuilder {
                 continue;
             };
             let Some(callee) = ids.get(&call.callee).copied() else {
-                let diagnostic = Diagnostic::error(
-                    "SEM_UNKNOWN_CALLEE",
-                    format!("unknown callable or constructor `{}`", call.callee),
-                );
+                let diagnostic = Diagnostic::error("SEM_UNKNOWN_CALLEE");
                 self.diagnostics
                     .push(with_span(diagnostic, &call.source, call.range));
                 continue;
@@ -1509,15 +1368,8 @@ impl GraphBuilder {
             match kinds[&call.callee] {
                 NodeKind::Function | NodeKind::Action => calls.push(CallEdge { caller, callee }),
                 kind if kind.is_type() => {}
-                other => {
-                    let diagnostic = Diagnostic::error(
-                        "SEM_NOT_CALLABLE",
-                        format!(
-                            "`{}` has kind `{}` and cannot be invoked",
-                            call.callee,
-                            other.as_str()
-                        ),
-                    );
+                _other => {
+                    let diagnostic = Diagnostic::error("SEM_NOT_CALLABLE");
                     self.diagnostics
                         .push(with_span(diagnostic, &call.source, call.range));
                 }
@@ -1555,13 +1407,7 @@ fn module_visibility_diagnostic(
         return None;
     }
     Some(with_span(
-        Diagnostic::error(
-            "MOD_IMPORT_REQUIRED",
-            format!(
-                "module `{}` must selectively import `{root_name}` before using `{target_name}`",
-                scope.module
-            ),
-        ),
+        Diagnostic::error("MOD_IMPORT_REQUIRED"),
         source,
         range,
     ))

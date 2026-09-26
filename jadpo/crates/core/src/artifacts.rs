@@ -105,74 +105,42 @@ pub fn write_artifacts(
     let staging_root = project_root.join(format!(".jadpo-build-stage.{suffix}"));
     let backup_root = project_root.join(format!(".jadpo-build-backup.{suffix}"));
 
-    fs::create_dir(&staging_root).map_err(|error| {
-        Diagnostic::error(
-            "JADPO_ARTIFACT_STAGE_FAILED",
-            format!(
-                "could not create artifact staging directory {}: {error}",
-                staging_root.display()
-            ),
-        )
-    })?;
+    fs::create_dir(&staging_root)
+        .map_err(|_error| Diagnostic::error("JADPO_ARTIFACT_STAGE_FAILED"))?;
 
     for artifact in artifacts {
         let destination = staging_root.join(artifact.relative_path);
         if let Some(parent) = destination.parent() {
-            if let Err(error) = fs::create_dir_all(parent) {
+            if let Err(_error) = fs::create_dir_all(parent) {
                 let _ = fs::remove_dir_all(&staging_root);
-                return Err(Diagnostic::error(
-                    "JADPO_ARTIFACT_WRITE_FAILED",
-                    format!("could not create {}: {error}", parent.display()),
-                ));
+                return Err(Diagnostic::error("JADPO_ARTIFACT_WRITE_FAILED"));
             }
         }
-        if let Err(error) = fs::write(&destination, &artifact.contents) {
+        if let Err(_error) = fs::write(&destination, &artifact.contents) {
             let _ = fs::remove_dir_all(&staging_root);
-            return Err(Diagnostic::error(
-                "JADPO_ARTIFACT_WRITE_FAILED",
-                format!("could not write {}: {error}", destination.display()),
-            ));
+            return Err(Diagnostic::error("JADPO_ARTIFACT_WRITE_FAILED"));
         }
     }
 
     let had_previous = output_root.exists();
     if had_previous {
-        if let Err(error) = fs::rename(&output_root, &backup_root) {
+        if let Err(_error) = fs::rename(&output_root, &backup_root) {
             let _ = fs::remove_dir_all(&staging_root);
-            return Err(Diagnostic::error(
-                "JADPO_ARTIFACT_PROMOTE_FAILED",
-                format!(
-                    "could not preserve previous build {}: {error}",
-                    output_root.display()
-                ),
-            ));
+            return Err(Diagnostic::error("JADPO_ARTIFACT_PROMOTE_FAILED"));
         }
     }
 
-    if let Err(error) = fs::rename(&staging_root, &output_root) {
+    if let Err(_error) = fs::rename(&staging_root, &output_root) {
         if had_previous {
             let _ = fs::rename(&backup_root, &output_root);
         }
         let _ = fs::remove_dir_all(&staging_root);
-        return Err(Diagnostic::error(
-            "JADPO_ARTIFACT_PROMOTE_FAILED",
-            format!(
-                "could not promote staged build to {}: {error}",
-                output_root.display()
-            ),
-        ));
+        return Err(Diagnostic::error("JADPO_ARTIFACT_PROMOTE_FAILED"));
     }
 
     if had_previous {
-        fs::remove_dir_all(&backup_root).map_err(|error| {
-            Diagnostic::error(
-                "JADPO_ARTIFACT_CLEANUP_FAILED",
-                format!(
-                    "promoted build but could not remove prior revision {}: {error}",
-                    backup_root.display()
-                ),
-            )
-        })?;
+        fs::remove_dir_all(&backup_root)
+            .map_err(|_error| Diagnostic::error("JADPO_ARTIFACT_CLEANUP_FAILED"))?;
     }
 
     Ok(output_root)

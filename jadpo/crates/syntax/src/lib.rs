@@ -323,7 +323,6 @@ impl<'source> Lexer<'source> {
                             self.advance_character();
                             self.diagnostics.push(self.diagnostic(
                                 "SYN_INVALID_ESCAPE",
-                                "invalid string escape; expected one of \\\", \\\\, \\n, \\r, or \\t",
                                 escape_start,
                                 self.offset,
                             ));
@@ -337,12 +336,8 @@ impl<'source> Lexer<'source> {
         }
 
         if !terminated {
-            self.diagnostics.push(self.diagnostic(
-                "SYN_UNTERMINATED_STRING",
-                "unterminated string literal",
-                start,
-                self.offset,
-            ));
+            self.diagnostics
+                .push(self.diagnostic("SYN_UNTERMINATED_STRING", start, self.offset));
         }
 
         self.push(TokenKind::StringLiteral, start);
@@ -375,14 +370,10 @@ impl<'source> Lexer<'source> {
         self.push(keyword_kind(text), start);
     }
 
-    fn unexpected_character(&mut self, start: usize, character: char) {
+    fn unexpected_character(&mut self, start: usize, _character: char) {
         self.advance_character();
-        self.diagnostics.push(self.diagnostic(
-            "SYN_UNEXPECTED_CHARACTER",
-            format!("unexpected character `{character}`"),
-            start,
-            self.offset,
-        ));
+        self.diagnostics
+            .push(self.diagnostic("SYN_UNEXPECTED_CHARACTER", start, self.offset));
     }
 
     fn single(&mut self, kind: TokenKind, start: usize) {
@@ -397,14 +388,8 @@ impl<'source> Lexer<'source> {
         });
     }
 
-    fn diagnostic(
-        &self,
-        code: &'static str,
-        message: impl Into<String>,
-        start: usize,
-        end: usize,
-    ) -> Diagnostic {
-        let mut diagnostic = Diagnostic::error(code, message);
+    fn diagnostic(&self, code: &'static str, start: usize, end: usize) -> Diagnostic {
+        let mut diagnostic = Diagnostic::error(code);
         diagnostic.primary = Some(SourceSpan {
             source: self.source_name.clone(),
             start,

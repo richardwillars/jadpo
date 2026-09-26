@@ -57,11 +57,7 @@ impl<'source> Parser<'source> {
             }
         }
         if module.is_none() && !imports.is_empty() {
-            self.error_at(
-                "SYN_IMPORT_REQUIRES_MODULE",
-                "imports require an explicit module declaration",
-                imports[0].range,
-            );
+            self.error_at("SYN_IMPORT_REQUIRES_MODULE", imports[0].range);
         }
         let mut declarations = Vec::new();
         let mut exports = Vec::new();
@@ -80,20 +76,13 @@ impl<'source> Parser<'source> {
                     if let Some(name) = declaration_name(&declaration) {
                         exports.push(name.clone());
                     } else {
-                        self.error_at(
-                            "SYN_ROUTE_EXPORT_INVALID",
-                            "routes and tests cannot use the module `public` prefix",
-                            declaration.range(),
-                        );
+                        self.error_at("SYN_ROUTE_EXPORT_INVALID", declaration.range());
                     }
                 }
                 declarations.push(declaration);
             } else {
                 if self.diagnostics.len() == diagnostics_before {
-                    self.error_current(
-                        "SYN_EXPECTED_DECLARATION",
-                        "expected a type, enum, record, failure, callable, or route declaration",
-                    );
+                    self.error_current("SYN_EXPECTED_DECLARATION");
                 }
                 self.recover_declaration();
             }
@@ -151,10 +140,7 @@ impl<'source> Parser<'source> {
             }
         }
         if names.is_empty() {
-            self.error_current(
-                "SYN_EMPTY_IMPORT",
-                "selective imports require at least one declaration name",
-            );
+            self.error_current("SYN_EMPTY_IMPORT");
         }
         let end = self
             .expect(TokenKind::RightBrace, "expected `}` after imported names")?
@@ -238,11 +224,7 @@ impl<'source> Parser<'source> {
             .range
             .end;
         if variants.is_empty() {
-            self.error_at(
-                "SYN_ENUM_EMPTY",
-                "an enum must declare at least one variant",
-                name.range,
-            );
+            self.error_at("SYN_ENUM_EMPTY", name.range);
         }
         Some(EnumDeclaration {
             name,
@@ -256,11 +238,9 @@ impl<'source> Parser<'source> {
         let name = self.expect_name("expected a type name")?;
         self.expect(TokenKind::Equal, "expected `=` after type name")?;
         if self.at(TokenKind::LeftBrace) {
-            let diagnostic = Diagnostic::error(
-                "SYN_TYPE_PARENT_REQUIRED",
-                "a `type` declaration must name the type it refines before `{`",
-            )
-            .with_note("use `type User = Text { ... }`, or use `entity User { ... }` for fields");
+            let diagnostic = Diagnostic::error("SYN_TYPE_PARENT_REQUIRED").with_note(
+                "use `type User = Text { ... }`, or use `entity User { ... }` for fields",
+            );
             self.diagnostic_at(diagnostic, self.current().range);
             return None;
         }
@@ -309,20 +289,14 @@ impl<'source> Parser<'source> {
             let before = self.cursor;
             if self.at(TokenKind::Inverse) {
                 if kind != RecordKind::Entity {
-                    self.error_current(
-                        "SYN_INVERSE_NON_ENTITY",
-                        "inverse relationships are valid only in entity declarations",
-                    );
+                    self.error_current("SYN_INVERSE_NON_ENTITY");
                 }
                 if let Some(inverse) = self.parse_inverse_declaration() {
                     inverses.push(inverse);
                 }
             } else if self.at(TokenKind::Constraint) {
                 if kind != RecordKind::Entity {
-                    self.error_current(
-                        "SYN_CONSTRAINT_NON_ENTITY",
-                        "persistence constraints are valid only in entity declarations",
-                    );
+                    self.error_current("SYN_CONSTRAINT_NON_ENTITY");
                 }
                 if let Some(constraint) = self.parse_persistence_constraint() {
                     persistence_constraints.push(constraint);
@@ -330,10 +304,7 @@ impl<'source> Parser<'source> {
             } else if let Some(field) = self.parse_field_declaration() {
                 fields.push(field);
             } else {
-                self.error_current(
-                    "SYN_EXPECTED_FIELD",
-                    "expected a field or inverse declaration",
-                );
+                self.error_current("SYN_EXPECTED_FIELD");
                 self.recover_until(&[TokenKind::RightBrace]);
             }
             if self.cursor == before {
@@ -409,10 +380,7 @@ impl<'source> Parser<'source> {
                 InverseCardinality::Optional
             }
             _ => {
-                self.error_current(
-                    "SYN_EXPECTED_INVERSE_CARDINALITY",
-                    "expected `many` or `optional` inverse cardinality",
-                );
+                self.error_current("SYN_EXPECTED_INVERSE_CARDINALITY");
                 return None;
             }
         };
@@ -471,10 +439,7 @@ impl<'source> Parser<'source> {
                     }
                 }
                 _ => {
-                    self.error_current(
-                        "SYN_EXPECTED_FAILURE_ITEM",
-                        "expected `kind`, `code`, `message`, `public`, or `internal`",
-                    );
+                    self.error_current("SYN_EXPECTED_FAILURE_ITEM");
                     self.recover_until(&[
                         TokenKind::Kind,
                         TokenKind::Code,
@@ -499,18 +464,10 @@ impl<'source> Parser<'source> {
             .end;
 
         if code.is_none() {
-            self.error_at(
-                "SYN_FAILURE_CODE_REQUIRED",
-                "failure declaration requires a stable `code`",
-                name.range,
-            );
+            self.error_at("SYN_FAILURE_CODE_REQUIRED", name.range);
         }
         if kind.is_none() {
-            self.error_at(
-                "SYN_FAILURE_KIND_REQUIRED",
-                "failure declaration requires an explicit `kind` member",
-                name.range,
-            );
+            self.error_at("SYN_FAILURE_KIND_REQUIRED", name.range);
         }
 
         Some(FailureDeclaration {
@@ -623,7 +580,7 @@ impl<'source> Parser<'source> {
             if let Some(statement) = self.parse_statement() {
                 statements.push(statement);
             } else {
-                self.error_current("SYN_EXPECTED_STATEMENT", "expected a statement");
+                self.error_current("SYN_EXPECTED_STATEMENT");
                 self.recover_statement();
             }
             if self.cursor == before {
@@ -866,10 +823,7 @@ impl<'source> Parser<'source> {
                 }
             }
             _ => {
-                self.error_current(
-                    "SYN_MATCH_PATTERN",
-                    "expected an enum variant, literal, or `_` match pattern",
-                );
+                self.error_current("SYN_MATCH_PATTERN");
                 None
             }
         }
@@ -882,11 +836,7 @@ impl<'source> Parser<'source> {
             .start;
         let expression = self.parse_expression();
         let range = TextRange::new(start, expression.range().end);
-        self.error_at(
-            "SYN_UNSUPPORTED_THROW",
-            "arbitrary exceptions are not part of application control flow",
-            range,
-        );
+        self.error_at("SYN_UNSUPPORTED_THROW", range);
         Some(UnsupportedStatement {
             keyword: "throw".to_owned(),
             range,
@@ -975,7 +925,7 @@ impl<'source> Parser<'source> {
             }
             _ => {
                 let range = self.current().range;
-                self.error_current("SYN_EXPECTED_EXPRESSION", "expected an expression");
+                self.error_current("SYN_EXPECTED_EXPRESSION");
                 if !self.at(TokenKind::Eof) {
                     self.bump();
                 }
@@ -1045,10 +995,7 @@ impl<'source> Parser<'source> {
                 QueryCardinality::Many
             }
             _ => {
-                self.error_current(
-                    "SYN_UNEXPECTED_TOKEN",
-                    "expected explicit `optional`, `required`, or `many` query cardinality",
-                );
+                self.error_current("SYN_UNEXPECTED_TOKEN");
                 return Expression::Missing(TextRange::new(start, self.current().range.end));
             }
         };
@@ -1113,10 +1060,7 @@ impl<'source> Parser<'source> {
                 TokenKind::Asc => QueryOrderDirection::Ascending,
                 TokenKind::Desc => QueryOrderDirection::Descending,
                 _ => {
-                    self.error_current(
-                        "SYN_EXPECTED_ORDER_DIRECTION",
-                        "expected `asc` or `desc` after query ordering field",
-                    );
+                    self.error_current("SYN_EXPECTED_ORDER_DIRECTION");
                     return Expression::Missing(TextRange::new(start, self.current().range.end));
                 }
             };
@@ -1218,10 +1162,7 @@ impl<'source> Parser<'source> {
                     TokenKind::Asc => QueryOrderDirection::Ascending,
                     TokenKind::Desc => QueryOrderDirection::Descending,
                     _ => {
-                        self.error_current(
-                            "SYN_EXPECTED_ORDER_DIRECTION",
-                            "expected `asc` or `desc` after included relationship ordering field",
-                        );
+                        self.error_current("SYN_EXPECTED_ORDER_DIRECTION");
                         return Expression::Missing(TextRange::new(
                             start,
                             self.current().range.end,
@@ -1377,10 +1318,7 @@ impl<'source> Parser<'source> {
                 return Expression::Missing(TextRange::new(start, self.current().range.end));
             }
             let Some(path) = self.parse_qualified_name() else {
-                self.error_current(
-                    "SYN_EXPECTED_PATCH_INPUT",
-                    "expected an input binding after `patch:`",
-                );
+                self.error_current("SYN_EXPECTED_PATCH_INPUT");
                 return Expression::Missing(TextRange::new(start, self.current().range.end));
             };
             let patch = NameExpression {
@@ -1410,10 +1348,7 @@ impl<'source> Parser<'source> {
             };
             (changes, conditional_changes, Some(patch), Some(empty))
         } else {
-            self.error_current(
-                "SYN_EXPECTED_UPDATE_BODY",
-                "expected `set:` or `patch:` in update",
-            );
+            self.error_current("SYN_EXPECTED_UPDATE_BODY");
             return Expression::Missing(TextRange::new(start, self.current().range.end));
         };
         let Some(missing) = self.parse_named_failure_binding("missing", TokenKind::Missing) else {
@@ -1421,10 +1356,7 @@ impl<'source> Parser<'source> {
         };
         let conflicts = self.parse_conflict_bindings();
         if conflicts.is_empty() {
-            self.error_current(
-                "SYN_MUTATION_CONFLICT_REQUIRED",
-                "expected at least one `conflict` failure binding",
-            );
+            self.error_current("SYN_MUTATION_CONFLICT_REQUIRED");
             return Expression::Missing(TextRange::new(start, self.current().range.end));
         }
         let end = self
@@ -1456,24 +1388,18 @@ impl<'source> Parser<'source> {
         while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
             let before = self.cursor;
             let Some(change) = self.parse_field_initialiser() else {
-                self.error_current("SYN_EXPECTED_FIELD_INITIALISER", "expected `field: value`");
+                self.error_current("SYN_EXPECTED_FIELD_INITIALISER");
                 self.recover_until(&[TokenKind::RightBrace]);
                 continue;
             };
             if self.current().text(self.source) == "when" {
                 self.bump();
                 let Some(path) = self.parse_qualified_name() else {
-                    self.error_current(
-                        "SYN_EXPECTED_SUPPLIED_FIELD",
-                        "expected a patch field after `when`",
-                    );
+                    self.error_current("SYN_EXPECTED_SUPPLIED_FIELD");
                     return None;
                 };
                 if self.current().text(self.source) != "supplied" {
-                    self.error_current(
-                        "SYN_EXPECTED_SUPPLIED",
-                        "expected `supplied` after patch field",
-                    );
+                    self.error_current("SYN_EXPECTED_SUPPLIED");
                     return None;
                 }
                 let supplied_end = self.bump().range.end;
@@ -1513,10 +1439,7 @@ impl<'source> Parser<'source> {
         };
         let conflicts = self.parse_conflict_bindings();
         if conflicts.is_empty() {
-            self.error_current(
-                "SYN_MUTATION_CONFLICT_REQUIRED",
-                "expected at least one `conflict` failure binding",
-            );
+            self.error_current("SYN_MUTATION_CONFLICT_REQUIRED");
             return Expression::Missing(TextRange::new(start, self.current().range.end));
         }
         let end = self
@@ -1678,7 +1601,7 @@ impl<'source> Parser<'source> {
             if let Some(field) = self.parse_field_initialiser() {
                 fields.push(field);
             } else {
-                self.error_current("SYN_EXPECTED_FIELD_INITIALISER", "expected `field: value`");
+                self.error_current("SYN_EXPECTED_FIELD_INITIALISER");
                 self.recover_until(&[TokenKind::RightBrace]);
             }
             if self.cursor == before {
@@ -1757,7 +1680,7 @@ impl<'source> Parser<'source> {
             if let Some(field) = self.parse_field_declaration() {
                 fields.push(field);
             } else {
-                self.error_current("SYN_EXPECTED_FIELD", "expected a field declaration");
+                self.error_current("SYN_EXPECTED_FIELD");
                 self.recover_until(&[TokenKind::RightBrace]);
             }
             if self.cursor == before {
@@ -1792,11 +1715,7 @@ impl<'source> Parser<'source> {
             let range = self.current().range;
             self.bump();
             if persistence.contains(&modifier) {
-                self.error_at(
-                    "SYN_DUPLICATE_FIELD_MODIFIER",
-                    "field persistence modifier is repeated",
-                    range,
-                );
+                self.error_at("SYN_DUPLICATE_FIELD_MODIFIER", range);
             } else {
                 persistence.push(modifier);
             }
@@ -1819,10 +1738,7 @@ impl<'source> Parser<'source> {
                 TokenKind::Cascade => ReferenceDeleteAction::Cascade,
                 TokenKind::SetNull => ReferenceDeleteAction::SetNull,
                 _ => {
-                    self.error_current(
-                        "SYN_EXPECTED_DELETE_ACTION",
-                        "expected `restrict`, `cascade`, or `set_null` after `on_delete`",
-                    );
+                    self.error_current("SYN_EXPECTED_DELETE_ACTION");
                     return None;
                 }
             };
@@ -1864,7 +1780,7 @@ impl<'source> Parser<'source> {
             if let Some(constraint) = self.parse_constraint() {
                 constraints.push(constraint);
             } else {
-                self.error_current("SYN_EXPECTED_CONSTRAINT", "expected a constraint");
+                self.error_current("SYN_EXPECTED_CONSTRAINT");
                 self.recover_until(&[
                     TokenKind::Min,
                     TokenKind::Max,
@@ -1909,10 +1825,7 @@ impl<'source> Parser<'source> {
             ConstraintKind::Format => self.parse_name_literal(),
         }
         .unwrap_or_else(|| {
-            self.error_current(
-                "SYN_EXPECTED_CONSTRAINT_VALUE",
-                "expected a value after constraint name",
-            );
+            self.error_current("SYN_EXPECTED_CONSTRAINT_VALUE");
             Literal {
                 kind: LiteralKind::String,
                 text: String::new(),
@@ -1945,7 +1858,7 @@ impl<'source> Parser<'source> {
 
     fn parse_literal_of(&mut self, expected: TokenKind) -> Option<Literal> {
         if !self.at(expected) {
-            self.error_current("SYN_EXPECTED_LITERAL", "expected literal value");
+            self.error_current("SYN_EXPECTED_LITERAL");
             return None;
         }
         self.parse_any_literal()
@@ -1981,7 +1894,7 @@ impl<'source> Parser<'source> {
             TokenKind::Patch => HttpMethod::Patch,
             TokenKind::Delete => HttpMethod::Delete,
             _ => {
-                self.error_current("SYN_EXPECTED_HTTP_METHOD", "expected HTTP method");
+                self.error_current("SYN_EXPECTED_HTTP_METHOD");
                 return None;
             }
         };
@@ -2005,11 +1918,7 @@ impl<'source> Parser<'source> {
                 TokenKind::Auth => {
                     let item = self.bump();
                     if auth_seen {
-                        self.error_at(
-                            "ROUTE_ITEM_DUPLICATE",
-                            "route item `auth` may appear only once",
-                            item.range,
-                        );
+                        self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
                     }
                     auth_seen = true;
                     self.expect(TokenKind::Colon, "expected `:` after route item `auth`")?;
@@ -2019,11 +1928,7 @@ impl<'source> Parser<'source> {
                 TokenKind::Path => {
                     let item = self.bump();
                     if path_seen {
-                        self.error_at(
-                            "ROUTE_ITEM_DUPLICATE",
-                            "route item `path` may appear only once",
-                            item.range,
-                        );
+                        self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
                     }
                     path_seen = true;
                     if let Some((fields, _)) = self.parse_field_block() {
@@ -2034,11 +1939,7 @@ impl<'source> Parser<'source> {
                                 || !field.persistence.is_empty()
                                 || field.reference.is_some()
                             {
-                                self.error_at(
-                                    "ROUTE_PATH_FIELD_MODIFIER_INVALID",
-                                    "route path fields declare only a required semantic type",
-                                    field.range,
-                                );
+                                self.error_at("ROUTE_PATH_FIELD_MODIFIER_INVALID", field.range);
                             }
                         }
                         path_fields = fields;
@@ -2047,11 +1948,7 @@ impl<'source> Parser<'source> {
                 TokenKind::Input => {
                     let item = self.bump();
                     if input.is_some() {
-                        self.error_at(
-                            "ROUTE_ITEM_DUPLICATE",
-                            "route item `input` may appear only once",
-                            item.range,
-                        );
+                        self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
                     }
                     self.expect(TokenKind::Colon, "expected `:` after route item `input`")?;
                     input = self.parse_type_reference();
@@ -2059,11 +1956,7 @@ impl<'source> Parser<'source> {
                 TokenKind::Output => {
                     let item = self.bump();
                     if output.is_some() {
-                        self.error_at(
-                            "ROUTE_ITEM_DUPLICATE",
-                            "route item `output` may appear only once",
-                            item.range,
-                        );
+                        self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
                     }
                     self.expect(TokenKind::Colon, "expected `:` after route item `output`")?;
                     output = self.parse_type_reference();
@@ -2071,31 +1964,19 @@ impl<'source> Parser<'source> {
                 TokenKind::Run => {
                     let item = self.bump();
                     if run.is_some() {
-                        self.error_at(
-                            "ROUTE_ITEM_DUPLICATE",
-                            "route item `run` may appear only once",
-                            item.range,
-                        );
+                        self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
                     }
                     self.expect(TokenKind::Colon, "expected `:` after route item `run`")?;
                     let expression = self.parse_named_expression();
                     match expression {
                         Expression::Invocation(invocation) => run = Some(invocation),
-                        other => self.error_at(
-                            "SYN_EXPECTED_INVOCATION",
-                            "`run` requires a callable invocation",
-                            other.range(),
-                        ),
+                        other => self.error_at("SYN_EXPECTED_INVOCATION", other.range()),
                     }
                 }
                 TokenKind::Action => {
                     let item = self.bump();
                     if inline_action.is_some() {
-                        self.error_at(
-                            "ROUTE_ITEM_DUPLICATE",
-                            "inline route action may appear only once",
-                            item.range,
-                        );
+                        self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
                     }
                     let action_start = item.range.start;
                     let mut failures = Vec::new();
@@ -2127,10 +2008,7 @@ impl<'source> Parser<'source> {
                     }
                 }
                 _ => {
-                    self.error_current(
-                        "SYN_EXPECTED_ROUTE_ITEM",
-                        "expected `auth`, `path`, `input`, `output`, `run`, or `action`",
-                    );
+                    self.error_current("SYN_EXPECTED_ROUTE_ITEM");
                     self.recover_until(&[
                         TokenKind::Auth,
                         TokenKind::Path,
@@ -2153,7 +2031,7 @@ impl<'source> Parser<'source> {
             .end;
 
         if run.is_some() == inline_action.is_some() {
-            let (code, message) = if run.is_some() {
+            let (code, _message) = if run.is_some() {
                 (
                     "ROUTE_BEHAVIOUR_CONFLICT",
                     "route must contain either `run:` or an inline `action`, not both",
@@ -2164,7 +2042,7 @@ impl<'source> Parser<'source> {
                     "route must contain exactly one of `run:` or an inline `action`",
                 )
             };
-            self.error_at(code, message, TextRange::new(start, path_token.range.end));
+            self.error_at(code, TextRange::new(start, path_token.range.end));
         }
 
         let mut placeholders = Vec::new();
@@ -2172,11 +2050,7 @@ impl<'source> Parser<'source> {
         while let Some(open) = remaining.find('{') {
             let after_open = &remaining[open + 1..];
             let Some(close) = after_open.find('}') else {
-                self.error_at(
-                    "ROUTE_PATH_PLACEHOLDER_INVALID",
-                    "route path placeholder is missing a closing `}`",
-                    path_token.range,
-                );
+                self.error_at("ROUTE_PATH_PLACEHOLDER_INVALID", path_token.range);
                 break;
             };
             let name = &after_open[..close];
@@ -2189,11 +2063,7 @@ impl<'source> Parser<'source> {
                     }
                 })
             {
-                self.error_at(
-                    "ROUTE_PATH_PLACEHOLDER_INVALID",
-                    "route path placeholders must contain a lower-level identifier",
-                    path_token.range,
-                );
+                self.error_at("ROUTE_PATH_PLACEHOLDER_INVALID", path_token.range);
             } else {
                 placeholders.push(name.to_owned());
             }
@@ -2202,11 +2072,7 @@ impl<'source> Parser<'source> {
         let mut unique_placeholders = BTreeSet::new();
         for placeholder in &placeholders {
             if !unique_placeholders.insert(placeholder.clone()) {
-                self.error_at(
-                    "ROUTE_PATH_PLACEHOLDER_DUPLICATE",
-                    format!("route path placeholder `{{{placeholder}}}` appears more than once"),
-                    path_token.range,
-                );
+                self.error_at("ROUTE_PATH_PLACEHOLDER_DUPLICATE", path_token.range);
             }
         }
         let declared = path_fields
@@ -2215,33 +2081,15 @@ impl<'source> Parser<'source> {
             .collect::<BTreeSet<_>>();
         for placeholder in &unique_placeholders {
             if !declared.contains(placeholder) {
-                self.error_at(
-                    "ROUTE_PATH_BINDING_MISSING",
-                    format!("path placeholder `{{{placeholder}}}` requires a typed path binding"),
-                    path_token.range,
-                );
+                self.error_at("ROUTE_PATH_BINDING_MISSING", path_token.range);
             }
         }
         let mut seen_bindings = BTreeSet::new();
         for field in &path_fields {
             if !seen_bindings.insert(field.name.text.clone()) {
-                self.error_at(
-                    "ROUTE_PATH_BINDING_DUPLICATE",
-                    format!(
-                        "path binding `{}` is declared more than once",
-                        field.name.text
-                    ),
-                    field.range,
-                );
+                self.error_at("ROUTE_PATH_BINDING_DUPLICATE", field.range);
             } else if !unique_placeholders.contains(&field.name.text) {
-                self.error_at(
-                    "ROUTE_PATH_BINDING_EXTRA",
-                    format!(
-                        "path binding `{}` has no matching route placeholder",
-                        field.name.text
-                    ),
-                    field.range,
-                );
+                self.error_at("ROUTE_PATH_BINDING_EXTRA", field.range);
             }
         }
 
@@ -2275,7 +2123,7 @@ impl<'source> Parser<'source> {
         })
     }
 
-    fn expect_name_token(&mut self, message: &str) -> Option<Token> {
+    fn expect_name_token(&mut self, _message: &str) -> Option<Token> {
         if matches!(
             self.current_kind(),
             TokenKind::Identifier
@@ -2286,16 +2134,16 @@ impl<'source> Parser<'source> {
         ) {
             Some(self.bump())
         } else {
-            self.error_current("SYN_EXPECTED_NAME", message);
+            self.error_current("SYN_EXPECTED_NAME");
             None
         }
     }
 
-    fn expect(&mut self, kind: TokenKind, message: &str) -> Option<Token> {
+    fn expect(&mut self, kind: TokenKind, _message: &str) -> Option<Token> {
         if self.at(kind) {
             Some(self.bump())
         } else {
-            self.error_current("SYN_UNEXPECTED_TOKEN", message);
+            self.error_current("SYN_UNEXPECTED_TOKEN");
             None
         }
     }
@@ -2346,12 +2194,12 @@ impl<'source> Parser<'source> {
             .map_or(0, |token| token.range.end)
     }
 
-    fn error_current(&mut self, code: &'static str, message: impl Into<String>) {
-        self.error_at(code, message, self.current().range);
+    fn error_current(&mut self, code: &'static str) {
+        self.error_at(code, self.current().range);
     }
 
-    fn error_at(&mut self, code: &'static str, message: impl Into<String>, range: TextRange) {
-        self.diagnostic_at(Diagnostic::error(code, message), range);
+    fn error_at(&mut self, code: &'static str, range: TextRange) {
+        self.diagnostic_at(Diagnostic::error(code), range);
     }
 
     fn diagnostic_at(&mut self, mut diagnostic: Diagnostic, range: TextRange) {
@@ -2523,7 +2371,7 @@ output PrivateResult { todo: Todo }
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "SYN_UNEXPECTED_TOKEN"
-                && diagnostic.message == "expected `:` after route item `auth`"));
+                && diagnostic.message == "Unexpected token"));
     }
 
     #[test]
@@ -2532,8 +2380,7 @@ output PrivateResult { todo: Todo }
         let parsed = parse(Path::new("required-query.jadpo"), source);
 
         assert!(parsed.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "SYN_UNEXPECTED_TOKEN"
-                && diagnostic.message == "expected `:` after `missing`"
+            diagnostic.code == "SYN_UNEXPECTED_TOKEN" && diagnostic.message == "Unexpected token"
         }));
     }
 
@@ -2543,8 +2390,7 @@ output PrivateResult { todo: Todo }
         let parsed = parse(Path::new("query-where.jadpo"), source);
 
         assert!(parsed.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "SYN_UNEXPECTED_TOKEN"
-                && diagnostic.message == "expected `:` after `where`"
+            diagnostic.code == "SYN_UNEXPECTED_TOKEN" && diagnostic.message == "Unexpected token"
         }));
     }
 
@@ -2573,7 +2419,7 @@ output PrivateResult { todo: Todo }
             ),
         ];
 
-        for (query, expected) in cases {
+        for (query, expected_syntax) in cases {
             let source = format!(
                 "entity Customer {{ id: Uuid }} action find(id: Customer.id) -> Customer? {{ return {query} }}"
             );
@@ -2583,8 +2429,8 @@ output PrivateResult { todo: Todo }
                     .diagnostics
                     .iter()
                     .any(|diagnostic| diagnostic.code == "SYN_UNEXPECTED_TOKEN"
-                        && diagnostic.message == expected),
-                "missing {expected:?} in {:#?}",
+                        && diagnostic.message == "Unexpected token"),
+                "missing diagnostic for {expected_syntax:?} in {:#?}",
                 parsed.diagnostics
             );
         }
@@ -2596,8 +2442,7 @@ output PrivateResult { todo: Todo }
         let parsed = parse(Path::new("mutation.jadpo"), source);
 
         assert!(parsed.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "SYN_UNEXPECTED_TOKEN"
-                && diagnostic.message == "expected `:` after `set`"
+            diagnostic.code == "SYN_UNEXPECTED_TOKEN" && diagnostic.message == "Unexpected token"
         }));
     }
 

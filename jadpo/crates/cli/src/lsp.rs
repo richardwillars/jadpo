@@ -532,9 +532,7 @@ impl Server {
             .root
             .clone()
             .or_else(|| env::current_dir().ok())
-            .ok_or_else(|| {
-                Diagnostic::error("LSP_ROOT_MISSING", "workspace root is unavailable")
-            })?;
+            .ok_or_else(|| Diagnostic::error("LSP_ROOT_MISSING"))?;
         let mut sources = match discover_sources(&root) {
             Ok(sources) => sources
                 .into_iter()
@@ -592,10 +590,7 @@ impl Server {
             }
             let recommendations = index_recommendation_count(&project);
             if recommendations > 0 {
-                additional.push(Diagnostic::warning(
-                    "INDEX_RECOMMENDATION_AVAILABLE",
-                    format!("{recommendations} query-backed index recommendation(s) are available"),
-                ));
+                additional.push(Diagnostic::warning("INDEX_RECOMMENDATION_AVAILABLE"));
             }
         }
         let diagnostics = frontend_diagnostics(&project)
@@ -1227,19 +1222,14 @@ fn read_message(reader: &mut impl BufRead) -> Result<Option<Value>, Diagnostic> 
             content_length = value.trim().parse::<usize>().ok();
         }
     }
-    let length = content_length.ok_or_else(|| {
-        Diagnostic::error(
-            "LSP_CONTENT_LENGTH_MISSING",
-            "LSP message has no Content-Length header",
-        )
-    })?;
+    let length = content_length.ok_or_else(|| Diagnostic::error("LSP_CONTENT_LENGTH_MISSING"))?;
     let mut body = vec![0u8; length];
     reader
         .read_exact(&mut body)
         .map_err(|error| io_diagnostic("LSP_READ_FAILED", "could not read LSP message", error))?;
-    serde_json::from_slice(&body).map(Some).map_err(|error| {
-        Diagnostic::error("LSP_JSON_INVALID", format!("invalid LSP JSON: {error}"))
-    })
+    serde_json::from_slice(&body)
+        .map(Some)
+        .map_err(|_error| Diagnostic::error("LSP_JSON_INVALID"))
 }
 
 fn respond(writer: &mut impl Write, id: Option<Value>, result: Value) -> Result<(), Diagnostic> {
@@ -1273,20 +1263,16 @@ fn notify(writer: &mut impl Write, method: &str, params: Value) -> Result<(), Di
 }
 
 fn write_message(writer: &mut impl Write, message: &Value) -> Result<(), Diagnostic> {
-    let body = serde_json::to_vec(message).map_err(|error| {
-        Diagnostic::error(
-            "LSP_JSON_WRITE_FAILED",
-            format!("could not encode LSP JSON: {error}"),
-        )
-    })?;
+    let body =
+        serde_json::to_vec(message).map_err(|_error| Diagnostic::error("LSP_JSON_WRITE_FAILED"))?;
     write!(writer, "Content-Length: {}\r\n\r\n", body.len())
         .and_then(|_| writer.write_all(&body))
         .and_then(|_| writer.flush())
         .map_err(|error| io_diagnostic("LSP_WRITE_FAILED", "could not write LSP message", error))
 }
 
-fn io_diagnostic(code: &'static str, message: &str, error: io::Error) -> Diagnostic {
-    Diagnostic::error(code, format!("{message}: {error}"))
+fn io_diagnostic(code: &'static str, _message: &str, _error: io::Error) -> Diagnostic {
+    Diagnostic::error(code)
 }
 
 #[cfg(test)]

@@ -87,10 +87,7 @@ pub fn checked_source_revision(project_path: &Path, project: &AnalyzedProject) -
 
 pub fn discover_sources(project: &Path) -> Result<Vec<SourceFile>, Diagnostic> {
     if !project.exists() {
-        return Err(Diagnostic::error(
-            "JADPO_PROJECT_NOT_FOUND",
-            format!("project path does not exist: {}", project.display()),
-        ));
+        return Err(Diagnostic::error("JADPO_PROJECT_NOT_FOUND"));
     }
 
     let mut paths = Vec::new();
@@ -98,10 +95,7 @@ pub fn discover_sources(project: &Path) -> Result<Vec<SourceFile>, Diagnostic> {
     paths.sort();
 
     if paths.is_empty() {
-        return Err(Diagnostic::error(
-            "JADPO_NO_SOURCES",
-            format!("no .jadpo files found beneath {}", project.display()),
-        ));
+        return Err(Diagnostic::error("JADPO_NO_SOURCES"));
     }
 
     paths
@@ -109,12 +103,7 @@ pub fn discover_sources(project: &Path) -> Result<Vec<SourceFile>, Diagnostic> {
         .map(|path| {
             fs::read_to_string(&path)
                 .map(|text| SourceFile::new(path.clone(), text))
-                .map_err(|error| {
-                    Diagnostic::error(
-                        "JADPO_SOURCE_READ_FAILED",
-                        format!("could not read {}: {error}", path.display()),
-                    )
-                })
+                .map_err(|_error| Diagnostic::error("JADPO_SOURCE_READ_FAILED"))
         })
         .collect()
 }
@@ -170,10 +159,8 @@ pub fn analyze_sources(mut sources: Vec<SourceFile>) -> Result<AnalyzedProject, 
             .collect(),
     };
     if syntax.declaration_count() == 0 && syntax.diagnostics().next().is_none() {
-        return Err(
-            Diagnostic::error("JADPO_EMPTY_PROJECT", "project contains no declarations")
-                .with_note("add a type, enum, record, failure, callable, or route declaration"),
-        );
+        return Err(Diagnostic::error("JADPO_EMPTY_PROJECT")
+            .with_note("add a type, enum, record, failure, callable, or route declaration"));
     }
     let semantics = build_semantic_graph(&syntax.sources);
     let typing = check_types(&syntax.sources, &semantics);
@@ -194,26 +181,11 @@ fn collect_source_paths(path: &Path, output: &mut Vec<PathBuf>) -> Result<(), Di
         return Ok(());
     }
 
-    let entries = fs::read_dir(path).map_err(|error| {
-        Diagnostic::error(
-            "JADPO_PROJECT_READ_FAILED",
-            format!(
-                "could not read project directory {}: {error}",
-                path.display()
-            ),
-        )
-    })?;
+    let entries =
+        fs::read_dir(path).map_err(|_error| Diagnostic::error("JADPO_PROJECT_READ_FAILED"))?;
 
     for entry in entries {
-        let entry = entry.map_err(|error| {
-            Diagnostic::error(
-                "JADPO_PROJECT_READ_FAILED",
-                format!(
-                    "could not read an entry beneath {}: {error}",
-                    path.display()
-                ),
-            )
-        })?;
+        let entry = entry.map_err(|_error| Diagnostic::error("JADPO_PROJECT_READ_FAILED"))?;
         let entry_path = entry.path();
 
         if entry_path.is_dir()

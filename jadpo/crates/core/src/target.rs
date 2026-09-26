@@ -57,13 +57,7 @@ fn validate_runtime_dependency_contract(outputs: &[GeneratedArtifact]) -> Result
                 .components()
                 .any(|component| component.as_os_str() == "node_modules")
         {
-            return Err(Diagnostic::error(
-                "JADPO_TARGET_DEPENDENCY_MANIFEST",
-                format!(
-                    "generated target cannot emit dependency artifact `{}`",
-                    output.relative_path
-                ),
-            ));
+            return Err(Diagnostic::error("JADPO_TARGET_DEPENDENCY_MANIFEST"));
         }
 
         if path.extension().and_then(|extension| extension.to_str()) != Some("ts") {
@@ -89,13 +83,7 @@ fn validate_runtime_dependency_contract(outputs: &[GeneratedArtifact]) -> Result
                     continue;
                 }
             }
-            return Err(Diagnostic::error(
-                "JADPO_TARGET_EXTERNAL_MODULE",
-                format!(
-                    "generated target `{}` imports unsupported module `{specifier}`; targets may use only Bun built-ins and compiler-owned relative modules",
-                    output.relative_path
-                ),
-            ));
+            return Err(Diagnostic::error("JADPO_TARGET_EXTERNAL_MODULE"));
         }
     }
     Ok(())
@@ -175,14 +163,7 @@ impl<'project> TargetGenerator<'project> {
                         failures.insert(declaration.name.text.clone(), declaration);
                     }
                     Declaration::Route(route) if !route.public => {
-                        return Err(Diagnostic::error(
-                            "JADPO_TARGET_AUTH_NOT_IMPLEMENTED",
-                            format!(
-                                "cannot generate authenticated route `{} {}` until the P11 authentication runtime exists",
-                                method_name(route.method),
-                                route.path
-                            ),
-                        ));
+                        return Err(Diagnostic::error("JADPO_TARGET_AUTH_NOT_IMPLEMENTED"));
                     }
                     Declaration::Route(_) => {}
                 }

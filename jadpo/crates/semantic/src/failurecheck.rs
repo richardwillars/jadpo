@@ -1,5 +1,5 @@
 use crate::SemanticGraph;
-use jadpo_diagnostics::{Diagnostic, SourceSpan, TextEdit};
+use jadpo_diagnostics::{Diagnostic, DiagnosticFact, SourceSpan, TextEdit};
 use jadpo_syntax::{
     Block, CallableKind, Declaration, Expression, FieldDeclaration, FieldInitialiser, HttpMethod,
     InvocationExpression, ParsedSyntax, RejectStatement, Statement, TextRange,
@@ -123,10 +123,6 @@ impl FailureChecker {
                             if public_names.contains(field.name.text.as_str()) {
                                 self.push_code(
                                     "FAIL_CONTEXT_FIELD_OVERLAP",
-                                    format!(
-                                        "failure context field `{}` cannot be both public and internal",
-                                        field.name.text
-                                    ),
                                     &file.source_name,
                                     field.name.range,
                                 );
@@ -138,23 +134,18 @@ impl FailureChecker {
                             .map(|literal| unquote(&literal.text))
                             .unwrap_or_default();
                         if let Some(code_literal) = &declaration.code {
-                            if let Some((first_name, first_source, first_range)) = codes.get(&code)
+                            if let Some((_first_name, first_source, first_range)) = codes.get(&code)
                             {
-                                let diagnostic = Diagnostic::error(
-                                    "FAIL_DUPLICATE_CODE",
-                                    format!(
-                                        "failure code `{code}` is already used by `{first_name}`"
-                                    ),
-                                )
-                                .with_related(SourceSpan {
-                                    source: first_source.clone(),
-                                    start: first_range.start,
-                                    end: first_range.end,
-                                })
-                                .with_note(format!(
-                                    "first code is at {first_source}:{}..{}",
-                                    first_range.start, first_range.end
-                                ));
+                                let diagnostic = Diagnostic::error("FAIL_DUPLICATE_CODE")
+                                    .with_related(SourceSpan {
+                                        source: first_source.clone(),
+                                        start: first_range.start,
+                                        end: first_range.end,
+                                    })
+                                    .with_note(format!(
+                                        "first code is at {first_source}:{}..{}",
+                                        first_range.start, first_range.end
+                                    ));
                                 self.push_diagnostic(
                                     diagnostic,
                                     &file.source_name,
@@ -201,10 +192,6 @@ impl FailureChecker {
                             if !declared.insert(failure.text.clone()) {
                                 self.push_code(
                                     "FAIL_DUPLICATE_DECLARATION",
-                                    format!(
-                                        "`{}` lists `{}` more than once in `fails`",
-                                        declaration.name.text, failure.text
-                                    ),
                                     &file.source_name,
                                     failure.range,
                                 );
@@ -254,12 +241,6 @@ impl FailureChecker {
                                 if !declared.insert(failure.text.clone()) {
                                     self.push_code(
                                         "FAIL_DUPLICATE_DECLARATION",
-                                        format!(
-                                            "inline action for `{} {}` lists `{}` more than once in `fails`",
-                                            method_name(declaration.method),
-                                            declaration.path,
-                                            failure.text
-                                        ),
                                         &file.source_name,
                                         failure.range,
                                     );
@@ -303,22 +284,13 @@ impl FailureChecker {
             let mut reachable = BTreeSet::new();
             if facts.kind == CallableKind::Function {
                 for site in &facts.persistence {
-                    self.push_code(
-                        "EFFECT_FUNCTION_PERSISTENCE",
-                        format!("function `{name}` cannot perform persistence operations"),
-                        &facts.source,
-                        site.range,
-                    );
+                    self.push_code("EFFECT_FUNCTION_PERSISTENCE", &facts.source, site.range);
                 }
             }
             for site in &facts.persistence {
                 if !site.attempted {
                     self.push_diagnostic(
-                        Diagnostic::error(
-                            "FAIL_ATTEMPT_REQUIRED",
-                            "fallible persistence expression must be acknowledged with `attempt`",
-                        )
-                        .with_edit(TextEdit {
+                        Diagnostic::error("FAIL_ATTEMPT_REQUIRED").with_edit(TextEdit {
                             source: facts.source.clone(),
                             start: site.range.start,
                             end: site.range.start,
@@ -335,7 +307,6 @@ impl FailureChecker {
                 if !facts.declared.contains(failure) {
                     self.push_code(
                         "FAIL_UNDECLARED_PROPAGATION",
-                        format!("`{name}` rejects `{failure}` but does not declare it in `fails`"),
                         &facts.source,
                         TextRange::new(
                             reject.statement.range.start,
@@ -368,14 +339,9 @@ impl FailureChecker {
                             "empty patch",
                         )),
                     };
-                    if let Some((kind, code, label)) = requirement {
+                    if let Some((kind, code, _label)) = requirement {
                         if shape.contract.kind != kind {
-                            self.push_code(
-                                code,
-                                format!("{label} failure `{failure}` must derive from `{kind}`"),
-                                &facts.source,
-                                reject.statement.failure.range,
-                            );
+                            self.push_code(code, &facts.source, reject.statement.failure.range);
                         }
                     }
                 }
@@ -386,23 +352,11 @@ impl FailureChecker {
                     continue;
                 };
                 if facts.kind == CallableKind::Function && callee.kind == CallableKind::Action {
-                    self.push_code(
-                        "EFFECT_FUNCTION_CALLS_ACTION",
-                        format!("function `{name}` cannot call action `{}`", call.callee),
-                        &facts.source,
-                        call.range,
-                    );
+                    self.push_code("EFFECT_FUNCTION_CALLS_ACTION", &facts.source, call.range);
                 }
                 if !callee.declared.is_empty() && !call.attempted {
                     self.push_diagnostic(
-                        Diagnostic::error(
-                            "FAIL_ATTEMPT_REQUIRED",
-                            format!(
-                                "fallible call to `{}` must be acknowledged with `attempt`",
-                                call.callee
-                            ),
-                        )
-                        .with_edit(TextEdit {
+                        Diagnostic::error("FAIL_ATTEMPT_REQUIRED").with_edit(TextEdit {
                             source: facts.source.clone(),
                             start: call.range.start,
                             end: call.range.start,
@@ -415,15 +369,7 @@ impl FailureChecker {
                 for failure in &callee.declared {
                     reachable.insert(failure.clone());
                     if !facts.declared.contains(failure) {
-                        self.push_code(
-                            "FAIL_UNDECLARED_PROPAGATION",
-                            format!(
-                                "`{name}` calls `{}` which may reject `{failure}`, but `{name}` does not declare it",
-                                call.callee
-                            ),
-                            &facts.source,
-                            call.range,
-                        );
+                        self.push_code("FAIL_UNDECLARED_PROPAGATION", &facts.source, call.range);
                     }
                 }
             }
@@ -443,28 +389,20 @@ impl FailureChecker {
                         reachable.iter().cloned().collect::<Vec<_>>().join(", ")
                     )
                 };
-                let diagnostic = Diagnostic::error(
-                    "FAIL_STALE_DECLARATION",
-                    format!(
-                        "`{name}` declares unreachable problem(s): {}",
-                        stale.join(", ")
-                    ),
-                )
-                .with_edit(TextEdit {
-                    source: facts.source.clone(),
-                    start: range.start,
-                    end: range.end,
-                    replacement,
-                })
-                .with_context("callable", name.clone())
-                .with_context(
-                    "declared",
-                    facts.declared.iter().cloned().collect::<Vec<_>>().join(","),
-                )
-                .with_context(
-                    "reachable",
-                    reachable.iter().cloned().collect::<Vec<_>>().join(","),
-                );
+                let diagnostic = Diagnostic::error("FAIL_STALE_DECLARATION")
+                    .with_edit(TextEdit {
+                        source: facts.source.clone(),
+                        start: range.start,
+                        end: range.end,
+                        replacement,
+                    })
+                    .with_fact(DiagnosticFact::Callable(name.clone()))
+                    .with_fact(DiagnosticFact::DeclaredProblems(
+                        facts.declared.iter().cloned().collect::<Vec<_>>().join(","),
+                    ))
+                    .with_fact(DiagnosticFact::ReachableProblems(
+                        reachable.iter().cloned().collect::<Vec<_>>().join(","),
+                    ));
                 self.push_diagnostic(diagnostic, &facts.source, range);
             }
 
@@ -519,7 +457,7 @@ impl FailureChecker {
 
     fn validate_context(
         &mut self,
-        failure: &str,
+        _failure: &str,
         expected: &BTreeMap<String, FieldDeclaration>,
         supplied: &[FieldInitialiser],
         rejection_range: TextRange,
@@ -528,45 +466,21 @@ impl FailureChecker {
         let mut seen = BTreeSet::new();
         for field in supplied {
             if !seen.insert(field.name.text.clone()) {
-                self.push_code(
-                    "FAIL_DUPLICATE_CONTEXT_FIELD",
-                    format!(
-                        "rejection `{failure}` supplies `{}` more than once",
-                        field.name.text
-                    ),
-                    source,
-                    field.name.range,
-                );
+                self.push_code("FAIL_DUPLICATE_CONTEXT_FIELD", source, field.name.range);
             }
             if !expected.contains_key(&field.name.text) {
-                self.push_code(
-                    "FAIL_UNKNOWN_CONTEXT_FIELD",
-                    format!("failure `{failure}` does not declare `{}`", field.name.text),
-                    source,
-                    field.name.range,
-                );
+                self.push_code("FAIL_UNKNOWN_CONTEXT_FIELD", source, field.name.range);
             }
         }
         for (field, declaration) in expected {
             if !declaration.optional && !seen.contains(field) {
-                self.push_code(
-                    "FAIL_MISSING_CONTEXT_FIELD",
-                    format!("rejection `{failure}` must supply `{field}`"),
-                    source,
-                    rejection_range,
-                );
+                self.push_code("FAIL_MISSING_CONTEXT_FIELD", source, rejection_range);
             }
         }
     }
 
-    fn push_code(
-        &mut self,
-        code: &'static str,
-        message: impl Into<String>,
-        source: &str,
-        range: TextRange,
-    ) {
-        self.push_diagnostic(Diagnostic::error(code, message), source, range);
+    fn push_code(&mut self, code: &'static str, source: &str, range: TextRange) {
+        self.push_diagnostic(Diagnostic::error(code), source, range);
     }
 
     fn push_diagnostic(&mut self, mut diagnostic: Diagnostic, source: &str, range: TextRange) {

@@ -50,6 +50,27 @@ pub enum DecisionOwner {
     Human,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DiagnosticFact {
+    Callable(String),
+    DeclaredProblems(String),
+    ReachableProblems(String),
+    EventRevision(String),
+    LocalRevision(String),
+}
+
+impl DiagnosticFact {
+    fn into_pair(self) -> (&'static str, String) {
+        match self {
+            Self::Callable(value) => ("callable", value),
+            Self::DeclaredProblems(value) => ("declared", value),
+            Self::ReachableProblems(value) => ("reachable", value),
+            Self::EventRevision(value) => ("eventRevision", value),
+            Self::LocalRevision(value) => ("localRevision", value),
+        }
+    }
+}
+
 impl DecisionOwner {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -125,11 +146,11 @@ pub struct CompilerDiagnostic {
 pub type Diagnostic = CompilerDiagnostic;
 
 impl CompilerDiagnostic {
-    pub fn error(code: &'static str, message: impl Into<String>) -> Self {
-        Self::new(code, Severity::Error, message.into())
+    pub fn error(code: &'static str) -> Self {
+        Self::new(code, Severity::Error)
     }
 
-    fn new(code: &'static str, severity: Severity, message: String) -> Self {
+    fn new(code: &'static str, severity: Severity) -> Self {
         let definition = catalogue_definition(code);
         let recommended_next_step = RepairStep {
             kind: definition.repair_kind,
@@ -148,7 +169,7 @@ impl CompilerDiagnostic {
             code,
             rule_id: definition.rule_id,
             severity,
-            message,
+            message: definition.summary.clone(),
             reason: definition.reason,
             recommended_next_step: Box::new(recommended_next_step),
             alternatives,
@@ -173,8 +194,8 @@ impl CompilerDiagnostic {
         self
     }
 
-    pub fn warning(code: &'static str, message: impl Into<String>) -> Self {
-        Self::new(code, Severity::Warning, message.into())
+    pub fn warning(code: &'static str) -> Self {
+        Self::new(code, Severity::Warning)
     }
 
     pub fn with_source_revision(mut self, revision: impl Into<String>) -> Self {
@@ -182,11 +203,11 @@ impl CompilerDiagnostic {
         self
     }
 
-    pub fn with_context(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        let key = key.into();
+    pub fn with_fact(mut self, fact: DiagnosticFact) -> Self {
+        let (key, value) = fact.into_pair();
         let definition = catalogue_definition(self.code);
-        if self.context.len() < 16 && definition.context_keys.contains(&key.as_str()) {
-            self.context.push((key, value.into()));
+        if self.context.len() < 16 && definition.context_keys.contains(&key) {
+            self.context.push((key.to_owned(), value));
         }
         self
     }
@@ -723,8 +744,7 @@ mod tests {
 
     #[test]
     fn emits_stable_json_with_explicit_nullable_location_fields() {
-        let mut diagnostic =
-            Diagnostic::error("TEST_CODE", "bad \"value\"\nnext").with_note("fix\\path");
+        let mut diagnostic = Diagnostic::error("TEST_CODE").with_note("fix\\path");
         diagnostic.primary = Some(SourceSpan {
             source: "example.jadpo".to_owned(),
             start: 4,
@@ -739,10 +759,10 @@ mod tests {
         let json = diagnostic.to_json();
         assert!(json.contains("\"schemaVersion\":2"));
         assert!(json.contains("\"ruleId\":\"test.code\""));
-        assert!(json.contains("\"summary\":\"bad \\\"value\\\"\\nnext\""));
+        assert!(json.contains("\"summary\":\"Code\""));
         assert!(json.contains("\"location\":{\"source\":\"example.jadpo\""));
         assert!(json.contains("\"related\":[{\"source\":\"other.jadpo\""));
-        assert!(Diagnostic::warning("TEST_WARNING", "careful")
+        assert!(Diagnostic::warning("TEST_WARNING")
             .to_json()
             .contains("\"location\":null"));
     }
@@ -796,10 +816,7 @@ mod tests {
         assert_eq!(human.repair_kind, RepairKind::HumanDecision);
         assert_eq!(human.decision_owner, DecisionOwner::Human);
 
-        let diagnostic = Diagnostic::error(
-            "ROUTE_PATH_BINDING_MISSING",
-            "placeholder requires a binding",
-        );
+        let diagnostic = Diagnostic::error("ROUTE_PATH_BINDING_MISSING");
         assert_eq!(diagnostic.alternatives.len(), 1);
         assert!(diagnostic.to_json().contains("\"alternatives\":[{"));
     }

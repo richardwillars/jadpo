@@ -7,7 +7,7 @@ use jadpo_core::{
     write_schema_decision_template, write_schema_migration_plan, write_schema_migration_sql_review,
     AnalyzedProject,
 };
-use jadpo_diagnostics::{catalogue_definition, json_string, Diagnostic};
+use jadpo_diagnostics::{catalogue_definition, json_string, Diagnostic, DiagnosticFact};
 use jadpo_semantic::checked_manifest_json;
 use std::collections::BTreeMap;
 use std::env;
@@ -57,20 +57,14 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
 
     if command == "lsp" {
         if arguments.len() != 1 {
-            return Err(Diagnostic::error(
-                "CLI_LSP_ARGUMENTS",
-                "lsp uses standard input/output and accepts no project argument",
-            ));
+            return Err(Diagnostic::error("CLI_LSP_ARGUMENTS"));
         }
         return lsp::run_stdio();
     }
 
-    let project = arguments.get(1).ok_or_else(|| {
-        Diagnostic::error(
-            "CLI_PROJECT_REQUIRED",
-            format!("`{command}` requires a project file or directory"),
-        )
-    })?;
+    let project = arguments
+        .get(1)
+        .ok_or_else(|| Diagnostic::error("CLI_PROJECT_REQUIRED"))?;
     let project = Path::new(project);
 
     match command {
@@ -86,9 +80,7 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
         "check" => {
             if arguments.len() != 2 {
                 return Err(Diagnostic::error(
-                    "CLI_CHECK_ARGUMENTS",
-                    "check accepts one project path and optional JSON diagnostic output",
-                )
+                    "CLI_CHECK_ARGUMENTS")
                 .with_note("expected: jadpo check <project> [--diagnostic-format=json]"));
             }
             run_human_check(project)
@@ -120,9 +112,7 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
         "incident" => {
             if arguments.len() != 3 {
                 return Err(Diagnostic::error(
-                    "CLI_INCIDENT_ARGUMENTS",
-                    "incident enrichment requires a project and one local event JSON file",
-                )
+                    "CLI_INCIDENT_ARGUMENTS")
                 .with_note("expected: jadpo incident <project> <event-json-file>"));
             }
             run_incident_enrichment(project, Path::new(&arguments[2]))
@@ -134,42 +124,32 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
                 Some("--check") => true,
                 Some(_) => {
                     return Err(Diagnostic::error(
-                        "CLI_FMT_ARGUMENTS",
-                        "fmt accepts one project path and optional `--check`",
-                    ));
+                        "CLI_FMT_ARGUMENTS"));
                 }
             };
             if arguments.len() > 3 {
                 return Err(Diagnostic::error(
-                    "CLI_FMT_ARGUMENTS",
-                    "fmt received unexpected arguments",
-                ));
+                    "CLI_FMT_ARGUMENTS"));
             }
             run_format(project, check)
         }
         "watch" => {
             if project == Path::new("--diagnostic-format=json") {
                 return Err(Diagnostic::error(
-                    "CLI_PROJECT_REQUIRED",
-                    "`watch` requires a project file or directory",
-                ));
+                    "CLI_PROJECT_REQUIRED"));
             }
             let json = match arguments.get(2).map(String::as_str) {
                 None => false,
                 Some("--diagnostic-format=json") => true,
                 Some(_) => {
                     return Err(Diagnostic::error(
-                        "CLI_WATCH_ARGUMENTS",
-                        "watch accepts one project path and optional JSON lifecycle output",
-                    )
+                        "CLI_WATCH_ARGUMENTS")
                     .with_note("expected: jadpo watch <project> [--diagnostic-format=json]"));
                 }
             };
             if arguments.len() > 3 {
                 return Err(Diagnostic::error(
-                    "CLI_WATCH_ARGUMENTS",
-                    "watch received unexpected arguments",
-                )
+                    "CLI_WATCH_ARGUMENTS")
                 .with_note("expected: jadpo watch <project> [--diagnostic-format=json]"));
             }
             run_watch(project, json)
@@ -177,34 +157,26 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
         "dev" => {
             if project == Path::new("--diagnostic-format=json") {
                 return Err(Diagnostic::error(
-                    "CLI_PROJECT_REQUIRED",
-                    "`dev` requires a project file or directory",
-                ));
+                    "CLI_PROJECT_REQUIRED"));
             }
             let json = match arguments.get(2).map(String::as_str) {
                 None => false,
                 Some("--diagnostic-format=json") => true,
                 Some(_) => {
                     return Err(Diagnostic::error(
-                        "CLI_DEV_ARGUMENTS",
-                        "dev accepts one project path and optional JSON lifecycle output",
-                    )
+                        "CLI_DEV_ARGUMENTS")
                     .with_note("expected: jadpo dev <project> [--diagnostic-format=json]"));
                 }
             };
             if arguments.len() > 3 {
                 return Err(Diagnostic::error(
-                    "CLI_DEV_ARGUMENTS",
-                    "dev received unexpected arguments",
-                )
+                    "CLI_DEV_ARGUMENTS")
                 .with_note("expected: jadpo dev <project> [--diagnostic-format=json]"));
             }
             run_dev(project, json)
         }
-        other => Err(Diagnostic::error(
-            "CLI_UNKNOWN_COMMAND",
-            format!("unknown command `{other}`"),
-        )
+        _other => Err(Diagnostic::error(
+            "CLI_UNKNOWN_COMMAND")
         .with_note(
             "expected one of: new, check, inspect, artifacts, build, test, fmt, watch, dev, schema, help",
         )),
@@ -214,17 +186,12 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
 fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
     let subcommand = arguments.get(1).ok_or_else(|| {
         Diagnostic::error(
-            "CLI_SCHEMA_COMMAND_REQUIRED",
-            "`schema` requires a subcommand",
-        )
+            "CLI_SCHEMA_COMMAND_REQUIRED")
         .with_note("expected: jadpo schema <init|check|add|rename|snapshot|diff|decision-template|decision-check|plan|sql|index-recommend|index-accept> <project> ...")
     })?;
-    let project = arguments.get(2).ok_or_else(|| {
-        Diagnostic::error(
-            "CLI_PROJECT_REQUIRED",
-            format!("`schema {subcommand}` requires a project file or directory"),
-        )
-    })?;
+    let project = arguments
+        .get(2)
+        .ok_or_else(|| Diagnostic::error("CLI_PROJECT_REQUIRED"))?;
     let project = Path::new(project);
     match subcommand.as_str() {
         "init" => {
@@ -239,9 +206,7 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
             require_valid_frontend(&analyzed)?;
             let path = validate_schema_identities(project, &analyzed)?.ok_or_else(|| {
                 Diagnostic::error(
-                    "MIG_IDENTITY_REGISTRY_MISSING",
-                    "schema identity registry does not exist",
-                )
+                    "MIG_IDENTITY_REGISTRY_MISSING")
                 .with_note("run `jadpo schema init <project>` first")
             })?;
             println!("schema identities match checked source: {}", path.display());
@@ -260,9 +225,7 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
         "snapshot" => {
             let output = arguments.get(3).ok_or_else(|| {
                 Diagnostic::error(
-                    "CLI_SCHEMA_SNAPSHOT_ARGUMENTS",
-                    "schema snapshot requires an output path",
-                )
+                    "CLI_SCHEMA_SNAPSHOT_ARGUMENTS")
                 .with_note("expected: jadpo schema snapshot <project> <output>")
             })?;
             let analyzed = analyze_project(project)?;
@@ -277,16 +240,12 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
         "diff" => {
             if arguments.get(3).map(String::as_str) != Some("--against") {
                 return Err(Diagnostic::error(
-                    "CLI_SCHEMA_DIFF_ARGUMENTS",
-                    "schema diff requires `--against <snapshot>`",
-                )
+                    "CLI_SCHEMA_DIFF_ARGUMENTS")
                 .with_note("expected: jadpo schema diff <project> --against <snapshot>"));
             }
             let previous = arguments.get(4).ok_or_else(|| {
                 Diagnostic::error(
-                    "CLI_SCHEMA_DIFF_ARGUMENTS",
-                    "schema diff requires a snapshot path",
-                )
+                    "CLI_SCHEMA_DIFF_ARGUMENTS")
             })?;
             let analyzed = analyze_project(project)?;
             require_valid_frontend(&analyzed)?;
@@ -299,21 +258,15 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
         "decision-template" => {
             if arguments.get(3).map(String::as_str) != Some("--against") {
                 return Err(Diagnostic::error(
-                    "CLI_SCHEMA_DECISION_ARGUMENTS",
-                    "schema decision-template requires `--against <snapshot> <output>`",
-                ));
+                    "CLI_SCHEMA_DECISION_ARGUMENTS"));
             }
             let previous = arguments.get(4).ok_or_else(|| {
                 Diagnostic::error(
-                    "CLI_SCHEMA_DECISION_ARGUMENTS",
-                    "schema decision-template requires a snapshot path",
-                )
+                    "CLI_SCHEMA_DECISION_ARGUMENTS")
             })?;
             let output = arguments.get(5).ok_or_else(|| {
                 Diagnostic::error(
-                    "CLI_SCHEMA_DECISION_ARGUMENTS",
-                    "schema decision-template requires an output path",
-                )
+                    "CLI_SCHEMA_DECISION_ARGUMENTS")
             })?;
             let analyzed = analyze_project(project)?;
             require_valid_frontend(&analyzed)?;
@@ -332,21 +285,15 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
         "decision-check" => {
             if arguments.get(3).map(String::as_str) != Some("--against") {
                 return Err(Diagnostic::error(
-                    "CLI_SCHEMA_DECISION_ARGUMENTS",
-                    "schema decision-check requires `--against <snapshot> <artifact>`",
-                ));
+                    "CLI_SCHEMA_DECISION_ARGUMENTS"));
             }
             let previous = arguments.get(4).ok_or_else(|| {
                 Diagnostic::error(
-                    "CLI_SCHEMA_DECISION_ARGUMENTS",
-                    "schema decision-check requires a snapshot path",
-                )
+                    "CLI_SCHEMA_DECISION_ARGUMENTS")
             })?;
             let decisions = arguments.get(5).ok_or_else(|| {
                 Diagnostic::error(
-                    "CLI_SCHEMA_DECISION_ARGUMENTS",
-                    "schema decision-check requires a decision artifact path",
-                )
+                    "CLI_SCHEMA_DECISION_ARGUMENTS")
             })?;
             let analyzed = analyze_project(project)?;
             require_valid_frontend(&analyzed)?;
@@ -367,20 +314,16 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
                 || arguments.get(7).map(String::as_str) != Some("--adapter")
             {
                 return Err(Diagnostic::error(
-                    "CLI_SCHEMA_PLAN_ARGUMENTS",
-                    "schema plan requires `--against <snapshot> --decisions <artifact> --adapter <postgres|sqlite> <output>`",
-                ));
+                    "CLI_SCHEMA_PLAN_ARGUMENTS"));
             }
             let previous = &arguments[4];
             let decisions = &arguments[6];
             let adapter = arguments.get(8).ok_or_else(|| {
-                Diagnostic::error("CLI_SCHEMA_PLAN_ARGUMENTS", "schema plan requires an adapter")
+                Diagnostic::error("CLI_SCHEMA_PLAN_ARGUMENTS")
             })?;
             let output = arguments.get(9).ok_or_else(|| {
                 Diagnostic::error(
-                    "CLI_SCHEMA_PLAN_ARGUMENTS",
-                    "schema plan requires an output path",
-                )
+                    "CLI_SCHEMA_PLAN_ARGUMENTS")
             })?;
             let analyzed = analyze_project(project)?;
             require_valid_frontend(&analyzed)?;
@@ -404,20 +347,16 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
                 || arguments.get(7).map(String::as_str) != Some("--adapter")
             {
                 return Err(Diagnostic::error(
-                    "CLI_SCHEMA_SQL_ARGUMENTS",
-                    "schema sql requires `--against <snapshot> --decisions <artifact> --adapter <postgres|sqlite> <output>`",
-                ));
+                    "CLI_SCHEMA_SQL_ARGUMENTS"));
             }
             let previous = &arguments[4];
             let decisions = &arguments[6];
             let adapter = arguments.get(8).ok_or_else(|| {
-                Diagnostic::error("CLI_SCHEMA_SQL_ARGUMENTS", "schema sql requires an adapter")
+                Diagnostic::error("CLI_SCHEMA_SQL_ARGUMENTS")
             })?;
             let output = arguments.get(9).ok_or_else(|| {
                 Diagnostic::error(
-                    "CLI_SCHEMA_SQL_ARGUMENTS",
-                    "schema sql requires an output path",
-                )
+                    "CLI_SCHEMA_SQL_ARGUMENTS")
             })?;
             let analyzed = analyze_project(project)?;
             require_valid_frontend(&analyzed)?;
@@ -444,9 +383,7 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
         "index-accept" => {
             let path = arguments.get(3).ok_or_else(|| {
                 Diagnostic::error(
-                    "CLI_SCHEMA_INDEX_ACCEPT_ARGUMENTS",
-                    "schema index-accept requires an Entity.field path",
-                )
+                    "CLI_SCHEMA_INDEX_ACCEPT_ARGUMENTS")
             })?;
             let analyzed = analyze_project(project)?;
             require_valid_frontend(&analyzed)?;
@@ -461,22 +398,16 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
         "rename" => {
             let kind = arguments.get(3).ok_or_else(|| {
                 Diagnostic::error(
-                    "CLI_SCHEMA_RENAME_ARGUMENTS",
-                    "schema rename requires a kind, old path, and new path",
-                )
+                    "CLI_SCHEMA_RENAME_ARGUMENTS")
                 .with_note("expected: jadpo schema rename <project> <entity|field> <old> <new>")
             })?;
             let old_path = arguments.get(4).ok_or_else(|| {
                 Diagnostic::error(
-                    "CLI_SCHEMA_RENAME_ARGUMENTS",
-                    "schema rename requires an old path",
-                )
+                    "CLI_SCHEMA_RENAME_ARGUMENTS")
             })?;
             let new_path = arguments.get(5).ok_or_else(|| {
                 Diagnostic::error(
-                    "CLI_SCHEMA_RENAME_ARGUMENTS",
-                    "schema rename requires a new path",
-                )
+                    "CLI_SCHEMA_RENAME_ARGUMENTS")
             })?;
             let analyzed = analyze_project(project)?;
             require_valid_frontend(&analyzed)?;
@@ -487,10 +418,8 @@ fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
             );
             Ok(())
         }
-        other => Err(Diagnostic::error(
-            "CLI_UNKNOWN_SCHEMA_COMMAND",
-            format!("unknown schema command `{other}`"),
-        )
+        _other => Err(Diagnostic::error(
+            "CLI_UNKNOWN_SCHEMA_COMMAND")
         .with_note(
             "expected: jadpo schema <init|check|add|rename|snapshot|diff|decision-template|decision-check|plan|sql|index-recommend|index-accept> <project> ...",
         )),
@@ -584,20 +513,14 @@ fn run_json_check(arguments: &[String]) -> ExitCode {
             Path::new(project)
         }
         [command, format] if command == "check" && format == "--diagnostic-format=json" => {
-            let report = failed_report(Diagnostic::error(
-                "CLI_PROJECT_REQUIRED",
-                "`check` requires a project file or directory",
-            ));
+            let report = failed_report(Diagnostic::error("CLI_PROJECT_REQUIRED"));
             println!("{}", check_report_json(Path::new(""), &report));
             return ExitCode::from(1);
         }
         _ => {
             let report = failed_report(
-                Diagnostic::error(
-                    "CLI_CHECK_ARGUMENTS",
-                    "JSON check output requires exactly one project path",
-                )
-                .with_note("expected: jadpo check <project> --diagnostic-format=json"),
+                Diagnostic::error("CLI_CHECK_ARGUMENTS")
+                    .with_note("expected: jadpo check <project> --diagnostic-format=json"),
             );
             println!("{}", check_report_json(Path::new(""), &report));
             return ExitCode::from(1);
@@ -685,13 +608,7 @@ fn checked_project(project: &Path) -> Result<CheckedProject, CheckReport> {
     let index_recommendations = index_recommendation_count(&analyzed);
     if index_recommendations > 0 {
         diagnostics.push(
-            Diagnostic::warning(
-                "INDEX_RECOMMENDATION_AVAILABLE",
-                format!(
-                    "{index_recommendations} query-backed index recommendation(s) are available"
-                ),
-            )
-            .with_note(format!(
+            Diagnostic::warning("INDEX_RECOMMENDATION_AVAILABLE").with_note(format!(
                 "run `jadpo schema index-recommend {}` for evidence",
                 project.display()
             )),
@@ -723,26 +640,12 @@ fn incident_packet(
 ) -> Result<serde_json::Value, Diagnostic> {
     let analyzed = analyze_project(project_path)?;
     require_valid_frontend(&analyzed)?;
-    let event_text = fs::read_to_string(event_path).map_err(|error| {
-        Diagnostic::error(
-            "CLI_INCIDENT_READ_FAILED",
-            format!(
-                "could not read local runtime event {}: {error}",
-                event_path.display()
-            ),
-        )
-    })?;
-    let event: serde_json::Value = serde_json::from_str(&event_text).map_err(|error| {
-        Diagnostic::error(
-            "CLI_INCIDENT_INVALID",
-            format!("local runtime event is not valid JSON: {error}"),
-        )
-    })?;
+    let event_text = fs::read_to_string(event_path)
+        .map_err(|_error| Diagnostic::error("CLI_INCIDENT_READ_FAILED"))?;
+    let event: serde_json::Value = serde_json::from_str(&event_text)
+        .map_err(|_error| Diagnostic::error("CLI_INCIDENT_INVALID"))?;
     if event.get("kind").and_then(serde_json::Value::as_str) != Some("operational_log_event") {
-        return Err(Diagnostic::error(
-            "CLI_INCIDENT_INVALID",
-            "incident enrichment accepts only an OperationalLogEvent",
-        ));
+        return Err(Diagnostic::error("CLI_INCIDENT_INVALID"));
     }
     let revision = checked_source_revision(project_path, &analyzed);
     let project_root = if project_path.is_dir() {
@@ -751,65 +654,39 @@ fn incident_packet(
         project_path.parent().unwrap_or_else(|| Path::new("."))
     };
     let manifest_path = project_root.join("build/app.meta.json");
-    let manifest_text = fs::read_to_string(&manifest_path).map_err(|error| {
-        Diagnostic::error(
-            "CLI_INCIDENT_MANIFEST_MISSING",
-            format!(
-                "could not read matching compiler manifest {}: {error}",
-                manifest_path.display()
-            ),
-        )
-        .with_note("run `jadpo build` for the exact source revision before enrichment")
+    let manifest_text = fs::read_to_string(manifest_path).map_err(|_error| {
+        Diagnostic::error("CLI_INCIDENT_MANIFEST_MISSING")
+            .with_note("run `jadpo build` for the exact source revision before enrichment")
     })?;
-    let manifest: serde_json::Value = serde_json::from_str(&manifest_text).map_err(|error| {
-        Diagnostic::error(
-            "CLI_INCIDENT_MANIFEST_INVALID",
-            format!("compiler manifest is invalid: {error}"),
-        )
-    })?;
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_text)
+        .map_err(|_error| Diagnostic::error("CLI_INCIDENT_MANIFEST_INVALID"))?;
     if manifest
         .get("source_revision")
         .and_then(serde_json::Value::as_str)
         != Some(revision.as_str())
     {
-        return Err(Diagnostic::error(
-            "CLI_INCIDENT_MANIFEST_STALE",
-            "compiler manifest does not match the current checked source revision",
-        ));
+        return Err(Diagnostic::error("CLI_INCIDENT_MANIFEST_STALE"));
     }
     let event_revision = event
         .get("sourceRevision")
         .and_then(serde_json::Value::as_str)
         .unwrap_or("");
     if event_revision != revision {
-        return Err(Diagnostic::error(
-            "CLI_INCIDENT_REVISION_MISMATCH",
-            "runtime event source revision does not match the local compiler graph",
-        )
-        .with_context("eventRevision", event_revision)
-        .with_context("localRevision", revision));
+        return Err(Diagnostic::error("CLI_INCIDENT_REVISION_MISMATCH")
+            .with_fact(DiagnosticFact::EventRevision(event_revision.to_owned()))
+            .with_fact(DiagnosticFact::LocalRevision(revision)));
     }
     let operation = bounded_identifier(&event, "semanticOperationId")?;
     let classification = event
         .get("classification")
         .and_then(serde_json::Value::as_str)
         .filter(|value| matches!(*value, "RUNTIME_UNHANDLED_FAULT" | "RUNTIME_STARTUP_FAILED"))
-        .ok_or_else(|| {
-            Diagnostic::error(
-                "CLI_INCIDENT_INVALID",
-                "runtime event classification is not compiler-owned",
-            )
-        })?;
+        .ok_or_else(|| Diagnostic::error("CLI_INCIDENT_INVALID"))?;
     let request_id = event
         .get("requestId")
         .and_then(serde_json::Value::as_str)
         .filter(|value| *value == "startup" || valid_generated_request_id(value))
-        .ok_or_else(|| {
-            Diagnostic::error(
-                "CLI_INCIDENT_INVALID",
-                "runtime event request ID is not compiler-generated",
-            )
-        })?;
+        .ok_or_else(|| Diagnostic::error("CLI_INCIDENT_INVALID"))?;
     let operation_entry = manifest
         .get("operations")
         .and_then(serde_json::Value::as_array)
@@ -836,10 +713,7 @@ fn incident_packet(
     } else if operation == "runtime:start" {
         ("<runtime>".to_owned(), jadpo_syntax::TextRange::new(0, 0))
     } else {
-        return Err(Diagnostic::error(
-            "CLI_INCIDENT_OPERATION_UNKNOWN",
-            "runtime event operation is not present in the compiler manifest",
-        ));
+        return Err(Diagnostic::error("CLI_INCIDENT_OPERATION_UNKNOWN"));
     };
     let definition = catalogue_definition(classification);
     let packet = serde_json::json!({
@@ -888,12 +762,7 @@ fn bounded_identifier<'a>(event: &'a serde_json::Value, key: &str) -> Result<&'a
                         || matches!(byte, b'_' | b'-' | b':' | b'/' | b'{' | b'}' | b'.')
                 })
         })
-        .ok_or_else(|| {
-            Diagnostic::error(
-                "CLI_INCIDENT_INVALID",
-                format!("runtime event `{key}` is missing or is not a bounded identifier"),
-            )
-        })?;
+        .ok_or_else(|| Diagnostic::error("CLI_INCIDENT_INVALID"))?;
     Ok(value)
 }
 
@@ -956,28 +825,17 @@ fn run_human_test(project: &Path) -> Result<(), Diagnostic> {
     }
     let entrypoint = success.output.join("target/tests.ts");
     if !entrypoint.is_file() {
-        return Err(Diagnostic::error(
-            "TEST_NO_TESTS",
-            "the project does not declare any `test` blocks",
-        ));
+        return Err(Diagnostic::error("TEST_NO_TESTS"));
     }
     let status = Command::new("bun")
         .arg("--no-install")
         .arg(&entrypoint)
         .status()
-        .map_err(|error| {
-            Diagnostic::error(
-                "TEST_RUNTIME_START_FAILED",
-                format!("could not start Bun test runtime: {error}"),
-            )
-        })?;
+        .map_err(|_error| Diagnostic::error("TEST_RUNTIME_START_FAILED"))?;
     if status.success() {
         Ok(())
     } else {
-        Err(Diagnostic::error(
-            "TEST_FAILED",
-            format!("one or more authored tests failed (Bun {status})"),
-        ))
+        Err(Diagnostic::error("TEST_FAILED"))
     }
 }
 
@@ -989,21 +847,13 @@ fn run_format(project: &Path, check: bool) -> Result<(), Diagnostic> {
         if formatted != source.text {
             changed.push(source.path.clone());
             if !check {
-                fs::write(&source.path, formatted).map_err(|error| {
-                    Diagnostic::error(
-                        "FMT_WRITE_FAILED",
-                        format!("could not format {}: {error}", source.path.display()),
-                    )
-                })?;
+                fs::write(&source.path, formatted)
+                    .map_err(|_error| Diagnostic::error("FMT_WRITE_FAILED"))?;
             }
         }
     }
     if check && !changed.is_empty() {
-        return Err(Diagnostic::error(
-            "FMT_CHANGES_REQUIRED",
-            format!("{} Jadpo source file(s) require formatting", changed.len()),
-        )
-        .with_note(
+        return Err(Diagnostic::error("FMT_CHANGES_REQUIRED").with_note(
             changed
                 .iter()
                 .map(|path| path.display().to_string())
@@ -1088,12 +938,9 @@ fn emit_lifecycle_event(
             );
         }
     }
-    io::stdout().flush().map_err(|error| {
-        Diagnostic::error(
-            "CLI_WATCH_OUTPUT_FAILED",
-            format!("could not flush watch output: {error}"),
-        )
-    })
+    io::stdout()
+        .flush()
+        .map_err(|_error| Diagnostic::error("CLI_WATCH_OUTPUT_FAILED"))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1377,15 +1224,9 @@ fn wait_for_dev_change(
     loop {
         let exited = if let Some(child) = runtime.as_mut() {
             match child.try_wait() {
-                Ok(Some(status)) => Some(Diagnostic::error(
-                    "CLI_DEV_RUNTIME_EXITED",
-                    format!("Bun runtime exited with status {status}"),
-                )),
+                Ok(Some(_status)) => Some(Diagnostic::error("CLI_DEV_RUNTIME_EXITED")),
                 Ok(None) => None,
-                Err(error) => Some(Diagnostic::error(
-                    "CLI_DEV_RUNTIME_STATUS_FAILED",
-                    format!("could not inspect Bun runtime status: {error}"),
-                )),
+                Err(_error) => Some(Diagnostic::error("CLI_DEV_RUNTIME_STATUS_FAILED")),
             }
         } else {
             None
@@ -1461,12 +1302,7 @@ fn parse_dev_port(value: &str) -> Result<u16, Diagnostic> {
         .parse::<u16>()
         .ok()
         .filter(|port| *port > 0)
-        .ok_or_else(|| {
-            Diagnostic::error(
-                "CLI_DEV_PORT_INVALID",
-                format!("PORT must be an integer from 1 through 65535, received `{value}`"),
-            )
-        })
+        .ok_or_else(|| Diagnostic::error("CLI_DEV_PORT_INVALID"))
 }
 
 fn start_bun_runtime(project: &Path, port: u16, json: bool) -> Result<Child, Diagnostic> {
@@ -1476,15 +1312,9 @@ fn start_bun_runtime(project: &Path, port: u16, json: bool) -> Result<Child, Dia
         project.parent().unwrap_or_else(|| Path::new("."))
     };
     let target = project_root.join("build/target/app.ts");
-    let target = target.canonicalize().map_err(|error| {
-        Diagnostic::error(
-            "CLI_DEV_TARGET_MISSING",
-            format!(
-                "could not resolve generated target {}: {error}",
-                target.display()
-            ),
-        )
-    })?;
+    let target = target
+        .canonicalize()
+        .map_err(|_error| Diagnostic::error("CLI_DEV_TARGET_MISSING"))?;
     let mut command = Command::new("bun");
     command
         .arg("--no-install")
@@ -1498,12 +1328,9 @@ fn start_bun_runtime(project: &Path, port: u16, json: bool) -> Result<Child, Dia
     } else {
         command.stdout(Stdio::inherit());
     }
-    let mut child = command.spawn().map_err(|error| {
-        Diagnostic::error(
-            "CLI_DEV_BUN_START_FAILED",
-            format!("could not start Bun for {}: {error}", target.display()),
-        )
-    })?;
+    let mut child = command
+        .spawn()
+        .map_err(|_error| Diagnostic::error("CLI_DEV_BUN_START_FAILED"))?;
     if json {
         if let Some(mut output) = child.stdout.take() {
             thread::spawn(move || {
@@ -1517,27 +1344,17 @@ fn start_bun_runtime(project: &Path, port: u16, json: bool) -> Result<Child, Dia
 fn wait_until_ready(child: &mut Child, port: u16) -> Result<(), Diagnostic> {
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
-        if let Some(status) = child.try_wait().map_err(|error| {
-            Diagnostic::error(
-                "CLI_DEV_RUNTIME_STATUS_FAILED",
-                format!("could not inspect Bun runtime status: {error}"),
-            )
-        })? {
-            return Err(Diagnostic::error(
-                "CLI_DEV_RUNTIME_EXITED",
-                format!("Bun exited before readiness with status {status}"),
-            ));
+        if let Some(_status) = child
+            .try_wait()
+            .map_err(|_error| Diagnostic::error("CLI_DEV_RUNTIME_STATUS_FAILED"))?
+        {
+            return Err(Diagnostic::error("CLI_DEV_RUNTIME_EXITED"));
         }
         if healthcheck_ready(port) {
             return Ok(());
         }
         if Instant::now() >= deadline {
-            return Err(Diagnostic::error(
-                "CLI_DEV_READINESS_TIMEOUT",
-                format!(
-                    "Bun did not return HTTP 200 from http://127.0.0.1:{port}/health within 3 seconds"
-                ),
-            ));
+            return Err(Diagnostic::error("CLI_DEV_READINESS_TIMEOUT"));
         }
         thread::sleep(Duration::from_millis(50));
     }
@@ -1637,34 +1454,18 @@ fn watch_input_snapshot(project: &Path) -> Result<InputSnapshot, Diagnostic> {
 
     let mut snapshot = BTreeMap::new();
     for path in paths {
-        let bytes = fs::read(&path).map_err(|error| {
-            Diagnostic::error(
-                "CLI_WATCH_INPUT_READ_FAILED",
-                format!("could not read watched input {}: {error}", path.display()),
-            )
-        })?;
+        let bytes =
+            fs::read(&path).map_err(|_error| Diagnostic::error("CLI_WATCH_INPUT_READ_FAILED"))?;
         snapshot.insert(path, stable_bytes_hash(&bytes));
     }
     Ok(snapshot)
 }
 
 fn collect_watch_inputs(path: &Path, output: &mut Vec<PathBuf>) -> Result<(), Diagnostic> {
-    let entries = fs::read_dir(path).map_err(|error| {
-        Diagnostic::error(
-            "CLI_WATCH_INPUT_READ_FAILED",
-            format!(
-                "could not read watched directory {}: {error}",
-                path.display()
-            ),
-        )
-    })?;
+    let entries =
+        fs::read_dir(path).map_err(|_error| Diagnostic::error("CLI_WATCH_INPUT_READ_FAILED"))?;
     for entry in entries {
-        let entry = entry.map_err(|error| {
-            Diagnostic::error(
-                "CLI_WATCH_INPUT_READ_FAILED",
-                format!("could not read a watched directory entry: {error}"),
-            )
-        })?;
+        let entry = entry.map_err(|_error| Diagnostic::error("CLI_WATCH_INPUT_READ_FAILED"))?;
         let entry_path = entry.path();
         let name = entry.file_name();
         let name = name.to_string_lossy();
@@ -1880,8 +1681,9 @@ mod tests {
     fn emits_a_stable_versioned_check_envelope() {
         let report = CheckReport {
             passed: true,
-            diagnostics: vec![Diagnostic::warning("TEST_WARNING", "check this")
-                .with_note("use the evidence command")],
+            diagnostics: vec![
+                Diagnostic::warning("TEST_WARNING").with_note("use the evidence command")
+            ],
             summary: Some(CheckSummary {
                 source_files: 2,
                 declarations: 3,
@@ -1893,7 +1695,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid report JSON");
         assert_eq!(parsed["schemaVersion"], 2);
         assert_eq!(parsed["diagnostics"][0]["ruleId"], "test.warning");
-        assert_eq!(parsed["diagnostics"][0]["summary"], "check this");
+        assert_eq!(parsed["diagnostics"][0]["summary"], "Warning");
         assert_eq!(
             parsed["diagnostics"][0]["recommendedNextStep"]["kind"],
             "guided_choice"
@@ -1952,8 +1754,8 @@ mod tests {
         fs::create_dir_all(&root).expect("fixture should be created");
         let source = root.join("app.jadpo");
         fs::write(&source, "type User = {\n    id: UUID\n}\n").expect("source should be written");
-        let mut diagnostic = Diagnostic::error("TEST_SYNTAX", "invalid declaration")
-            .with_note("use an entity declaration");
+        let mut diagnostic =
+            Diagnostic::error("TEST_SYNTAX").with_note("use an entity declaration");
         diagnostic.primary = Some(SourceSpan {
             source: source.to_string_lossy().into_owned(),
             start: 12,
@@ -2041,7 +1843,7 @@ mod tests {
 
     #[test]
     fn emits_versioned_watch_lifecycle_events() {
-        let diagnostic = Diagnostic::warning("TEST_WARNING", "review this");
+        let diagnostic = Diagnostic::warning("TEST_WARNING");
         let json = lifecycle_event_json(
             "watch",
             Path::new("example"),

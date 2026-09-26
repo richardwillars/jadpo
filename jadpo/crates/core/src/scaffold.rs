@@ -13,50 +13,21 @@ pub fn create_project(destination: &Path) -> Result<Vec<ScaffoldFile>, Diagnosti
         .file_name()
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())
-        .ok_or_else(|| {
-            Diagnostic::error(
-                "JADPO_SCAFFOLD_NAME_INVALID",
-                format!(
-                    "project destination must end in a valid UTF-8 name: {}",
-                    destination.display()
-                ),
-            )
-        })?;
+        .ok_or_else(|| Diagnostic::error("JADPO_SCAFFOLD_NAME_INVALID"))?;
 
     if destination.exists() {
         if !destination.is_dir() {
-            return Err(Diagnostic::error(
-                "JADPO_SCAFFOLD_DESTINATION_EXISTS",
-                format!(
-                    "project destination is not a directory: {}",
-                    destination.display()
-                ),
-            ));
+            return Err(Diagnostic::error("JADPO_SCAFFOLD_DESTINATION_EXISTS"));
         }
-        let mut entries = fs::read_dir(destination).map_err(|error| {
-            Diagnostic::error(
-                "JADPO_SCAFFOLD_READ_FAILED",
-                format!("could not inspect {}: {error}", destination.display()),
-            )
-        })?;
+        let mut entries = fs::read_dir(destination)
+            .map_err(|_error| Diagnostic::error("JADPO_SCAFFOLD_READ_FAILED"))?;
         if entries
             .next()
             .transpose()
-            .map_err(|error| {
-                Diagnostic::error(
-                    "JADPO_SCAFFOLD_READ_FAILED",
-                    format!("could not inspect {}: {error}", destination.display()),
-                )
-            })?
+            .map_err(|_error| Diagnostic::error("JADPO_SCAFFOLD_READ_FAILED"))?
             .is_some()
         {
-            return Err(Diagnostic::error(
-                "JADPO_SCAFFOLD_DESTINATION_NOT_EMPTY",
-                format!(
-                    "refusing to scaffold into non-empty directory {}",
-                    destination.display()
-                ),
-            ));
+            return Err(Diagnostic::error("JADPO_SCAFFOLD_DESTINATION_NOT_EMPTY"));
         }
     }
 
@@ -117,11 +88,8 @@ fn scaffold_files(name: &str) -> Vec<ScaffoldFile> {
     ]
 }
 
-fn write_error(path: &Path, error: std::io::Error) -> Diagnostic {
-    Diagnostic::error(
-        "JADPO_SCAFFOLD_WRITE_FAILED",
-        format!("could not write {}: {error}", path.display()),
-    )
+fn write_error(_path: &Path, _error: std::io::Error) -> Diagnostic {
+    Diagnostic::error("JADPO_SCAFFOLD_WRITE_FAILED")
 }
 
 fn json_string(value: &str) -> String {

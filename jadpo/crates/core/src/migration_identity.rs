@@ -89,23 +89,13 @@ pub fn initialize_schema_identities(
     };
     let registry_path = project_root.join("schema.identities.json");
     if registry_path.exists() {
-        return Err(Diagnostic::error(
-            "MIG_IDENTITY_REGISTRY_EXISTS",
-            format!(
-                "schema identity registry already exists: {}",
-                registry_path.display()
-            ),
-        )
-        .with_note("schema init never overwrites or regenerates persistent identities"));
+        return Err(Diagnostic::error("MIG_IDENTITY_REGISTRY_EXISTS")
+            .with_note("schema init never overwrites or regenerates persistent identities"));
     }
 
     let contents = registry_json(&derive_registry_entries(analyzed));
-    fs::write(&registry_path, contents).map_err(|error| {
-        Diagnostic::error(
-            "MIG_IDENTITY_REGISTRY_WRITE_FAILED",
-            format!("could not write {}: {error}", registry_path.display()),
-        )
-    })?;
+    fs::write(&registry_path, contents)
+        .map_err(|_error| Diagnostic::error("MIG_IDENTITY_REGISTRY_WRITE_FAILED"))?;
     Ok(registry_path)
 }
 
@@ -121,14 +111,8 @@ pub fn validate_schema_identities(
     let entries = parse_registry(&source)?;
     validate_registry_entries(&entries, &derive_registry_entries(analyzed))?;
     if registry_json(&entries) != source {
-        return Err(Diagnostic::error(
-            "MIG_IDENTITY_REGISTRY_NOT_CANONICAL",
-            format!(
-                "schema identity registry is not canonical: {}",
-                path.display()
-            ),
-        )
-        .with_note("registry files are compiler-owned; use schema commands to modify them"));
+        return Err(Diagnostic::error("MIG_IDENTITY_REGISTRY_NOT_CANONICAL")
+            .with_note("registry files are compiler-owned; use schema commands to modify them"));
     }
     Ok(Some(path))
 }
@@ -141,21 +125,12 @@ pub fn rename_schema_identity(
     new_path: &str,
 ) -> Result<PathBuf, Diagnostic> {
     if !matches!(kind, "entity" | "field") {
-        return Err(Diagnostic::error(
-            "MIG_IDENTITY_RENAME_KIND",
-            "schema rename supports only `entity` or `field`",
-        ));
+        return Err(Diagnostic::error("MIG_IDENTITY_RENAME_KIND"));
     }
     let path = schema_registry_path(project);
     if !path.exists() {
-        return Err(Diagnostic::error(
-            "MIG_IDENTITY_REGISTRY_MISSING",
-            format!(
-                "schema identity registry does not exist: {}",
-                path.display()
-            ),
-        )
-        .with_note("run `jadpo schema init <project>` before tracking renames"));
+        return Err(Diagnostic::error("MIG_IDENTITY_REGISTRY_MISSING")
+            .with_note("run `jadpo schema init <project>` before tracking renames"));
     }
     let source = read_registry_source(&path)?;
     let mut entries = parse_registry(&source)?;
@@ -165,30 +140,21 @@ pub fn rename_schema_identity(
         .iter()
         .any(|entry| entry.kind == kind && entry.path == old_path)
     {
-        return Err(Diagnostic::error(
-            "MIG_IDENTITY_RENAME_SOURCE_UNKNOWN",
-            format!("registry has no {kind} identity at `{old_path}`"),
-        ));
+        return Err(Diagnostic::error("MIG_IDENTITY_RENAME_SOURCE_UNKNOWN"));
     }
     let live = derive_registry_entries(analyzed);
     if !live
         .iter()
         .any(|entry| entry.kind == kind && entry.path == new_path)
     {
-        return Err(Diagnostic::error(
-            "MIG_IDENTITY_RENAME_TARGET_UNKNOWN",
-            format!("checked source has no {kind} declaration at `{new_path}`"),
-        )
-        .with_note("rename the source declaration before updating its registry identity"));
+        return Err(Diagnostic::error("MIG_IDENTITY_RENAME_TARGET_UNKNOWN")
+            .with_note("rename the source declaration before updating its registry identity"));
     }
     if entries
         .iter()
         .any(|entry| entry.kind == kind && entry.path == new_path)
     {
-        return Err(Diagnostic::error(
-            "MIG_IDENTITY_RENAME_TARGET_EXISTS",
-            format!("registry already contains {kind} identity `{new_path}`"),
-        ));
+        return Err(Diagnostic::error("MIG_IDENTITY_RENAME_TARGET_EXISTS"));
     }
 
     for entry in &mut entries {
@@ -214,12 +180,8 @@ pub fn rename_schema_identity(
     }
     entries.sort_by(|left, right| left.id.cmp(&right.id));
     validate_registry_entries(&entries, &live)?;
-    fs::write(&path, registry_json(&entries)).map_err(|error| {
-        Diagnostic::error(
-            "MIG_IDENTITY_REGISTRY_WRITE_FAILED",
-            format!("could not write {}: {error}", path.display()),
-        )
-    })?;
+    fs::write(&path, registry_json(&entries))
+        .map_err(|_error| Diagnostic::error("MIG_IDENTITY_REGISTRY_WRITE_FAILED"))?;
     Ok(path)
 }
 
@@ -229,14 +191,8 @@ pub fn register_schema_additions(
 ) -> Result<(PathBuf, usize), Diagnostic> {
     let path = schema_registry_path(project);
     if !path.exists() {
-        return Err(Diagnostic::error(
-            "MIG_IDENTITY_REGISTRY_MISSING",
-            format!(
-                "schema identity registry does not exist: {}",
-                path.display()
-            ),
-        )
-        .with_note("run `jadpo schema init <project>` before registering additions"));
+        return Err(Diagnostic::error("MIG_IDENTITY_REGISTRY_MISSING")
+            .with_note("run `jadpo schema init <project>` before registering additions"));
     }
     let source = read_registry_source(&path)?;
     let mut entries = parse_registry(&source)?;
@@ -246,18 +202,12 @@ pub fn register_schema_additions(
         .iter()
         .map(|entry| (entry.kind.clone(), entry.path.clone()))
         .collect::<BTreeSet<_>>();
-    if let Some(stale) = entries
+    if let Some(_stale) = entries
         .iter()
         .find(|entry| !live_keys.contains(&(entry.kind.clone(), entry.path.clone())))
     {
-        return Err(Diagnostic::error(
-            "MIG_IDENTITY_ADDITIONS_HAVE_REMOVAL",
-            format!(
-                "cannot register additions while {} `{}` is missing from checked source",
-                stale.kind, stale.path
-            ),
-        )
-        .with_note("resolve renames or lifecycle removals before registering additions"));
+        return Err(Diagnostic::error("MIG_IDENTITY_ADDITIONS_HAVE_REMOVAL")
+            .with_note("resolve renames or lifecycle removals before registering additions"));
     }
 
     let mut registered_keys = entries
@@ -283,12 +233,8 @@ pub fn register_schema_additions(
     }
     entries.sort_by(|left, right| left.id.cmp(&right.id));
     validate_registry_entries(&entries, &derive_registry_entries(analyzed))?;
-    fs::write(&path, registry_json(&entries)).map_err(|error| {
-        Diagnostic::error(
-            "MIG_IDENTITY_REGISTRY_WRITE_FAILED",
-            format!("could not write {}: {error}", path.display()),
-        )
-    })?;
+    fs::write(&path, registry_json(&entries))
+        .map_err(|_error| Diagnostic::error("MIG_IDENTITY_REGISTRY_WRITE_FAILED"))?;
     Ok((path, added))
 }
 
@@ -298,30 +244,17 @@ pub fn snapshot_schema_identities(
     output: &Path,
 ) -> Result<PathBuf, Diagnostic> {
     let current = validate_schema_identities(project, analyzed)?.ok_or_else(|| {
-        Diagnostic::error(
-            "MIG_IDENTITY_REGISTRY_MISSING",
-            "schema identity registry does not exist",
-        )
-        .with_note("run `jadpo schema init <project>` before taking a snapshot")
+        Diagnostic::error("MIG_IDENTITY_REGISTRY_MISSING")
+            .with_note("run `jadpo schema init <project>` before taking a snapshot")
     })?;
     if output.exists() {
-        return Err(Diagnostic::error(
-            "MIG_IDENTITY_SNAPSHOT_EXISTS",
-            format!(
-                "schema identity snapshot already exists: {}",
-                output.display()
-            ),
-        )
-        .with_note("schema snapshots are immutable comparison inputs"));
+        return Err(Diagnostic::error("MIG_IDENTITY_SNAPSHOT_EXISTS")
+            .with_note("schema snapshots are immutable comparison inputs"));
     }
     let registry = parse_registry(&read_registry_source(&current)?)?;
     let snapshot = derive_schema_snapshot_entries(analyzed, &registry)?;
-    fs::write(output, schema_snapshot_json(&snapshot)).map_err(|error| {
-        Diagnostic::error(
-            "MIG_IDENTITY_SNAPSHOT_WRITE_FAILED",
-            format!("could not write {}: {error}", output.display()),
-        )
-    })?;
+    fs::write(output, schema_snapshot_json(&snapshot))
+        .map_err(|_error| Diagnostic::error("MIG_IDENTITY_SNAPSHOT_WRITE_FAILED"))?;
     Ok(output.to_owned())
 }
 
@@ -342,14 +275,8 @@ pub fn write_schema_decision_template(
     output: &Path,
 ) -> Result<(PathBuf, usize), Diagnostic> {
     if output.exists() {
-        return Err(Diagnostic::error(
-            "MIG_DECISION_ARTIFACT_EXISTS",
-            format!(
-                "schema decision artifact already exists: {}",
-                output.display()
-            ),
-        )
-        .with_note("decision templates never overwrite authored decisions"));
+        return Err(Diagnostic::error("MIG_DECISION_ARTIFACT_EXISTS")
+            .with_note("decision templates never overwrite authored decisions"));
     }
     let changes = checked_schema_changes(project, analyzed, previous)?;
     let change_set = schema_change_set_json(&changes);
@@ -358,12 +285,7 @@ pub fn write_schema_decision_template(
         output,
         schema_decision_artifact_json(&change_set, &decisions),
     )
-    .map_err(|error| {
-        Diagnostic::error(
-            "MIG_DECISION_ARTIFACT_WRITE_FAILED",
-            format!("could not write {}: {error}", output.display()),
-        )
-    })?;
+    .map_err(|_error| Diagnostic::error("MIG_DECISION_ARTIFACT_WRITE_FAILED"))?;
     Ok((output.to_owned(), decisions.len()))
 }
 
@@ -388,19 +310,12 @@ fn checked_schema_decisions(
 ) -> Result<(Vec<SchemaChange>, SchemaDecisionArtifact), Diagnostic> {
     let changes = checked_schema_changes(project, analyzed, previous)?;
     let expected_change_set = schema_change_set_json(&changes);
-    let artifact_source = fs::read_to_string(decisions_path).map_err(|error| {
-        Diagnostic::error(
-            "MIG_DECISION_ARTIFACT_READ_FAILED",
-            format!("could not read {}: {error}", decisions_path.display()),
-        )
-    })?;
+    let artifact_source = fs::read_to_string(decisions_path)
+        .map_err(|_error| Diagnostic::error("MIG_DECISION_ARTIFACT_READ_FAILED"))?;
     let artifact = parse_schema_decision_artifact(&artifact_source)?;
     if artifact.change_set != expected_change_set {
-        return Err(Diagnostic::error(
-            "MIG_DECISION_CHANGE_SET_STALE",
-            "schema decision artifact is not bound to the current canonical change set",
-        )
-        .with_note("regenerate the decision template and review every changed requirement"));
+        return Err(Diagnostic::error("MIG_DECISION_CHANGE_SET_STALE")
+            .with_note("regenerate the decision template and review every changed requirement"));
     }
 
     let required = changes
@@ -412,31 +327,17 @@ fn checked_schema_decisions(
     for decision in &artifact.decisions {
         let key = (decision.identity.as_str(), decision.change.as_str());
         if !supplied.insert(key) {
-            return Err(Diagnostic::error(
-                "MIG_DECISION_DUPLICATE",
-                format!(
-                    "decision repeats change `{}` for identity `{}`",
-                    decision.change, decision.identity
-                ),
-            ));
+            return Err(Diagnostic::error("MIG_DECISION_DUPLICATE"));
         }
         let Some(change) = required.get(&key).copied() else {
-            return Err(Diagnostic::error(
-                "MIG_DECISION_UNEXPECTED",
-                format!(
-                    "decision targets non-blocking or unknown change `{}` for identity `{}`",
-                    decision.change, decision.identity
-                ),
-            ));
+            return Err(Diagnostic::error("MIG_DECISION_UNEXPECTED"));
         };
         validate_schema_decision(change, decision)?;
     }
-    if let Some(((identity, change), _)) = required.iter().find(|(key, _)| !supplied.contains(*key))
+    if let Some(((_identity, _change), _)) =
+        required.iter().find(|(key, _)| !supplied.contains(*key))
     {
-        return Err(Diagnostic::error(
-            "MIG_DECISION_MISSING",
-            format!("missing decision for change `{change}` on identity `{identity}`"),
-        ));
+        return Err(Diagnostic::error("MIG_DECISION_MISSING"));
     }
     Ok((changes, artifact))
 }
@@ -450,11 +351,8 @@ pub fn write_schema_migration_plan(
     output: &Path,
 ) -> Result<(PathBuf, usize, usize), Diagnostic> {
     if output.exists() {
-        return Err(Diagnostic::error(
-            "MIG_PLAN_EXISTS",
-            format!("schema migration plan already exists: {}", output.display()),
-        )
-        .with_note("migration plans are immutable review artifacts"));
+        return Err(Diagnostic::error("MIG_PLAN_EXISTS")
+            .with_note("migration plans are immutable review artifacts"));
     }
     let adapter = MigrationAdapter::parse(adapter)?;
     let (changes, artifact) =
@@ -462,12 +360,7 @@ pub fn write_schema_migration_plan(
     let steps = migration_plan_steps(&changes, &artifact.decisions, adapter)?;
     let irreversible = steps.iter().filter(|step| step.irreversible).count();
     let plan = schema_migration_plan_json(adapter, &schema_change_set_json(&changes), &steps);
-    fs::write(output, plan).map_err(|error| {
-        Diagnostic::error(
-            "MIG_PLAN_WRITE_FAILED",
-            format!("could not write {}: {error}", output.display()),
-        )
-    })?;
+    fs::write(output, plan).map_err(|_error| Diagnostic::error("MIG_PLAN_WRITE_FAILED"))?;
     Ok((output.to_owned(), steps.len(), irreversible))
 }
 
@@ -480,14 +373,8 @@ pub fn write_schema_migration_sql_review(
     output: &Path,
 ) -> Result<(PathBuf, usize, usize), Diagnostic> {
     if output.exists() {
-        return Err(Diagnostic::error(
-            "MIG_SQL_REVIEW_EXISTS",
-            format!(
-                "schema migration SQL review already exists: {}",
-                output.display()
-            ),
-        )
-        .with_note("migration SQL reviews are immutable artifacts"));
+        return Err(Diagnostic::error("MIG_SQL_REVIEW_EXISTS")
+            .with_note("migration SQL reviews are immutable artifacts"));
     }
     let adapter = MigrationAdapter::parse(adapter)?;
     let (changes, artifact) =
@@ -502,12 +389,8 @@ pub fn write_schema_migration_sql_review(
         &forward,
         &rollback,
     );
-    fs::write(output, contents).map_err(|error| {
-        Diagnostic::error(
-            "MIG_SQL_REVIEW_WRITE_FAILED",
-            format!("could not write {}: {error}", output.display()),
-        )
-    })?;
+    fs::write(output, contents)
+        .map_err(|_error| Diagnostic::error("MIG_SQL_REVIEW_WRITE_FAILED"))?;
     Ok((output.to_owned(), forward.len(), rollback.len()))
 }
 
@@ -516,11 +399,8 @@ impl MigrationAdapter {
         match value {
             "postgres" => Ok(Self::Postgres),
             "sqlite" => Ok(Self::Sqlite),
-            _ => Err(Diagnostic::error(
-                "MIG_PLAN_ADAPTER_INVALID",
-                format!("unsupported migration adapter `{value}`"),
-            )
-            .with_note("expected `postgres` or `sqlite`")),
+            _ => Err(Diagnostic::error("MIG_PLAN_ADAPTER_INVALID")
+                .with_note("expected `postgres` or `sqlite`")),
         }
     }
 
@@ -538,34 +418,19 @@ fn checked_schema_changes(
     previous: &Path,
 ) -> Result<Vec<SchemaChange>, Diagnostic> {
     let current_path = validate_schema_identities(project, analyzed)?.ok_or_else(|| {
-        Diagnostic::error(
-            "MIG_IDENTITY_REGISTRY_MISSING",
-            "schema identity registry does not exist",
-        )
-        .with_note("run `jadpo schema init <project>` before comparing identities")
+        Diagnostic::error("MIG_IDENTITY_REGISTRY_MISSING")
+            .with_note("run `jadpo schema init <project>` before comparing identities")
     })?;
     if !previous.exists() {
-        return Err(Diagnostic::error(
-            "MIG_IDENTITY_SNAPSHOT_MISSING",
-            format!(
-                "schema identity snapshot does not exist: {}",
-                previous.display()
-            ),
-        ));
+        return Err(Diagnostic::error("MIG_IDENTITY_SNAPSHOT_MISSING"));
     }
     let current_registry = parse_registry(&read_registry_source(&current_path)?)?;
     let current = derive_schema_snapshot_entries(analyzed, &current_registry)?;
     let previous_source = read_registry_source(previous)?;
     let previous_entries = parse_schema_snapshot(&previous_source)?;
     if schema_snapshot_json(&previous_entries) != previous_source {
-        return Err(Diagnostic::error(
-            "MIG_IDENTITY_SNAPSHOT_NOT_CANONICAL",
-            format!(
-                "schema identity snapshot is not canonical: {}",
-                previous.display()
-            ),
-        )
-        .with_note("create snapshots with `jadpo schema snapshot`"));
+        return Err(Diagnostic::error("MIG_IDENTITY_SNAPSHOT_NOT_CANONICAL")
+            .with_note("create snapshots with `jadpo schema snapshot`"));
     }
     Ok(schema_changes(&previous_entries, &current))
 }
@@ -848,56 +713,31 @@ fn validate_schema_decision(
     change: &SchemaChange,
     decision: &SchemaDecision,
 ) -> Result<(), Diagnostic> {
-    let strategy = decision.strategy.as_deref().ok_or_else(|| {
-        Diagnostic::error(
-            "MIG_DECISION_UNRESOLVED",
-            format!(
-                "change `{}` on `{}` has no strategy",
-                change.change, change.identity
-            ),
-        )
-    })?;
+    let strategy = decision
+        .strategy
+        .as_deref()
+        .ok_or_else(|| Diagnostic::error("MIG_DECISION_UNRESOLVED"))?;
     let (_, strategies) = decision_strategies(change.change, change.disposition)
         .expect("validation only visits changes requiring a decision");
     let required = strategies
         .iter()
         .find(|(name, _)| *name == strategy)
         .map(|(_, required)| required)
-        .ok_or_else(|| {
-            Diagnostic::error(
-                "MIG_DECISION_STRATEGY_INVALID",
-                format!(
-                    "strategy `{strategy}` is not valid for change `{}` on `{}`",
-                    change.change, change.identity
-                ),
-            )
-        })?;
+        .ok_or_else(|| Diagnostic::error("MIG_DECISION_STRATEGY_INVALID"))?;
     let mut supplied = BTreeMap::new();
     for evidence in &decision.evidence {
         if evidence.value.trim().is_empty() {
-            return Err(Diagnostic::error(
-                "MIG_DECISION_EVIDENCE_EMPTY",
-                format!("evidence `{}` has an empty value", evidence.kind),
-            ));
+            return Err(Diagnostic::error("MIG_DECISION_EVIDENCE_EMPTY"));
         }
         if supplied.insert(evidence.kind.as_str(), evidence).is_some() {
-            return Err(Diagnostic::error(
-                "MIG_DECISION_EVIDENCE_DUPLICATE",
-                format!("evidence `{}` is repeated", evidence.kind),
-            ));
+            return Err(Diagnostic::error("MIG_DECISION_EVIDENCE_DUPLICATE"));
         }
     }
-    if let Some(kind) = required.iter().find(|kind| !supplied.contains_key(**kind)) {
-        return Err(Diagnostic::error(
-            "MIG_DECISION_EVIDENCE_MISSING",
-            format!("strategy `{strategy}` requires `{kind}` evidence"),
-        ));
+    if let Some(_kind) = required.iter().find(|kind| !supplied.contains_key(**kind)) {
+        return Err(Diagnostic::error("MIG_DECISION_EVIDENCE_MISSING"));
     }
-    if let Some(kind) = supplied.keys().find(|kind| !required.contains(kind)) {
-        return Err(Diagnostic::error(
-            "MIG_DECISION_EVIDENCE_UNEXPECTED",
-            format!("strategy `{strategy}` does not accept `{kind}` evidence"),
-        ));
+    if let Some(_kind) = supplied.keys().find(|kind| !required.contains(kind)) {
+        return Err(Diagnostic::error("MIG_DECISION_EVIDENCE_UNEXPECTED"));
     }
     Ok(())
 }
@@ -923,13 +763,7 @@ fn migration_plan_steps(
                 .get(&(change.identity.as_str(), change.change))
                 .copied();
             if decision.and_then(|item| item.strategy.as_deref()) == Some("reject") {
-                return Err(Diagnostic::error(
-                    "MIG_PLAN_DECISION_REJECTS_CHANGE",
-                    format!(
-                        "decision rejects change `{}` on `{}`; no migration plan can implement it",
-                        change.change, change.identity
-                    ),
-                ));
+                return Err(Diagnostic::error("MIG_PLAN_DECISION_REJECTS_CHANGE"));
             }
             let strategy = decision.and_then(|item| item.strategy.as_deref());
             let operation = migration_operation(change, strategy, adapter);
@@ -1127,12 +961,10 @@ fn migration_sql(
                     .after
                     .as_ref()
                     .expect("field additions have after state");
-                let owner = field.owner_id.as_deref().ok_or_else(|| {
-                    Diagnostic::error(
-                        "MIG_SQL_FIELD_OWNER_MISSING",
-                        format!("field `{}` has no owning entity identity", field.path),
-                    )
-                })?;
+                let owner = field
+                    .owner_id
+                    .as_deref()
+                    .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_OWNER_MISSING"))?;
                 changes_by_owner.entry(owner).or_default().push(change);
             }
 
@@ -1149,12 +981,10 @@ fn migration_sql(
                         registry,
                     )?);
                 } else {
-                    let table = entity_tables.get(owner).copied().ok_or_else(|| {
-                        Diagnostic::error(
-                            "MIG_SQL_FIELD_OWNER_MISSING",
-                            format!("added fields have unknown owning entity identity `{owner}`"),
-                        )
-                    })?;
+                    let table = entity_tables
+                        .get(owner)
+                        .copied()
+                        .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_OWNER_MISSING"))?;
                     let mut forward = Vec::new();
                     let mut rollback = Vec::new();
                     for change in owner_changes {
@@ -1162,12 +992,8 @@ fn migration_sql(
                             .after
                             .as_ref()
                             .expect("field additions have after state");
-                        let field_type = field_shape_type(&field.shape).ok_or_else(|| {
-                            Diagnostic::error(
-                                "MIG_SQL_FIELD_SHAPE_INVALID",
-                                format!("field `{}` snapshot has no nominal type", field.path),
-                            )
-                        })?;
+                        let field_type = field_shape_type(&field.shape)
+                            .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_SHAPE_INVALID"))?;
                         let sql_type = migration_sql_type(field_type, adapter)?;
                         let table = sql_identifier_for_migration(table);
                         let column = sql_identifier_for_migration(&field.physical_name);
@@ -1203,12 +1029,10 @@ fn migration_sql(
                     .after
                     .as_ref()
                     .expect("field shape changes have after state");
-                let owner = field.owner_id.as_deref().ok_or_else(|| {
-                    Diagnostic::error(
-                        "MIG_SQL_FIELD_OWNER_MISSING",
-                        format!("field `{}` has no owning entity identity", field.path),
-                    )
-                })?;
+                let owner = field
+                    .owner_id
+                    .as_deref()
+                    .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_OWNER_MISSING"))?;
                 changes_by_owner.entry(owner).or_default().push(change);
             }
             let units = changes_by_owner
@@ -1244,12 +1068,10 @@ fn migration_sql(
                     .after
                     .as_ref()
                     .expect("field shape changes have after state");
-                let owner = field.owner_id.as_deref().ok_or_else(|| {
-                    Diagnostic::error(
-                        "MIG_SQL_FIELD_OWNER_MISSING",
-                        format!("field `{}` has no owning entity identity", field.path),
-                    )
-                })?;
+                let owner = field
+                    .owner_id
+                    .as_deref()
+                    .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_OWNER_MISSING"))?;
                 changes_by_owner.entry(owner).or_default().push(change);
             }
             let units = changes_by_owner
@@ -1278,30 +1100,20 @@ fn migration_sql(
         }
         if change.change == "field_nullability_widened" {
             if adapter == MigrationAdapter::Sqlite {
-                return Err(Diagnostic::error(
-                    "MIG_SQL_SQLITE_REBUILD_REQUIRED",
-                    "SQLite nullability widening cannot yet be combined with other change kinds",
-                ));
+                return Err(Diagnostic::error("MIG_SQL_SQLITE_REBUILD_REQUIRED"));
             }
             let field = change
                 .after
                 .as_ref()
                 .expect("field shape changes have after state");
-            let owner = field.owner_id.as_deref().ok_or_else(|| {
-                Diagnostic::error(
-                    "MIG_SQL_FIELD_OWNER_MISSING",
-                    format!("field `{}` has no owning entity identity", field.path),
-                )
-            })?;
-            let table = entity_tables.get(owner).copied().ok_or_else(|| {
-                Diagnostic::error(
-                    "MIG_SQL_FIELD_OWNER_MISSING",
-                    format!(
-                        "field `{}` has an unknown owning entity identity",
-                        field.path
-                    ),
-                )
-            })?;
+            let owner = field
+                .owner_id
+                .as_deref()
+                .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_OWNER_MISSING"))?;
+            let table = entity_tables
+                .get(owner)
+                .copied()
+                .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_OWNER_MISSING"))?;
             let table = sql_identifier_for_migration(table);
             let column = sql_identifier_for_migration(&field.physical_name);
             forward.push(format!(
@@ -1314,10 +1126,7 @@ fn migration_sql(
         }
         if change.change == "field_nullability_narrowed" {
             if adapter == MigrationAdapter::Sqlite {
-                return Err(Diagnostic::error(
-                    "MIG_SQL_SQLITE_REBUILD_REQUIRED",
-                    "SQLite nullability narrowing cannot yet be combined with other change kinds",
-                ));
+                return Err(Diagnostic::error("MIG_SQL_SQLITE_REBUILD_REQUIRED"));
             }
             let decision = decisions
                 .get(&(change.identity.as_str(), change.change))
@@ -1328,21 +1137,14 @@ fn migration_sql(
                 .after
                 .as_ref()
                 .expect("field shape changes have after state");
-            let owner = field.owner_id.as_deref().ok_or_else(|| {
-                Diagnostic::error(
-                    "MIG_SQL_FIELD_OWNER_MISSING",
-                    format!("field `{}` has no owning entity identity", field.path),
-                )
-            })?;
-            let table = entity_tables.get(owner).copied().ok_or_else(|| {
-                Diagnostic::error(
-                    "MIG_SQL_FIELD_OWNER_MISSING",
-                    format!(
-                        "field `{}` has an unknown owning entity identity",
-                        field.path
-                    ),
-                )
-            })?;
+            let owner = field
+                .owner_id
+                .as_deref()
+                .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_OWNER_MISSING"))?;
+            let table = entity_tables
+                .get(owner)
+                .copied()
+                .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_OWNER_MISSING"))?;
             let table = sql_identifier_for_migration(table);
             let column = sql_identifier_for_migration(&field.physical_name);
             forward.push(format!(
@@ -1360,40 +1162,23 @@ fn migration_sql(
             change.change,
             "added_nullable_field" | "added_required_field"
         ) {
-            return Err(Diagnostic::error(
-                "MIG_SQL_CHANGE_UNSUPPORTED",
-                format!(
-                    "reviewed SQL generation does not yet support change `{}` on `{}`",
-                    change.change, change.identity
-                ),
-            )
-            .with_note("the non-executable adapter plan remains available for review"));
+            return Err(Diagnostic::error("MIG_SQL_CHANGE_UNSUPPORTED")
+                .with_note("the non-executable adapter plan remains available for review"));
         }
         let field = change
             .after
             .as_ref()
             .expect("field additions have after state");
-        let owner = field.owner_id.as_deref().ok_or_else(|| {
-            Diagnostic::error(
-                "MIG_SQL_FIELD_OWNER_MISSING",
-                format!("field `{}` has no owning entity identity", field.path),
-            )
-        })?;
-        let table = entity_tables.get(owner).copied().ok_or_else(|| {
-            Diagnostic::error(
-                "MIG_SQL_FIELD_OWNER_MISSING",
-                format!(
-                    "field `{}` has an unknown owning entity identity",
-                    field.path
-                ),
-            )
-        })?;
-        let field_type = field_shape_type(&field.shape).ok_or_else(|| {
-            Diagnostic::error(
-                "MIG_SQL_FIELD_SHAPE_INVALID",
-                format!("field `{}` snapshot has no nominal type", field.path),
-            )
-        })?;
+        let owner = field
+            .owner_id
+            .as_deref()
+            .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_OWNER_MISSING"))?;
+        let table = entity_tables
+            .get(owner)
+            .copied()
+            .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_OWNER_MISSING"))?;
+        let field_type = field_shape_type(&field.shape)
+            .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_SHAPE_INVALID"))?;
         let sql_type = migration_sql_type(field_type, adapter)?;
         let table = sql_identifier_for_migration(table);
         let column = sql_identifier_for_migration(&field.physical_name);
@@ -1404,26 +1189,14 @@ fn migration_sql(
 
         if change.change == "added_required_field" {
             if adapter == MigrationAdapter::Sqlite {
-                return Err(Diagnostic::error(
-                    "MIG_SQL_SQLITE_REBUILD_REQUIRED",
-                    format!(
-                        "required field `{}` needs a checked SQLite table-rebuild generator",
-                        field.path
-                    ),
-                ));
+                return Err(Diagnostic::error("MIG_SQL_SQLITE_REBUILD_REQUIRED"));
             }
             let decision = decisions
                 .get(&(change.identity.as_str(), change.change))
                 .copied()
                 .expect("required additions have validated decisions");
             if decision.strategy.as_deref() != Some("backfill") {
-                return Err(Diagnostic::error(
-                    "MIG_SQL_STRATEGY_UNSUPPORTED",
-                    format!(
-                        "reviewed SQL for `{}` currently requires the `backfill` strategy",
-                        field.path
-                    ),
-                ));
+                return Err(Diagnostic::error("MIG_SQL_STRATEGY_UNSUPPORTED"));
             }
             let expression = decision
                 .evidence
@@ -1459,20 +1232,11 @@ fn migration_change_is_metadata_only(change: &SchemaChange) -> bool {
 }
 
 fn validate_nullability_narrowing_decision(
-    change: &SchemaChange,
+    _change: &SchemaChange,
     decision: &SchemaDecision,
 ) -> Result<(), Diagnostic> {
     if decision.strategy.as_deref() != Some("validate_existing") {
-        return Err(Diagnostic::error(
-            "MIG_SQL_STRATEGY_UNSUPPORTED",
-            format!(
-                "reviewed SQL for `{}` currently requires the `validate_existing` strategy",
-                change
-                    .after
-                    .as_ref()
-                    .map_or(change.identity.as_str(), |field| field.path.as_str())
-            ),
-        ));
+        return Err(Diagnostic::error("MIG_SQL_STRATEGY_UNSUPPORTED"));
     }
     let predicate = decision
         .evidence
@@ -1481,11 +1245,8 @@ fn validate_nullability_narrowing_decision(
         .map(|evidence| evidence.value.as_str())
         .expect("validated narrowing decisions have typed predicate evidence");
     if predicate != "not_null" {
-        return Err(Diagnostic::error(
-            "MIG_SQL_PREDICATE_UNSUPPORTED",
-            format!("reviewed nullability narrowing does not support predicate `{predicate}`"),
-        )
-        .with_note("use the compiler-owned `not_null` predicate for this field"));
+        return Err(Diagnostic::error("MIG_SQL_PREDICATE_UNSUPPORTED")
+            .with_note("use the compiler-owned `not_null` predicate for this field"));
     }
     Ok(())
 }
@@ -1502,25 +1263,17 @@ fn sqlite_added_fields_rebuild(
         .after
         .as_ref()
         .expect("field additions have after state");
-    let owner_id = first_added.owner_id.as_deref().ok_or_else(|| {
-        Diagnostic::error(
-            "MIG_SQL_FIELD_OWNER_MISSING",
-            format!("field `{}` has no owning entity identity", first_added.path),
-        )
-    })?;
+    let owner_id = first_added
+        .owner_id
+        .as_deref()
+        .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_OWNER_MISSING"))?;
     let entity_entry = registry
         .iter()
         .find(|entry| entry.id == owner_id && entry.kind == "entity")
-        .ok_or_else(|| {
-            Diagnostic::error(
-                "MIG_SQL_FIELD_OWNER_MISSING",
-                format!("field `{}` has an unknown owning entity", first_added.path),
-            )
-        })?;
+        .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_OWNER_MISSING"))?;
     if !entity_entry.previous_paths.is_empty() {
         return Err(Diagnostic::error(
             "MIG_SQL_SQLITE_RENAMED_TABLE_UNSUPPORTED",
-            "SQLite rebuild SQL does not yet support a renamed owning table",
         ));
     }
     let record = analyzed
@@ -1536,12 +1289,7 @@ fn sqlite_added_fields_rebuild(
             }
             _ => None,
         })
-        .ok_or_else(|| {
-            Diagnostic::error(
-                "MIG_SQL_SQLITE_ENTITY_MISSING",
-                format!("could not locate entity `{}`", entity_entry.path),
-            )
-        })?;
+        .ok_or_else(|| Diagnostic::error("MIG_SQL_SQLITE_ENTITY_MISSING"))?;
     let mut added_names = BTreeSet::new();
     let mut added_values = BTreeMap::new();
     for change in changes {
@@ -1550,10 +1298,7 @@ fn sqlite_added_fields_rebuild(
             .as_ref()
             .expect("field additions have after state");
         if added.owner_id.as_deref() != Some(owner_id) {
-            return Err(Diagnostic::error(
-                "MIG_SQL_SQLITE_REBUILD_UNSUPPORTED",
-                "one SQLite table rebuild cannot combine fields from different entities",
-            ));
+            return Err(Diagnostic::error("MIG_SQL_SQLITE_REBUILD_UNSUPPORTED"));
         }
         let added_name = added
             .path
@@ -1564,12 +1309,7 @@ fn sqlite_added_fields_rebuild(
             .fields
             .iter()
             .find(|field| field.name.text == added_name)
-            .ok_or_else(|| {
-                Diagnostic::error(
-                    "MIG_SQL_SQLITE_FIELD_MISSING",
-                    format!("could not locate added field `{}`", added.path),
-                )
-            })?;
+            .ok_or_else(|| Diagnostic::error("MIG_SQL_SQLITE_FIELD_MISSING"))?;
         if added_field.persistence.iter().any(|modifier| {
             matches!(
                 modifier,
@@ -1578,10 +1318,7 @@ fn sqlite_added_fields_rebuild(
                     | PersistenceModifier::Index
             )
         }) {
-            return Err(Diagnostic::error(
-                "MIG_SQL_SQLITE_REBUILD_UNSUPPORTED",
-                "SQLite added-field rebuild does not yet support persistence modifiers on an added field",
-            ));
+            return Err(Diagnostic::error("MIG_SQL_SQLITE_REBUILD_UNSUPPORTED"));
         }
         let value = if change.change == "added_required_field" {
             let decision = decisions
@@ -1589,10 +1326,7 @@ fn sqlite_added_fields_rebuild(
                 .copied()
                 .expect("required additions have validated decisions");
             if decision.strategy.as_deref() != Some("backfill") {
-                return Err(Diagnostic::error(
-                    "MIG_SQL_STRATEGY_UNSUPPORTED",
-                    "SQLite required-field rebuild currently requires the `backfill` strategy",
-                ));
+                return Err(Diagnostic::error("MIG_SQL_STRATEGY_UNSUPPORTED"));
             }
             let expression = decision
                 .evidence
@@ -1600,12 +1334,8 @@ fn sqlite_added_fields_rebuild(
                 .find(|evidence| evidence.kind == "typed_expression")
                 .map(|evidence| evidence.value.as_str())
                 .expect("validated backfill decisions have typed expression evidence");
-            let added_type = field_shape_type(&added.shape).ok_or_else(|| {
-                Diagnostic::error(
-                    "MIG_SQL_FIELD_SHAPE_INVALID",
-                    format!("field `{}` snapshot has no nominal type", added.path),
-                )
-            })?;
+            let added_type = field_shape_type(&added.shape)
+                .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_SHAPE_INVALID"))?;
             compile_migration_literal(expression, added_type, MigrationAdapter::Sqlite)?
         } else {
             "NULL".to_owned()
@@ -1703,25 +1433,17 @@ fn sqlite_nullability_rebuild(
         .after
         .as_ref()
         .expect("field shape changes have after state");
-    let owner_id = first_field.owner_id.as_deref().ok_or_else(|| {
-        Diagnostic::error(
-            "MIG_SQL_FIELD_OWNER_MISSING",
-            format!("field `{}` has no owning entity identity", first_field.path),
-        )
-    })?;
+    let owner_id = first_field
+        .owner_id
+        .as_deref()
+        .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_OWNER_MISSING"))?;
     let entity_entry = registry
         .iter()
         .find(|entry| entry.id == owner_id && entry.kind == "entity")
-        .ok_or_else(|| {
-            Diagnostic::error(
-                "MIG_SQL_FIELD_OWNER_MISSING",
-                format!("field `{}` has an unknown owning entity", first_field.path),
-            )
-        })?;
+        .ok_or_else(|| Diagnostic::error("MIG_SQL_FIELD_OWNER_MISSING"))?;
     if !entity_entry.previous_paths.is_empty() {
         return Err(Diagnostic::error(
             "MIG_SQL_SQLITE_RENAMED_TABLE_UNSUPPORTED",
-            "SQLite rebuild SQL does not yet support a renamed owning table",
         ));
     }
     let record = analyzed
@@ -1737,12 +1459,7 @@ fn sqlite_nullability_rebuild(
             }
             _ => None,
         })
-        .ok_or_else(|| {
-            Diagnostic::error(
-                "MIG_SQL_SQLITE_ENTITY_MISSING",
-                format!("could not locate entity `{}`", entity_entry.path),
-            )
-        })?;
+        .ok_or_else(|| Diagnostic::error("MIG_SQL_SQLITE_ENTITY_MISSING"))?;
     let mut changed_names = BTreeSet::new();
     for change in changes {
         let before = change
@@ -1759,10 +1476,7 @@ fn sqlite_nullability_rebuild(
             field_shape_is_nullability_widening(&before.shape, &after.shape)
         };
         if after.owner_id.as_deref() != Some(owner_id) || !compatible {
-            return Err(Diagnostic::error(
-                "MIG_SQL_SQLITE_REBUILD_UNSUPPORTED",
-                "one SQLite nullability rebuild can contain only compatible changes from one entity",
-            ));
+            return Err(Diagnostic::error("MIG_SQL_SQLITE_REBUILD_UNSUPPORTED"));
         }
         let field_name = after
             .path
@@ -1774,10 +1488,7 @@ fn sqlite_nullability_rebuild(
             .iter()
             .any(|field| field.name.text == field_name)
         {
-            return Err(Diagnostic::error(
-                "MIG_SQL_SQLITE_FIELD_MISSING",
-                format!("could not locate changed field `{}`", after.path),
-            ));
+            return Err(Diagnostic::error("MIG_SQL_SQLITE_FIELD_MISSING"));
         }
         changed_names.insert(field_name);
     }
@@ -1892,12 +1603,7 @@ fn sqlite_rebuild_table_body(
                 let constraint = registry
                     .iter()
                     .find(|entry| entry.path == path)
-                    .ok_or_else(|| {
-                        Diagnostic::error(
-                            "MIG_SQL_SQLITE_CONSTRAINT_MISSING",
-                            format!("registry has no constraint identity for `{path}`"),
-                        )
-                    })?;
+                    .ok_or_else(|| Diagnostic::error("MIG_SQL_SQLITE_CONSTRAINT_MISSING"))?;
                 let kind = if modifier == PersistenceModifier::Identity {
                     "PRIMARY KEY"
                 } else {
@@ -1926,22 +1632,12 @@ fn sqlite_rebuild_table_body(
             let target_table = registry
                 .iter()
                 .find(|entry| entry.kind == "entity" && entry.path == target_entity)
-                .ok_or_else(|| {
-                    Diagnostic::error(
-                        "MIG_SQL_SQLITE_REFERENCE_MISSING",
-                        format!("registry has no target entity `{target_entity}`"),
-                    )
-                })?;
+                .ok_or_else(|| Diagnostic::error("MIG_SQL_SQLITE_REFERENCE_MISSING"))?;
             let target_path = format!("{target_entity}.{target_field}");
             let target_column = registry
                 .iter()
                 .find(|entry| entry.kind == "field" && entry.path == target_path)
-                .ok_or_else(|| {
-                    Diagnostic::error(
-                        "MIG_SQL_SQLITE_REFERENCE_MISSING",
-                        format!("registry has no target field `{target_path}`"),
-                    )
-                })?;
+                .ok_or_else(|| Diagnostic::error("MIG_SQL_SQLITE_REFERENCE_MISSING"))?;
             let owner_table = registry
                 .iter()
                 .find(|entry| entry.kind == "entity" && entry.path == record.name.text)
@@ -1969,21 +1665,13 @@ fn sqlite_rebuild_table_body(
             .iter()
             .any(|field| excluded_fields.contains(field.text.as_str()))
         {
-            return Err(Diagnostic::error(
-                "MIG_SQL_SQLITE_REBUILD_UNSUPPORTED",
-                "SQLite rollback cannot retain a compound constraint that uses a newly added field",
-            ));
+            return Err(Diagnostic::error("MIG_SQL_SQLITE_REBUILD_UNSUPPORTED"));
         }
         let path = format!("{}.{}", record.name.text, constraint.name.text);
         let identity = registry
             .iter()
             .find(|entry| entry.kind == "unique_constraint" && entry.path == path)
-            .ok_or_else(|| {
-                Diagnostic::error(
-                    "MIG_SQL_SQLITE_CONSTRAINT_MISSING",
-                    format!("registry has no compound constraint identity for `{path}`"),
-                )
-            })?;
+            .ok_or_else(|| Diagnostic::error("MIG_SQL_SQLITE_CONSTRAINT_MISSING"))?;
         let fields = constraint
             .fields
             .iter()
@@ -2034,21 +1722,13 @@ fn sqlite_rebuild_field_type(
                 }
                 _ => None,
             })
-            .ok_or_else(|| {
-                Diagnostic::error(
-                    "MIG_SQL_SQLITE_REFERENCE_MISSING",
-                    format!("could not resolve referenced field `{entity}.{target}`"),
-                )
-            })?;
+            .ok_or_else(|| Diagnostic::error("MIG_SQL_SQLITE_REFERENCE_MISSING"))?;
         return migration_sql_type(
             &type_name(&target_field.field_type),
             MigrationAdapter::Sqlite,
         );
     }
-    Err(Diagnostic::error(
-        "MIG_SQL_TYPE_UNSUPPORTED",
-        format!("SQLite rebuild SQL does not yet support nominal type `{raw}`"),
-    ))
+    Err(Diagnostic::error("MIG_SQL_TYPE_UNSUPPORTED"))
 }
 
 fn sqlite_rebuild_columns(
@@ -2077,12 +1757,7 @@ fn sqlite_field_physical_name<'a>(
         .iter()
         .find(|entry| entry.kind == "field" && entry.path == path)
         .map(|entry| entry.physical_name.as_str())
-        .ok_or_else(|| {
-            Diagnostic::error(
-                "MIG_SQL_SQLITE_FIELD_IDENTITY_MISSING",
-                format!("registry has no field identity for `{path}`"),
-            )
-        })
+        .ok_or_else(|| Diagnostic::error("MIG_SQL_SQLITE_FIELD_IDENTITY_MISSING"))
 }
 
 fn sqlite_rebuild_index_sql(
@@ -2094,12 +1769,7 @@ fn sqlite_rebuild_index_sql(
         .iter()
         .find(|entry| entry.kind == "entity" && entry.path == record.name.text)
         .map(|entry| sql_identifier_for_migration(&entry.physical_name))
-        .ok_or_else(|| {
-            Diagnostic::error(
-                "MIG_SQL_SQLITE_ENTITY_MISSING",
-                format!("registry has no entity identity for `{}`", record.name.text),
-            )
-        })?;
+        .ok_or_else(|| Diagnostic::error("MIG_SQL_SQLITE_ENTITY_MISSING"))?;
     record
         .fields
         .iter()
@@ -2113,12 +1783,7 @@ fn sqlite_rebuild_index_sql(
             let index = registry
                 .iter()
                 .find(|entry| entry.kind == "index" && entry.path == path)
-                .ok_or_else(|| {
-                    Diagnostic::error(
-                        "MIG_SQL_SQLITE_INDEX_MISSING",
-                        format!("registry has no index identity for `{path}`"),
-                    )
-                })?;
+                .ok_or_else(|| Diagnostic::error("MIG_SQL_SQLITE_INDEX_MISSING"))?;
             let column = sqlite_field_physical_name(record, field, registry)?;
             Ok(format!(
                 "CREATE INDEX {} ON {table} ({});",
@@ -2149,10 +1814,7 @@ fn migration_sql_type(
             MigrationAdapter::Sqlite => "REAL",
         }),
         "Text" | "Uuid" | "DateTime" => Ok("TEXT"),
-        other => Err(Diagnostic::error(
-            "MIG_SQL_TYPE_UNSUPPORTED",
-            format!("reviewed migration SQL does not yet support nominal type `{other}`"),
-        )),
+        _other => Err(Diagnostic::error("MIG_SQL_TYPE_UNSUPPORTED")),
     }
 }
 
@@ -2164,26 +1826,15 @@ fn compile_migration_literal(
     let value = expression
         .strip_prefix("literal(")
         .and_then(|value| value.strip_suffix(')'))
-        .ok_or_else(|| {
-            Diagnostic::error(
-                "MIG_SQL_EXPRESSION_UNSUPPORTED",
-                "typed migration expressions currently support only `literal(...)`",
-            )
-        })?;
+        .ok_or_else(|| Diagnostic::error("MIG_SQL_EXPRESSION_UNSUPPORTED"))?;
     match field_type.trim_end_matches('?') {
         "Text" => Ok(sql_string_literal(value)),
         "Uuid" if valid_uuid(value) => Ok(sql_string_literal(value)),
-        "Uuid" => Err(Diagnostic::error(
-            "MIG_SQL_LITERAL_INVALID",
-            format!("`{value}` is not a valid Uuid literal"),
-        )),
+        "Uuid" => Err(Diagnostic::error("MIG_SQL_LITERAL_INVALID")),
         "DateTime" if value.contains('T') && (value.ends_with('Z') || value.contains('+')) => {
             Ok(sql_string_literal(value))
         }
-        "DateTime" => Err(Diagnostic::error(
-            "MIG_SQL_LITERAL_INVALID",
-            format!("`{value}` is not an explicit offset DateTime literal"),
-        )),
+        "DateTime" => Err(Diagnostic::error("MIG_SQL_LITERAL_INVALID")),
         "Int" if value.parse::<i64>().is_ok() => Ok(value.to_owned()),
         "Decimal" if valid_decimal(value) => Ok(value.to_owned()),
         "Bool" if value == "true" => Ok(match adapter {
@@ -2194,10 +1845,7 @@ fn compile_migration_literal(
             MigrationAdapter::Postgres => "FALSE".to_owned(),
             MigrationAdapter::Sqlite => "0".to_owned(),
         }),
-        kind => Err(Diagnostic::error(
-            "MIG_SQL_LITERAL_INVALID",
-            format!("`{value}` is not a valid `{kind}` literal"),
-        )),
+        _kind => Err(Diagnostic::error("MIG_SQL_LITERAL_INVALID")),
     }
 }
 
@@ -2266,12 +1914,8 @@ fn schema_registry_path(project: &Path) -> PathBuf {
 }
 
 fn read_registry_source(path: &Path) -> Result<String, Diagnostic> {
-    fs::read_to_string(path).map_err(|error| {
-        Diagnostic::error(
-            "MIG_IDENTITY_REGISTRY_READ_FAILED",
-            format!("could not read {}: {error}", path.display()),
-        )
-    })
+    fs::read_to_string(path)
+        .map_err(|_error| Diagnostic::error("MIG_IDENTITY_REGISTRY_READ_FAILED"))
 }
 
 fn validate_registry_entries(
@@ -2288,31 +1932,19 @@ fn validate_registry_entries(
         .map(|entry| (entry.kind.as_str(), entry.path.as_str()))
         .collect::<BTreeSet<_>>();
 
-    if let Some(entry) = live
+    if let Some(_entry) = live
         .iter()
         .find(|entry| !registered.contains_key(&(entry.kind.as_str(), entry.path.as_str())))
     {
-        return Err(Diagnostic::error(
-            "MIG_IDENTITY_REGISTRY_DRIFT",
-            format!(
-                "checked source contains unregistered {} `{}`",
-                entry.kind, entry.path
-            ),
-        )
-        .with_note("additions and renames require an explicit schema registry operation"));
+        return Err(Diagnostic::error("MIG_IDENTITY_REGISTRY_DRIFT")
+            .with_note("additions and renames require an explicit schema registry operation"));
     }
-    if let Some(entry) = entries
+    if let Some(_entry) = entries
         .iter()
         .find(|entry| !live_keys.contains(&(entry.kind.as_str(), entry.path.as_str())))
     {
-        return Err(Diagnostic::error(
-            "MIG_IDENTITY_REGISTRY_DRIFT",
-            format!(
-                "registry {} `{}` has no matching declaration in checked source",
-                entry.kind, entry.path
-            ),
-        )
-        .with_note("removals and renames require an explicit schema registry operation"));
+        return Err(Diagnostic::error("MIG_IDENTITY_REGISTRY_DRIFT")
+            .with_note("removals and renames require an explicit schema registry operation"));
     }
 
     let entity_ids = entries
@@ -2324,13 +1956,7 @@ fn validate_registry_entries(
         let entity_path = entry.path.split('.').next().unwrap_or_default();
         let expected_owner = entity_ids.get(entity_path).copied();
         if entry.owner_id.as_deref() != expected_owner {
-            return Err(Diagnostic::error(
-                "MIG_IDENTITY_REGISTRY_OWNER",
-                format!(
-                    "registry entry `{}` has the wrong owning identity",
-                    entry.path
-                ),
-            ));
+            return Err(Diagnostic::error("MIG_IDENTITY_REGISTRY_OWNER"));
         }
     }
     Ok(())
@@ -2341,22 +1967,13 @@ fn validate_registry_structure(entries: &[RegistryEntry]) -> Result<(), Diagnost
     let mut paths = BTreeSet::new();
     for entry in entries {
         if !ids.insert(entry.id.as_str()) {
-            return Err(Diagnostic::error(
-                "MIG_IDENTITY_DUPLICATE_ID",
-                format!("schema identity `{}` is repeated", entry.id),
-            ));
+            return Err(Diagnostic::error("MIG_IDENTITY_DUPLICATE_ID"));
         }
         if !paths.insert((entry.kind.as_str(), entry.path.as_str())) {
-            return Err(Diagnostic::error(
-                "MIG_IDENTITY_DUPLICATE_PATH",
-                format!("registry repeats {} `{}`", entry.kind, entry.path),
-            ));
+            return Err(Diagnostic::error("MIG_IDENTITY_DUPLICATE_PATH"));
         }
         if entry.physical_name.is_empty() {
-            return Err(Diagnostic::error(
-                "MIG_IDENTITY_PHYSICAL_NAME",
-                format!("registry entry `{}` has an empty physical name", entry.path),
-            ));
+            return Err(Diagnostic::error("MIG_IDENTITY_PHYSICAL_NAME"));
         }
     }
     Ok(())
@@ -2542,15 +2159,7 @@ fn derive_schema_snapshot_entries(
             let shape = shapes
                 .get(&(entry.kind.clone(), entry.path.clone()))
                 .cloned()
-                .ok_or_else(|| {
-                    Diagnostic::error(
-                        "MIG_IDENTITY_SNAPSHOT_SHAPE_MISSING",
-                        format!(
-                            "could not derive checked shape for {} `{}`",
-                            entry.kind, entry.path
-                        ),
-                    )
-                })?;
+                .ok_or_else(|| Diagnostic::error("MIG_IDENTITY_SNAPSHOT_SHAPE_MISSING"))?;
             Ok(SchemaSnapshotEntry {
                 id: entry.id.clone(),
                 kind: entry.kind.clone(),
@@ -2693,8 +2302,8 @@ fn parse_schema_snapshot(source: &str) -> Result<Vec<SchemaSnapshotEntry>, Diagn
         }
         Ok(entries)
     })();
-    result.map_err(|message| {
-        Diagnostic::error("MIG_IDENTITY_SNAPSHOT_INVALID", message)
+    result.map_err(|_message| {
+        Diagnostic::error("MIG_IDENTITY_SNAPSHOT_INVALID")
             .with_note("create snapshots with `jadpo schema snapshot`")
     })
 }
@@ -2781,15 +2390,15 @@ fn parse_schema_decision_artifact(source: &str) -> Result<SchemaDecisionArtifact
             decisions,
         })
     })();
-    result.map_err(|message| {
-        Diagnostic::error("MIG_DECISION_ARTIFACT_INVALID", message)
+    result.map_err(|_message| {
+        Diagnostic::error("MIG_DECISION_ARTIFACT_INVALID")
             .with_note("start from `jadpo schema decision-template`")
     })
 }
 
 fn parse_registry(source: &str) -> Result<Vec<RegistryEntry>, Diagnostic> {
-    RegistryParser::new(source).parse().map_err(|message| {
-        Diagnostic::error("MIG_IDENTITY_REGISTRY_INVALID", message)
+    RegistryParser::new(source).parse().map_err(|_message| {
+        Diagnostic::error("MIG_IDENTITY_REGISTRY_INVALID")
             .with_note("revert manual edits and use jadpo schema commands")
     })
 }
