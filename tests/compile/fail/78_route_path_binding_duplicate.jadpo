@@ -1,0 +1,17 @@
+type CustomerId = Uuid {}
+
+output CustomerView {
+    id: CustomerId
+}
+
+route GET /customers/{id} {
+    auth: none
+    path: {
+        id: CustomerId
+        id: CustomerId
+    }
+    output: CustomerView
+    action: {
+        return CustomerView { id: path.id }
+    }
+}

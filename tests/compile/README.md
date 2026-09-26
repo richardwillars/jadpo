@@ -47,7 +47,7 @@ Diagnostic codes in these fixtures are part of the compiler-facing contract.
 Renaming one requires updating the roadmap, relevant specification, and all
 affected fixture expectations together.
 
-The current ninety pairs comprise the original ten type/failure cases plus
+The current ninety-four pairs comprise the original ten type/failure cases plus
 coverage for optional omission, nullable widening, implicit narrowing,
 semantic-to-primitive unwrapping, incomplete records, invariant collections,
 transitive failure propagation, function/action separation, missing failure
@@ -119,6 +119,10 @@ back to “unexpected token.”
 Fixtures 75–76 cover the lexer-level invalid-escape and unexpected-character
 diagnostics that complete catalogue discovery recovered from behind escaped
 Rust string literals. Both assert exact source ranges and authored repair copy.
+Fixtures 77–80 complete real trigger coverage for the route family: a missing
+behaviour, duplicate typed path binding, duplicate URL placeholder, and invalid
+placeholder spelling. Each remains a single root diagnostic with exact public
+copy rather than a dependent parser cascade.
 
 Expectation files retain established compiler codes as migration aliases. CLI
 and LSP diagnostics expose the canonical lower-dotted `ruleId` alongside those

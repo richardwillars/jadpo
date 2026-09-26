@@ -1,0 +1,3 @@
+route GET /health {
+    auth: none
+}

@@ -132,3 +132,6 @@ All 310 enumerated public diagnostic codes now have rule-specific summary,
 reason, and recommended-next-step copy. The active zero-placeholder test is
 permanent. Completion still depends on replacing the strict gate's synthetic
 render coverage with a real trigger fixture for every code.
+
+The `ROUTE_*` family now has real compile-trigger coverage for every code in
+addition to its all-audience projection coverage.
