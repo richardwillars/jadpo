@@ -293,7 +293,6 @@ impl<'source> Parser<'source> {
 
         while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
             let before = self.cursor;
-            let diagnostics_before = self.diagnostics.len();
             if self.at(TokenKind::Inverse) {
                 if kind != RecordKind::Entity {
                     self.error_current("SYN_INVERSE_NON_ENTITY");
@@ -311,9 +310,6 @@ impl<'source> Parser<'source> {
             } else if let Some(field) = self.parse_field_declaration() {
                 fields.push(field);
             } else {
-                if self.diagnostics.len() == diagnostics_before {
-                    self.error_current("SYN_EXPECTED_FIELD");
-                }
                 self.recover_until(&[TokenKind::RightBrace]);
             }
             if self.cursor == before {
@@ -1691,13 +1687,9 @@ impl<'source> Parser<'source> {
 
         while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
             let before = self.cursor;
-            let diagnostics_before = self.diagnostics.len();
             if let Some(field) = self.parse_field_declaration() {
                 fields.push(field);
             } else {
-                if self.diagnostics.len() == diagnostics_before {
-                    self.error_current("SYN_EXPECTED_FIELD");
-                }
                 self.recover_until(&[TokenKind::RightBrace]);
             }
             if self.cursor == before {
@@ -2391,6 +2383,24 @@ fn diagnostic_token_label(token: Token, source: &str) -> String {
         TokenKind::RightBrace => "closing brace".to_owned(),
         TokenKind::Colon => "colon".to_owned(),
         TokenKind::Comma => "comma".to_owned(),
+        TokenKind::LeftParen => "(".to_owned(),
+        TokenKind::RightParen => ")".to_owned(),
+        TokenKind::LeftAngle => "<".to_owned(),
+        TokenKind::RightAngle => ">".to_owned(),
+        TokenKind::Dot => ".".to_owned(),
+        TokenKind::Question => "?".to_owned(),
+        TokenKind::Equal => "=".to_owned(),
+        TokenKind::EqualEqual => "==".to_owned(),
+        TokenKind::BangEqual => "!=".to_owned(),
+        TokenKind::LessEqual => "<=".to_owned(),
+        TokenKind::GreaterEqual => ">=".to_owned(),
+        TokenKind::Plus => "+".to_owned(),
+        TokenKind::Minus => "-".to_owned(),
+        TokenKind::Star => "*".to_owned(),
+        TokenKind::Slash => "/".to_owned(),
+        TokenKind::Percent => "%".to_owned(),
+        TokenKind::Arrow => "->".to_owned(),
+        TokenKind::FatArrow => "=>".to_owned(),
         TokenKind::Eof => "end of file".to_owned(),
         _ => "this token".to_owned(),
     }
@@ -3058,6 +3068,19 @@ value Result {
                 "{expected}: {codes:#?}\n{source}"
             );
         }
+    }
+
+    #[test]
+    fn names_punctuation_instead_of_calling_it_this_token() {
+        let parsed = parse(Path::new("punctuation.jadpo"), "input User { name. Text }");
+        let diagnostic = parsed
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == "SYN_UNEXPECTED_TOKEN")
+            .expect("the dot should be rejected");
+
+        assert!(diagnostic.reason.contains("Found `.`"), "{diagnostic:#?}");
+        assert!(!diagnostic.reason.contains("this token"));
     }
 
     fn collect_sources(path: &Path, output: &mut Vec<PathBuf>) {

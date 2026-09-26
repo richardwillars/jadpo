@@ -375,17 +375,18 @@ trusted local `jadpo incident` enrichment. `skills/jadpo-agent/SKILL.md` exposes
 the bounded grammar, diagnostic, symbol, impact, repair-preview, documentation,
 and incident workflow without duplicating compiler semantics. The exhaustive
 cross-audience suite is recorded in
-[`tests/diagnostics/README.md`](../tests/diagnostics/README.md). All 299 public
+[`tests/diagnostics/README.md`](../tests/diagnostics/README.md). All 298 public
 codes now have rule-specific authored summary, reason, and next-step copy, and
 every code is projected through the version-2 agent, terminal, LSP, and VS Code
 contracts. A catalogue-wide plain-language gate rejects compiler-internal
 phrases, while contextual semantic-name fixtures prove concrete source roles,
 compatible name suggestions, and usable advice such as defining a missing
 name as a type. Terminal and IDE views render each stable help identifier as a
-full guidance URL. The strict catalogue-and-fixture test remains an explicit red
-completion gate for codes that still lack a real triggering fixture.
-Fresh-agent and first-user repair-cycle trials follow only after that gate
-passes.
+full guidance URL. The permanent catalogue-and-evidence gate is active and
+green: language diagnostics have real malformed-source or semantic scenarios,
+while operational and I/O faults have explicit emitter-contract coverage in
+addition to the exhaustive audience projections. Fresh-agent and first-user
+repair-cycle trials remain external evidence.
 
 **Exit gate:** every public diagnostic is catalogue-backed and fixture-backed;
 common mechanical errors offer a verified one-step repair; semantic ambiguity

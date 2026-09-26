@@ -339,9 +339,8 @@ fn render_plain_diagnostic(diagnostic: &Diagnostic) -> String {
         ));
     }
     output.push_str(&format!(
-        "  rule: {} (legacy: {})\n  help: {}\n",
+        "  rule: {}\n  help: {}\n",
         diagnostic.rule_id,
-        diagnostic.code,
         diagnostic_help_url(&diagnostic.help_id)
     ));
     for note in &diagnostic.notes {
@@ -518,10 +517,8 @@ fn render_rich_diagnostic(diagnostic: &Diagnostic, style: RenderStyle) -> String
         &mut output,
         "Rule",
         &format!(
-            "{}{}legacy {}{}{}",
+            "{}{}{}",
             diagnostic.rule_id,
-            separator(style),
-            diagnostic.code,
             separator(style),
             diagnostic_help_url(&diagnostic.help_id)
         ),
@@ -866,6 +863,140 @@ mod tests {
             }
             assert!(!plain.contains('╭'), "{code}");
             assert!(rich.ends_with("\n\n"), "{code}");
+        }
+    }
+
+    #[test]
+    fn operational_diagnostic_emitter_contracts_are_human_readable() {
+        const OPERATIONAL_CODES: &[&str] = &[
+            "CLI_CHECK_ARGUMENTS",
+            "CLI_DEV_ARGUMENTS",
+            "CLI_DEV_BUN_START_FAILED",
+            "CLI_DEV_READINESS_TIMEOUT",
+            "CLI_DEV_RUNTIME_EXITED",
+            "CLI_DEV_RUNTIME_STATUS_FAILED",
+            "CLI_DEV_TARGET_MISSING",
+            "CLI_FMT_ARGUMENTS",
+            "CLI_INCIDENT_ARGUMENTS",
+            "CLI_INCIDENT_INVALID",
+            "CLI_INCIDENT_MANIFEST_INVALID",
+            "CLI_INCIDENT_MANIFEST_MISSING",
+            "CLI_INCIDENT_MANIFEST_STALE",
+            "CLI_INCIDENT_OPERATION_UNKNOWN",
+            "CLI_INCIDENT_READ_FAILED",
+            "CLI_INCIDENT_REVISION_MISMATCH",
+            "CLI_LSP_ARGUMENTS",
+            "CLI_PRESENTATION_ARGUMENTS",
+            "CLI_PROJECT_REQUIRED",
+            "CLI_SCHEMA_COMMAND_REQUIRED",
+            "CLI_SCHEMA_DECISION_ARGUMENTS",
+            "CLI_SCHEMA_DIFF_ARGUMENTS",
+            "CLI_SCHEMA_INDEX_ACCEPT_ARGUMENTS",
+            "CLI_SCHEMA_PLAN_ARGUMENTS",
+            "CLI_SCHEMA_RENAME_ARGUMENTS",
+            "CLI_SCHEMA_SNAPSHOT_ARGUMENTS",
+            "CLI_SCHEMA_SQL_ARGUMENTS",
+            "CLI_UNKNOWN_COMMAND",
+            "CLI_UNKNOWN_SCHEMA_COMMAND",
+            "CLI_WATCH_ARGUMENTS",
+            "CLI_WATCH_INPUT_READ_FAILED",
+            "CLI_WATCH_OUTPUT_FAILED",
+            "FMT_CHANGES_REQUIRED",
+            "FMT_WRITE_FAILED",
+            "INDEX_ACCEPT_CHECK_FAILED",
+            "INDEX_ACCEPT_IDENTITY_COUNT",
+            "INDEX_ACCEPT_RANGE_INVALID",
+            "INDEX_ACCEPT_REGISTRY_MISSING",
+            "INDEX_ACCEPT_ROLLBACK_FAILED",
+            "INDEX_ACCEPT_SOURCE_READ_FAILED",
+            "INDEX_ACCEPT_SOURCE_WRITE_FAILED",
+            "INDEX_RECOMMENDATION_AVAILABLE",
+            "INDEX_RECOMMENDATION_FIELD_MISSING",
+            "JADPO_ARTIFACT_CLEANUP_FAILED",
+            "JADPO_ARTIFACT_PROMOTE_FAILED",
+            "JADPO_ARTIFACT_STAGE_FAILED",
+            "JADPO_NO_SOURCES",
+            "JADPO_PROJECT_NOT_FOUND",
+            "JADPO_PROJECT_READ_FAILED",
+            "JADPO_SCAFFOLD_DESTINATION_EXISTS",
+            "JADPO_SCAFFOLD_NAME_INVALID",
+            "JADPO_SCAFFOLD_READ_FAILED",
+            "JADPO_SCAFFOLD_WRITE_FAILED",
+            "JADPO_SOURCE_READ_FAILED",
+            "JADPO_TARGET_AUTH_NOT_IMPLEMENTED",
+            "LSP_CONTENT_LENGTH_MISSING",
+            "LSP_JSON_INVALID",
+            "LSP_JSON_WRITE_FAILED",
+            "LSP_READ_FAILED",
+            "LSP_ROOT_MISSING",
+            "LSP_WRITE_FAILED",
+            "MIG_DECISION_ARTIFACT_INVALID",
+            "MIG_DECISION_ARTIFACT_READ_FAILED",
+            "MIG_DECISION_ARTIFACT_WRITE_FAILED",
+            "MIG_DECISION_DUPLICATE",
+            "MIG_DECISION_EVIDENCE_DUPLICATE",
+            "MIG_DECISION_EVIDENCE_EMPTY",
+            "MIG_DECISION_EVIDENCE_UNEXPECTED",
+            "MIG_DECISION_MISSING",
+            "MIG_DECISION_STRATEGY_INVALID",
+            "MIG_DECISION_UNEXPECTED",
+            "MIG_IDENTITY_DUPLICATE_ID",
+            "MIG_IDENTITY_DUPLICATE_PATH",
+            "MIG_IDENTITY_PHYSICAL_NAME",
+            "MIG_IDENTITY_REGISTRY_INVALID",
+            "MIG_IDENTITY_REGISTRY_MISSING",
+            "MIG_IDENTITY_REGISTRY_NOT_CANONICAL",
+            "MIG_IDENTITY_REGISTRY_OWNER",
+            "MIG_IDENTITY_REGISTRY_READ_FAILED",
+            "MIG_IDENTITY_REGISTRY_WRITE_FAILED",
+            "MIG_IDENTITY_RENAME_KIND",
+            "MIG_IDENTITY_RENAME_SOURCE_UNKNOWN",
+            "MIG_IDENTITY_RENAME_TARGET_EXISTS",
+            "MIG_IDENTITY_RENAME_TARGET_UNKNOWN",
+            "MIG_IDENTITY_SNAPSHOT_INVALID",
+            "MIG_IDENTITY_SNAPSHOT_MISSING",
+            "MIG_IDENTITY_SNAPSHOT_NOT_CANONICAL",
+            "MIG_IDENTITY_SNAPSHOT_SHAPE_MISSING",
+            "MIG_IDENTITY_SNAPSHOT_WRITE_FAILED",
+            "MIG_PLAN_ADAPTER_INVALID",
+            "MIG_PLAN_DECISION_REJECTS_CHANGE",
+            "MIG_PLAN_EXISTS",
+            "MIG_PLAN_WRITE_FAILED",
+            "MIG_SQL_CHANGE_UNSUPPORTED",
+            "MIG_SQL_EXPRESSION_UNSUPPORTED",
+            "MIG_SQL_FIELD_OWNER_MISSING",
+            "MIG_SQL_FIELD_SHAPE_INVALID",
+            "MIG_SQL_LITERAL_INVALID",
+            "MIG_SQL_REVIEW_EXISTS",
+            "MIG_SQL_REVIEW_WRITE_FAILED",
+            "MIG_SQL_SQLITE_CONSTRAINT_MISSING",
+            "MIG_SQL_SQLITE_ENTITY_MISSING",
+            "MIG_SQL_SQLITE_FIELD_IDENTITY_MISSING",
+            "MIG_SQL_SQLITE_FIELD_MISSING",
+            "MIG_SQL_SQLITE_INDEX_MISSING",
+            "MIG_SQL_SQLITE_REBUILD_REQUIRED",
+            "MIG_SQL_SQLITE_REBUILD_UNSUPPORTED",
+            "MIG_SQL_SQLITE_REFERENCE_MISSING",
+            "MIG_SQL_SQLITE_RENAMED_TABLE_UNSUPPORTED",
+            "MIG_SQL_STRATEGY_UNSUPPORTED",
+            "MIG_SQL_TYPE_UNSUPPORTED",
+        ];
+
+        for code in OPERATIONAL_CODES {
+            let diagnostic = Diagnostic::error(code);
+            let rendered = render_diagnostic(&diagnostic, RenderStyle::plain());
+            assert!(rendered.contains(&diagnostic.message), "{code}");
+            assert!(rendered.contains(&diagnostic.reason), "{code}");
+            assert!(
+                rendered.contains(&diagnostic.recommended_next_step.title),
+                "{code}"
+            );
+            assert!(
+                rendered.contains("https://jadpo.dev/docs/diagnostics/"),
+                "{code}"
+            );
+            assert!(!rendered.contains("compiler-enforced"), "{code}");
+            assert!(!rendered.contains(code), "{code}");
         }
     }
 

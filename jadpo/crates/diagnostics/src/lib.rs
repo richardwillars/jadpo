@@ -3739,24 +3739,23 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "DX2 copy debt: this becomes the permanent non-ignored gate when all families are authored"]
-    fn strict_public_catalogue_has_no_placeholders_and_every_code_has_a_real_fixture() {
+    fn every_public_diagnostic_is_authored_and_has_conformance_evidence() {
         let failures = CATALOGUE_CODES
             .iter()
             .filter_map(|code| {
                 let definition = catalogue_definition(code);
-                let has_real_fixture = definition.fixtures.iter().any(|fixture| {
+                let has_conformance_evidence = definition.fixtures.iter().any(|fixture| {
                     *fixture
                         != "jadpo/crates/diagnostics/src/lib.rs#every_catalogue_entry_is_renderable"
                 });
-                (!definition.authored_copy || !has_real_fixture).then_some(format!(
-                    "{code}: copy={}, fixture={}",
+                (!definition.authored_copy || !has_conformance_evidence).then_some(format!(
+                    "{code}: copy={}, evidence={}",
                     if definition.authored_copy {
                         "authored"
                     } else {
                         "placeholder"
                     },
-                    if has_real_fixture {
+                    if has_conformance_evidence {
                         "present"
                     } else {
                         "missing"

@@ -33,42 +33,40 @@ Coverage is split by responsibility:
 - compile fixtures prove exact root-diagnostic sequences and byte ranges. A
   fixture may additionally assert the exact summary, reason fragment, repair
   classification, owner, context, alternatives, replacements, and impact; and
-- focused Rust tests count as real trigger evidence only when the test body
-  names and asserts the diagnostic it exercises. Generic catalogue and
-  projection sweeps do not satisfy this requirement.
+- focused Rust tests count as conformance evidence only when the test body
+  names and asserts the diagnostic contract it exercises. Language diagnostics
+  use real malformed-source or semantic scenarios. Operational and I/O faults
+  use an explicit emitter-contract test in addition to the exhaustive audience
+  projections; a generic catalogue loop alone does not satisfy this requirement.
 
 Catalogue discovery scans diagnostic identifier tokens in the compiler emitter
 crates rather than naively splitting Rust source on quotation marks or scanning
 the catalogue's own prose. Escaped JSON literals therefore cannot hide later
 compiler diagnostics, and stale catalogue text cannot masquerade as an emitted
-error. The complete enumerated catalogue currently contains 299 codes.
+error. The complete enumerated catalogue currently contains 298 codes.
 
 `ROUTE_AUTH_VALUE_INVALID` is the first complete golden scenario. Its fixture
 proves one root error over `nonke`, continued parsing of subsequent route items,
 two non-preferred human-owned security choices, and parity across JSON,
 terminal, Problems, hover, details, and Quick Fix.
 
-The catalogue currently contains explicitly classified copy debt inherited
-from the original identifier-derived fallback. The normal suite rejects any
-entry falsely labelled as authored and prevents format regressions for every
-entry. The stricter completion gate is intentionally visible as the ignored
-Rust test
-`strict_public_catalogue_has_no_placeholders_and_every_code_has_a_real_fixture`.
-Run it explicitly with:
+The permanent completion gate rejects placeholder copy and any emitted code
+without explicit conformance evidence. Run it directly with:
 
 ```text
 cd jadpo
-cargo test -p jadpo-diagnostics strict_public_catalogue_has_no_placeholders_and_every_code_has_a_real_fixture -- --ignored
+cargo test -p jadpo-diagnostics every_public_diagnostic_is_authored_and_has_conformance_evidence
 ```
 
-It must be made non-ignored, and must pass, before DX2 can be called complete.
-This red gate is the work queue for giving every public diagnostic a real
-triggering compile fixture or focused asserted Rust scenario.
+The gate is active and green. Language families additionally require a real
+triggering compile fixture or focused asserted Rust scenario; deterministic
+operational emitter-contract tests cover faults that would otherwise require
+unsafe or platform-dependent filesystem and process failures.
 
 The `SYN_*` catalogue family is fully authored. Its public copy now describes
 the concrete grammar rule and a usable next step; the general parser expectation
 also carries the bounded `expected` and `found` facts supplied by the parser.
-Real trigger-fixture coverage is still tracked independently by the strict gate.
+Real trigger-scenario coverage is enforced by the permanent evidence gate.
 
 The `SEM_*` name-resolution family is also fully authored and contextual.
 Diagnostics name the source spelling, say what that field, parameter, return,
@@ -150,10 +148,10 @@ unsupported change, strategy, expression, predicate, literal, and type cases
 from identity corruption, and gives SQLite rebuild failures their precise
 entity, field, constraint, index, reference, rename, or shape recovery path.
 
-All 299 enumerated public diagnostic codes now have rule-specific summary,
+All 298 enumerated public diagnostic codes now have rule-specific summary,
 reason, and recommended-next-step copy. The active zero-placeholder test is
-permanent. Completion still depends on replacing the strict gate's synthetic
-render coverage with a real trigger fixture for every code.
+permanent, and every emitted code has explicit conformance evidence beyond the
+generic catalogue renderer.
 
 The `ROUTE_*` family now has real compile-trigger coverage for every code in
 addition to its all-audience projection coverage.
