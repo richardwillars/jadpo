@@ -365,7 +365,7 @@ the editor remains a presentation client rather than an independent authority.
 - evaluate fenced code output and source-file links in supported clients; and
 - degrade to exact readable plain text in unsupported clients.
 
-**Status: implementation correction in progress.** The compiler emits
+**Status: fixture completion in progress.** The compiler emits
 the version-2 object through CLI JSON and LSP `data`, generates catalogue JSON
 and Markdown reference artifacts, supplies revision-bound Quick Fix edits and
 bounded alternatives, and renders related locations without editor-owned
@@ -375,11 +375,13 @@ trusted local `jadpo incident` enrichment. `skills/jadpo-agent/SKILL.md` exposes
 the bounded grammar, diagnostic, symbol, impact, repair-preview, documentation,
 and incident workflow without duplicating compiler semantics. The exhaustive
 cross-audience suite is recorded in
-[`tests/diagnostics/README.md`](../tests/diagnostics/README.md). It has exposed
-identifier-derived fallback copy that does not meet this contract; the strict
-catalogue-and-fixture test remains an explicit red completion gate while those
-rules are authored. Fresh-agent and first-user repair-cycle trials follow only
-after that gate passes.
+[`tests/diagnostics/README.md`](../tests/diagnostics/README.md). All 310 public
+codes now have rule-specific authored summary, reason, and next-step copy, and
+every code is projected through the version-2 agent, terminal, LSP, and VS Code
+contracts. The strict catalogue-and-fixture test remains an explicit red
+completion gate for codes that still lack a real triggering fixture.
+Fresh-agent and first-user repair-cycle trials follow only after that gate
+passes.
 
 **Exit gate:** every public diagnostic is catalogue-backed and fixture-backed;
 common mechanical errors offer a verified one-step repair; semantic ambiguity

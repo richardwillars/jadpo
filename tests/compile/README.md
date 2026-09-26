@@ -47,7 +47,7 @@ Diagnostic codes in these fixtures are part of the compiler-facing contract.
 Renaming one requires updating the roadmap, relevant specification, and all
 affected fixture expectations together.
 
-The current eighty-eight pairs comprise the original ten type/failure cases plus
+The current ninety pairs comprise the original ten type/failure cases plus
 coverage for optional omission, nullable widening, implicit narrowing,
 semantic-to-primitive unwrapping, incomplete records, invariant collections,
 transitive failure propagation, function/action separation, missing failure
@@ -116,6 +116,9 @@ the parser continues through all later route members.
 Fixture 74 proves that a remaining general parser expectation publishes the
 actual required syntax and encountered token. The public message may not fall
 back to “unexpected token.”
+Fixtures 75–76 cover the lexer-level invalid-escape and unexpected-character
+diagnostics that complete catalogue discovery recovered from behind escaped
+Rust string literals. Both assert exact source ranges and authored repair copy.
 
 Expectation files retain established compiler codes as migration aliases. CLI
 and LSP diagnostics expose the canonical lower-dotted `ruleId` alongside those
