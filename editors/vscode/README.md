@@ -6,8 +6,9 @@ language server. Unsaved edits receive live parse, semantic, type, failure, and
 effect diagnostics. Document/workspace symbols, go-to-definition, references,
 hover types, completion, conservative rename, semantic tokens, and deterministic
 formatting all use the same compiler syntax tree, semantic graph, and inferred
-types as the CLI. Declarations link to their generated validation, callable,
-failure-audit, or OpenAPI artifact when a build exists.
+types as the CLI. Source underlines are reserved for diagnostics. Use
+**Jadpo: Open Generated OpenAPI** or **Jadpo: Open Generated Validation Plan**
+to inspect build artifacts without turning declarations into document links.
 
 The `Jadpo: Check Project` command requests a fresh compiler diagnostic pass.
 The server is also available to any standard LSP client through `jadpo lsp`.

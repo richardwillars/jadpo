@@ -213,6 +213,12 @@ function activate(context) {
     const panel = vscode.window.createWebviewPanel("jadpoDiagnostic", diagnostic.message, vscode.ViewColumn.Beside, {});
     panel.webview.html = diagnosticDetailsHtml(data, diagnostic.message);
   }));
+  context.subscriptions.push(vscode.commands.registerCommand("jadpo.openGeneratedOpenApi", () => {
+    return openGeneratedArtifact("openapi", "openapi.json");
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand("jadpo.openGeneratedValidators", () => {
+    return openGeneratedArtifact("validators", "plan.json");
+  }));
 
   context.subscriptions.push(vscode.languages.registerDocumentSymbolProvider("jadpo", {
     async provideDocumentSymbols(document) {
@@ -318,16 +324,20 @@ function activate(context) {
       return actions;
     }
   }, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }));
-  context.subscriptions.push(vscode.languages.registerDocumentLinkProvider("jadpo", {
-    async provideDocumentLinks(document) {
-      const result = await client.request("textDocument/documentLink", textDocumentParams(document));
-      return (result || []).map(item => {
-        const link = new vscode.DocumentLink(fromRange(item.range), vscode.Uri.parse(item.target));
-        link.tooltip = item.tooltip;
-        return link;
-      });
-    }
-  }));
+}
+
+async function openGeneratedArtifact(...segments) {
+  const folder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0];
+  if (!folder) {
+    return vscode.window.showInformationMessage("Open a Jadpo project before opening generated output.");
+  }
+  const artifact = vscode.Uri.joinPath(folder.uri, "build", ...segments);
+  try {
+    const document = await vscode.workspace.openTextDocument(artifact);
+    return vscode.window.showTextDocument(document, { preview: true, viewColumn: vscode.ViewColumn.Beside });
+  } catch (_error) {
+    return vscode.window.showInformationMessage("Build the project first, then try opening the generated output again.");
+  }
 }
 
 function documentItem(document) {

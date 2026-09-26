@@ -13,10 +13,32 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 const KEYWORDS: &[&str] = &[
-    "type", "enum", "entity", "value", "input", "output", "failure", "function", "action", "test",
-    "route", "module", "import", "var", "mut", "return", "reject", "attempt", "if", "else",
-    "match", "assert", "some", "none", "true", "false", "and", "or", "not", "kind", "fails",
-    "auth", "path", "run", "create", "query", "update", "delete",
+    "type", "persist", "failure", "function", "action", "test", "route", "module", "import", "var",
+    "mut", "return", "reject", "attempt", "if", "else", "match", "assert", "some", "none", "true",
+    "false", "and", "or", "not", "kind", "fails", "auth", "path", "input", "output", "run",
+    "create", "query", "update", "delete",
+];
+
+const PRELUDE_TYPES: &[&str] = &[
+    "Bool",
+    "Int",
+    "Decimal",
+    "Text",
+    "Bytes",
+    "Uuid",
+    "Date",
+    "Time",
+    "DateTime",
+    "Duration",
+    "Unit",
+    "Object",
+    "Enum",
+    "List",
+    "Set",
+    "Map",
+    "Email",
+    "Url",
+    "IpAddress",
 ];
 
 pub fn run_stdio() -> Result<(), Diagnostic> {
@@ -67,7 +89,6 @@ impl Server {
                             "renameProvider": { "prepareProvider": true },
                             "documentFormattingProvider": true,
                             "codeActionProvider": { "resolveProvider": false },
-                            "documentLinkProvider": { "resolveProvider": false },
                             "semanticTokensProvider": {
                                 "legend": {
                                     "tokenTypes": ["namespace", "type", "enum", "enumMember", "property", "function", "variable", "parameter", "string", "number", "keyword", "operator", "comment"],
@@ -257,6 +278,17 @@ impl Server {
                             items.push(
                                 json!({ "label": keyword, "kind": 14, "detail": "Jadpo keyword" }),
                             );
+                        }
+                    }
+                    if member_container.is_none() {
+                        for prelude_type in PRELUDE_TYPES {
+                            if labels.insert((*prelude_type).to_owned()) {
+                                items.push(json!({
+                                    "label": prelude_type,
+                                    "kind": 7,
+                                    "detail": "Jadpo prelude type"
+                                }));
+                            }
                         }
                     }
                     Some(json!({ "isIncomplete": false, "items": items }))
@@ -482,59 +514,6 @@ impl Server {
                     let source = request_source(&params)?;
                     let parsed = parsed_source(project, &source)?;
                     Some(json!({ "data": semantic_tokens(parsed, index) }))
-                })?;
-            }
-            Some("textDocument/documentLink") => {
-                let output_root = self
-                    .root
-                    .as_deref()
-                    .map(|root| {
-                        if root.is_file() {
-                            root.parent().unwrap_or(root)
-                        } else {
-                            root
-                        }
-                    })
-                    .unwrap_or_else(|| Path::new("."))
-                    .join("build");
-                self.respond_analysis(writer, id, |project, index| {
-                    let source = request_source(&params)?;
-                    let source_name = source.to_string_lossy();
-                    let links = index
-                        .symbols
-                        .iter()
-                        .filter(|symbol| {
-                            same_source(&symbol.source, &source_name)
-                                && !symbol.key.starts_with("local:")
-                        })
-                        .filter_map(|symbol| {
-                            let (target, tooltip) = match symbol.kind.as_str() {
-                                "route" => (
-                                    output_root.join("openapi/openapi.json"),
-                                    "Open generated route contract",
-                                ),
-                                "failure" => (
-                                    output_root.join("audit/failures.json"),
-                                    "Open generated failure audit",
-                                ),
-                                "function" | "action" => (
-                                    output_root.join("inventory/callables.json"),
-                                    "Open generated callable inventory",
-                                ),
-                                "type" | "enum" | "entity" | "value" | "input" | "output" => (
-                                    output_root.join("validators/plan.json"),
-                                    "Open generated validation plan",
-                                ),
-                                _ => return None,
-                            };
-                            Some(json!({
-                                "range": lsp_range(project, &symbol.source, symbol.range),
-                                "target": path_to_uri(&target),
-                                "tooltip": tooltip
-                            }))
-                        })
-                        .collect::<Vec<_>>();
-                    Some(Value::Array(links))
                 })?;
             }
             Some(_) if id.is_some() => respond(writer, id, Value::Null)?,
@@ -1107,7 +1086,7 @@ fn completion_kind(kind: &str) -> u32 {
         "field" | "relationship" => 5,
         "function" | "action" => 3,
         "variable" | "parameter" => 6,
-        "enum" | "type" | "entity" | "value" | "input" | "output" => 7,
+        "enum" | "type" | "persistent_object" | "object" | "input" | "output" => 7,
         _ => 1,
     }
 }
@@ -1128,6 +1107,7 @@ fn is_keyword(kind: TokenKind) -> bool {
             | TokenKind::Route
             | TokenKind::Module
             | TokenKind::Import
+            | TokenKind::Persist
             | TokenKind::Public
             | TokenKind::Internal
             | TokenKind::Optional
@@ -1450,6 +1430,9 @@ mod tests {
             initialized["result"]["capabilities"]["definitionProvider"],
             true
         );
+        assert!(initialized["result"]["capabilities"]
+            .get("documentLinkProvider")
+            .is_none());
 
         let symbols = request(
             &mut server,
@@ -1468,7 +1451,6 @@ mod tests {
             (5, "textDocument/completion"),
             (6, "textDocument/prepareRename"),
             (7, "textDocument/semanticTokens/full"),
-            (9, "textDocument/documentLink"),
         ] {
             let response = request(
                 &mut server,

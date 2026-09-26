@@ -1,13 +1,13 @@
 {
   "Enum": {
     "prefix": "enum",
-    "body": ["enum ${1:State} {", "    ${2:ready}", "    ${3:failed}", "}"],
+    "body": ["type ${1:State} = Enum {", "    ${2:ready}", "    ${3:failed}", "}"],
     "description": "Closed enum"
   },
   "Tagged enum": {
     "prefix": "tagged-enum",
     "body": [
-      "enum ${1:Outcome} {",
+      "type ${1:Outcome} = Enum {",
       "    ${2:pending}",
       "    ${3:complete} {",
       "        ${4:value}: ${5:Text}",
@@ -15,6 +15,21 @@
       "}"
     ],
     "description": "Closed enum with a data-carrying variant"
+  },
+  "Object type": {
+    "prefix": "object",
+    "body": ["type ${1:Customer} = Object {", "    ${2:id}: ${3:Uuid}", "}"],
+    "description": "Closed object type"
+  },
+  "Persist object": {
+    "prefix": "persist",
+    "body": ["persist ${1:Customer} {", "    identity: ${2:id}", "}"],
+    "description": "Opt an object type into persistence"
+  },
+  "Fallible action": {
+    "prefix": "action-fails",
+    "body": ["action ${1:name}(${2:input}: ${3:Input})", "    fails ${4:DomainFailure}", "    -> ${5:Output}", "{", "    ${6}", "}"],
+    "description": "Action with a declared failure surface"
   },
   "Exhaustive match": {
     "prefix": "match",

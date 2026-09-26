@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 const { diagnosticDetailsHtml, problemMessage } = require("../diagnostic-presentation");
 
@@ -88,4 +90,14 @@ test("Details escapes every compiler-supplied field", () => {
   assert.ok(!html.includes("<img"));
   assert.ok(!html.includes("onerror=\"credential-canary\""));
   assert.ok(html.includes("&lt;img"));
+});
+
+test("Source underlines are reserved for compiler diagnostics", () => {
+  const extension = fs.readFileSync(path.join(__dirname, "../extension.js"), "utf8");
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../package.json"), "utf8"));
+
+  assert.ok(!extension.includes("registerDocumentLinkProvider"));
+  assert.ok(!extension.includes("textDocument/documentLink"));
+  assert.ok(manifest.contributes.commands.some(command => command.command === "jadpo.openGeneratedOpenApi"));
+  assert.ok(manifest.contributes.commands.some(command => command.command === "jadpo.openGeneratedValidators"));
 });

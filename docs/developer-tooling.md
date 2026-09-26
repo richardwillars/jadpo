@@ -26,9 +26,9 @@ types, and structured diagnostics. Its delivery order is:
    effects, and generated behaviour;
 4. context-aware completion and signature help;
 5. semantic tokens, rename, formatting, and conservative code actions;
-6. links from source declarations to relevant generated audit or contract
-   artifacts without presenting generated target code as the normal review
-   surface.
+6. explicit commands (and, when added, CodeLens) for opening relevant generated
+   audit or contract artifacts without decorating source declarations or
+   presenting generated target code as the normal review surface.
 
 Hover documentation should be derived from the language reference and semantic
 metadata where possible. Hand-copying descriptions into each editor extension
