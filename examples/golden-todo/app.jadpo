@@ -465,33 +465,33 @@ route GET /todos {
 }
 
 route GET /todos/:todo_id {
-    path { todo_id: Todo.id }
+    path: { todo_id: Todo.id }
     run: get_todo(path.todo_id, current_actor)
     output: TodoView
 }
 
 route PATCH /todos/:todo_id {
-    path { todo_id: Todo.id }
+    path: { todo_id: Todo.id }
     input: PatchTodo
     run: patch_todo(path.todo_id, input, current_actor)
     output: TodoView
 }
 
 route DELETE /todos/:todo_id {
-    path { todo_id: Todo.id }
+    path: { todo_id: Todo.id }
     run: delete_todo(path.todo_id, current_actor)
     output: none
     success: no_content
 }
 
 route GET /users/:user_id/todos {
-    path { user_id: User.id }
+    path: { user_id: User.id }
     run: read_user_with_todos(path.user_id, current_actor)
     output: UserWithTodos
 }
 
 route DELETE /users/:user_id {
-    path { user_id: User.id }
+    path: { user_id: User.id }
     run: disable_user(DisableUser { user_id: path.user_id }, current_actor)
     output: none
     success: no_content

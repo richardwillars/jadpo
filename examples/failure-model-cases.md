@@ -138,7 +138,7 @@ standard kind.
 
 ```text
 route GET /customers/{id} {
-    path { id: Customer.id }
+    path: { id: Customer.id }
     output: CustomerOutput
     run: load_customer(path.id)
 }

@@ -256,7 +256,7 @@ strategies are enabled, selection and conflicts are deterministic and
 privileges are never combined implicitly.
 
 Path placeholders use `{name}` in the route template and are typed together in
-a brace-delimited `path { name: Type }` group. The template and group must have
+a brace-delimited `path: { name: Type }` group. The template and group must have
 exactly the same names with no duplicates. Decoded and validated values are
 available as `path.name`, keeping them distinct from query, header, and body
 inputs. Authentication headers remain reserved for the generated

@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::{lex, TextRange, Token, TokenKind};
-use jadpo_diagnostics::{Diagnostic, SourceSpan};
+use jadpo_diagnostics::{Diagnostic, SourceSpan, TextEdit};
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -1931,6 +1931,7 @@ impl<'source> Parser<'source> {
                         self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
                     }
                     path_seen = true;
+                    self.expect_route_item_colon(item.range);
                     if let Some((fields, _)) = self.parse_field_block() {
                         for field in &fields {
                             if field.field_type.nullable
@@ -1978,6 +1979,7 @@ impl<'source> Parser<'source> {
                     if inline_action.is_some() {
                         self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
                     }
+                    self.expect_route_item_colon(item.range);
                     let action_start = item.range.start;
                     let mut failures = Vec::new();
                     let mut failures_range = None;
@@ -2198,6 +2200,25 @@ impl<'source> Parser<'source> {
         self.error_at(code, self.current().range);
     }
 
+    fn expect_route_item_colon(&mut self, item_range: TextRange) {
+        if self.at(TokenKind::Colon) {
+            self.bump();
+            return;
+        }
+        let mut diagnostic = Diagnostic::error("ROUTE_ITEM_COLON_REQUIRED").with_edit(TextEdit {
+            source: self.source_name.clone(),
+            start: item_range.end,
+            end: item_range.end,
+            replacement: ":".to_owned(),
+        });
+        diagnostic.primary = Some(SourceSpan {
+            source: self.source_name.clone(),
+            start: item_range.start,
+            end: item_range.end,
+        });
+        self.diagnostics.push(diagnostic);
+    }
+
     fn error_at(&mut self, code: &'static str, range: TextRange) {
         self.diagnostic_at(Diagnostic::error(code), range);
     }
@@ -2372,6 +2393,27 @@ output PrivateResult { todo: Todo }
             .iter()
             .any(|diagnostic| diagnostic.code == "SYN_UNEXPECTED_TOKEN"
                 && diagnostic.message == "Unexpected token"));
+    }
+
+    #[test]
+    fn requires_colons_for_block_valued_route_items_with_repairs() {
+        let source = "output Health { ok: Bool } route GET /health/{id} { path { id: Uuid } output: Health action { return Health { ok: true } } }";
+        let parsed = parse(Path::new("route-blocks.jadpo"), source);
+        let diagnostics = parsed
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == "ROUTE_ITEM_COLON_REQUIRED")
+            .collect::<Vec<_>>();
+
+        assert_eq!(diagnostics.len(), 2);
+        assert_eq!(
+            diagnostics[0].recommended_next_step.edits[0].replacement,
+            ":"
+        );
+        assert_eq!(
+            diagnostics[1].recommended_next_step.edits[0].replacement,
+            ":"
+        );
     }
 
     #[test]
@@ -2708,6 +2750,12 @@ function choose(initial: Choice, replacement: Choice) -> Choice {
             } else if file_name == "69_duplicate_route_item.jadpo" {
                 assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
                 assert_eq!(parsed.diagnostics[0].code, "ROUTE_ITEM_DUPLICATE");
+            } else if file_name == "70_route_block_colon_required.jadpo" {
+                assert_eq!(parsed.diagnostics.len(), 2, "{:#?}", parsed.diagnostics);
+                assert!(parsed
+                    .diagnostics
+                    .iter()
+                    .all(|diagnostic| diagnostic.code == "ROUTE_ITEM_COLON_REQUIRED"));
             } else {
                 assert!(
                     parsed.diagnostics.is_empty(),

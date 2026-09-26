@@ -63,12 +63,12 @@ route POST /registrations {
 
 route GET /registrations/{email} {
     auth: none
-    path {
+    path: {
         email: Customer.email
     }
     output: RegistrationAccepted
 
-    action {
+    action: {
         return RegistrationAccepted {
             email: path.email
         }

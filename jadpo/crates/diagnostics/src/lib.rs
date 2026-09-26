@@ -361,7 +361,10 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             | "MIG_DECISION_EVIDENCE_MISSING"
             | "MIG_PLAN_DECISION_REJECTS_CHANGE"
     );
-    let automatic = matches!(code, "FAIL_ATTEMPT_REQUIRED" | "FAIL_STALE_DECLARATION");
+    let automatic = matches!(
+        code,
+        "FAIL_ATTEMPT_REQUIRED" | "FAIL_STALE_DECLARATION" | "ROUTE_ITEM_COLON_REQUIRED"
+    );
     let (repair_kind, decision_owner, recommended_title) = if human_owned {
         (
             RepairKind::HumanDecision,
@@ -375,6 +378,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             match code {
                 "FAIL_ATTEMPT_REQUIRED" => "Prefix the fallible expression with `attempt`",
                 "FAIL_STALE_DECLARATION" => "Remove the stale `fails` entry",
+                "ROUTE_ITEM_COLON_REQUIRED" => "Insert `:` after the route item name",
                 _ => "Apply the compiler-verified edit",
             }
             .to_owned(),
@@ -396,6 +400,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "ROUTE_PATH_BINDING_EXTRA" => "Typed path binding has no placeholder".to_owned(),
         "ROUTE_BEHAVIOUR_CONFLICT" => "Route declares two behaviour forms".to_owned(),
         "ROUTE_BEHAVIOUR_REQUIRED" => "Route has no behaviour".to_owned(),
+        "ROUTE_ITEM_COLON_REQUIRED" => "Route item requires a `:` separator".to_owned(),
         "CLI_INCIDENT_REVISION_MISMATCH" => {
             "Runtime event and local source revisions differ".to_owned()
         }
@@ -409,6 +414,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "FAIL_CONTEXT_FIELD_OVERLAP" => "A flat failure value cannot be assigned safely when the declaration gives the same field both public and internal disclosure.".to_owned(),
         "ROUTE_PATH_BINDING_MISSING" | "ROUTE_PATH_BINDING_EXTRA" => "Route placeholders and typed `path` fields must correspond exactly one-to-one.".to_owned(),
         "ROUTE_BEHAVIOUR_CONFLICT" | "ROUTE_BEHAVIOUR_REQUIRED" => "A route must select exactly one local inline action or one named `run:` invocation.".to_owned(),
+        "ROUTE_ITEM_COLON_REQUIRED" => "Every route item uses the same explicit `name: value` separator, including block-valued path and action items.".to_owned(),
         "CLI_INCIDENT_REVISION_MISMATCH" => "Local enrichment is trustworthy only when the runtime event and compiler graph identify the same checked source revision.".to_owned(),
         "RUNTIME_UNHANDLED_FAULT" => "An exception outside the declared domain-failure boundary was contained by the generated runtime.".to_owned(),
         "RUNTIME_STARTUP_FAILED" => "The generated runtime could not establish its startup contract and did not report readiness.".to_owned(),

@@ -56,11 +56,11 @@
     "body": [
       "route ${1:GET} ${2:/resource/{resource_id}} {",
       "    auth: none",
-      "    path {",
+      "    path: {",
       "        resource_id: ${3:Resource.id}",
       "    }",
       "    output: ${4:Resource}",
-      "    action${5} {",
+      "    action:${5} {",
       "        ${6}",
       "    }",
       "}"

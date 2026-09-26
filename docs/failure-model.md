@@ -264,7 +264,7 @@ responses are derived from the operations it invokes.
 
 ```text
 route GET /customers/{id} {
-    path {
+    path: {
         id: Customer.id
     }
     output: CustomerOutput

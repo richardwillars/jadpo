@@ -4,7 +4,7 @@ output Health {
 
 route GET /private-health {
     output: Health
-    action {
+    action: {
         return Health { ok: true }
     }
 }

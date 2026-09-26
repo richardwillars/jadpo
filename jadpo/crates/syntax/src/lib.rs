@@ -567,7 +567,7 @@ mod tests {
         let mut paths = Vec::new();
         collect_sources(&root, &mut paths);
 
-        assert_eq!(paths.len(), 82);
+        assert_eq!(paths.len(), 84);
         for path in paths {
             let source = fs::read_to_string(&path).expect("fixture should be readable");
             let result = lex(&path, &source);

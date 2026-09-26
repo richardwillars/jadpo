@@ -137,7 +137,7 @@ which semantic risks remain.
 | ----- | ----------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | P0    | Design foundation                         | complete    | Charter, semantic model, type system, failure model, acceptance cases                                                                                                                   |
 | P1    | Jadpo seed and core grammar            | complete    | [Core grammar](grammar-v0.1.md), [seed application](../examples/jadpo-seed/app.jadpo), [expected semantics](../examples/jadpo-seed/expected.md), [issue log](language-issues.md) |
-| P2    | Executable compiler fixtures              | complete    | [Eighty-two source/expectation pairs](../tests/compile/README.md) cover syntax, names, types, failures, disclosure, effects, typed CRUD, patches, relationships, modules, local mutation, enums, matching, operators, authored tests, and the executable P10.6 surface |
+| P2    | Executable compiler fixtures              | complete    | [Eighty-four source/expectation pairs](../tests/compile/README.md) cover syntax, names, types, failures, disclosure, effects, typed CRUD, patches, relationships, modules, local mutation, enums, matching, operators, authored tests, and the executable P10.6 surface |
 | P3    | Rust workspace and CLI                    | complete    | [Rust workspace](../jadpo/README.md), deterministic scaffold manifest, discovery tests, stable build-stage diagnostics                                                               |
 | P4    | Lexer, parser, and syntax tree            | complete    | Span-preserving lexer and AST, recovering parser, exact seed outline, fixture coverage, real `jadpo check` syntax pass                                                               |
 | P5    | Declaration index and semantic graph      | complete    | Deterministic IDs, resolved declaration references, field/refinement nodes, callable edges, semantic JSON manifest                                                                       |
@@ -1171,7 +1171,7 @@ generated storage operations.
   inline case and cannot contain arbitrary route logic.
 - An inline action has the same effect, transaction, policy, return, and
   recoverable-problem rules as a named action. Its closed problem set is
-  declared on the action header as `action fails A, B { ... }`.
+  declared on the action header as `action: fails A, B { ... }`.
 - Inline action structure is brace-delimited. Indentation and line breaks are
   never semantic; no YAML-style continuation or tab-sensitive syntax is
   permitted.
@@ -1191,7 +1191,7 @@ generated storage operations.
   explicitly through `run:`. Named actions and functions remain transport-
   independent.
 - Declare path placeholders in the route template as `{name}` and type them in
-  a brace-delimited `path { name: Type }` group. Expose validated values through
+  a brace-delimited `path: { name: Type }` group. Expose validated values through
   the `path.name` namespace so they cannot collide with query, header, or body
   fields.
 - Require an exact one-to-one correspondence between template placeholders and
@@ -1200,7 +1200,8 @@ generated storage operations.
 - Reserve authentication credentials and trusted identity headers for the
   generated authentication adapter; ordinary header binding cannot expose
   them to application logic.
-- Preserve the current field-style route body and braces. Final query/header/
+- Preserve the field-style `name: value` route body and braces, including
+  block-valued `path:` and `action:` items. Final query/header/
   body binding spelling remains a focused grammar task; the accepted semantics
   do not authorise decorators, significant indentation, parameter annotations,
   or a wholesale route syntax redesign.
@@ -1209,12 +1210,12 @@ The accepted local-first shape is:
 
 ```text
 route GET /customers/{customer_id}/orders/{order_id} {
-    path {
+    path: {
         customer_id: Customer.id
         order_id: Order.id
     }
 
-    action fails CustomerNotFound, OrderNotFound, Unavailable {
+    action: fails CustomerNotFound, OrderNotFound, Unavailable {
         // Endpoint-local effectful behaviour.
     }
 
@@ -1229,7 +1230,7 @@ route GET /health {
     auth: none
     output: Health
 
-    action {
+    action: {
         return Health { ok: true }
     }
 }
@@ -2584,7 +2585,7 @@ A phase may move backwards if a golden application invalidates its assumptions.
 - Retained authentication-required-by-default and selected `auth: none` as the
   sole initial opt-out. Authentication remains separate from policy and from
   provider strategy configuration.
-- Selected `{name}` path placeholders with a typed `path { name: Type }` group,
+- Selected `{name}` path placeholders with a typed `path: { name: Type }` group,
   `path.name` access, and exact one-to-one compiler checks across multiple path
   parameters. Query, header, and body field spelling remains open.
 - Accepted `entity` as identity-bearing domain data with optional explicit

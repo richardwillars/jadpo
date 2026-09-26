@@ -11,7 +11,7 @@ route POST /echo {
     input: EchoInput
     output: EchoOutput
 
-    action {
+    action: {
         return EchoOutput {
             value: input.value
         }

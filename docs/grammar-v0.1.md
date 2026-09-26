@@ -525,14 +525,14 @@ http_method         = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" ;
 route_path          = path_token ;
 
 route_item          = "auth", ":", "none"
-                    | "path", route_path_schema
+                    | "path", ":", route_path_schema
                     | "input", ":", type_expression
                     | "output", ":", type_expression
                     | "run", ":", qualified_name, invocation_suffix
                     | inline_action ;
 
 route_path_schema   = "{", { field_declaration }, "}" ;
-inline_action       = "action", [ fails_clause ], block ;
+inline_action       = "action", ":", [ fails_clause ], block ;
 ```
 
 The first route item above is spelled `auth: none`; the older
@@ -541,7 +541,7 @@ The first route item above is spelled `auth: none`; the older
 
 The lexer reads the non-whitespace token after the method as `path_token`.
 Every `{name}` placeholder must have exactly one same-named typed field in the
-`path { ... }` block, and every path field must have exactly one placeholder.
+`path: { ... }` block, and every path field must have exactly one placeholder.
 Path fields contain only a required semantic type; nullable/optional fields,
 constraints, references, and persistence modifiers are invalid there.
 Handler expressions access those bindings as `path.name`. Matching is exact;
@@ -552,7 +552,7 @@ Every route item uses `:` between its name and value. Space-only forms such as
 `input CreateOrder` are syntax errors rather than alternate spellings.
 
 A core route has at most one path, input, and output item and exactly one
-behaviour: either `run:` or one inline `action`, never both. Their textual order
+behaviour: either `run:` or one inline `action:`, never both. Their textual order
 is not semantic; the formatter chooses a canonical order.
 
 Reachable failures are derived through `run` or the inline action's exact

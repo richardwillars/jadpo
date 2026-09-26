@@ -8,13 +8,13 @@ output OrderView {
 
 route GET /customers/{customer_id}/orders/{order_id} {
     auth: none
-    path {
+    path: {
         customer_id: CustomerId
         order_id: OrderId
     }
     output: OrderView
 
-    action {
+    action: {
         return OrderView {
             customer_id: path.customer_id
             order_id: path.order_id

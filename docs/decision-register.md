@@ -171,16 +171,17 @@ item should update the charter, affected specifications, and examples.
   form and makes transport-to-domain argument mapping explicit.
 - An inline action has the same semantics as a named action and declares its
   recoverable surface in its brace-delimited header, for example
-  `action fails TodoNotFound, Unavailable { ... }`.
-- Route items use the field-style colon separator consistently where they are
-  fields: `auth:`, `input:`, `output:`, and `run:`. The former space-only
-  spelling is invalid. Blocks use braces; indentation is never semantic.
+  `action: fails TodoNotFound, Unavailable { ... }`.
+- Route items use the field-style colon separator consistently, including
+  block-valued `path:` and `action:` items as well as `auth:`, `input:`,
+  `output:`, and `run:`. The former space-only spelling is invalid. Blocks use
+  braces; indentation is never semantic.
 - Path, query, header, and body bindings belong to the route transport
   boundary and are statically typed before the action runs. Authentication
   headers remain owned by the generated authentication boundary rather than
   ordinary action input.
 - Route templates spell path placeholders as `{name}`. A brace-delimited
-  `path { name: Type }` group types them, and behaviour reads the validated
+  `path: { name: Type }` group types them, and behaviour reads the validated
   values through `path.name`. Template placeholders and declarations must
   correspond exactly one-to-one; missing, extra, or duplicate names are
   invalid.

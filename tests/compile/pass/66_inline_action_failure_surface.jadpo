@@ -11,7 +11,7 @@ failure Refused {
 route POST /result {
     auth: none
     output: Result
-    action fails Refused {
+    action: fails Refused {
         reject Refused
     }
 }

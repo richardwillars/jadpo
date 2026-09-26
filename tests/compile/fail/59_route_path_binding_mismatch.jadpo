@@ -4,12 +4,12 @@ entity Customer {
 
 route GET /customers/{customer_id}/{order_id} {
     auth: none
-    path {
+    path: {
         customer_id: Customer.id
         extra_id: Customer.id
     }
     output: Customer
-    action {
+    action: {
         return Customer { id: path.customer_id }
     }
 }

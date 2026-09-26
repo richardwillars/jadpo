@@ -1486,11 +1486,11 @@ not silently combine privileges. Exact configuration and strategy-declaration
 syntax remains a P11 issue.
 
 Path placeholders use braces in the route template and are typed together in a
-`path { ... }` group:
+`path: { ... }` group:
 
 ```text
 route GET /customers/{customer_id}/orders/{order_id} {
-    path {
+    path: {
         customer_id: Customer.id
         order_id: Order.id
     }
@@ -1513,7 +1513,7 @@ invocation of a named action. Small, one-off behaviour remains local:
 route POST /todos {
     input: CreateTodo
 
-    action fails Unavailable {
+    action: fails Unavailable {
         var todo = attempt create Todo {
             owner: current_user
             title: input.title
@@ -1528,9 +1528,10 @@ route POST /todos {
 ```
 
 An inline action has the same effect, transaction, policy, and exhaustive
-recoverable-problem rules as a named action. Its `fails` clause sits in the
-action header and its body is delimited by braces; indentation is never
-semantic.
+recoverable-problem rules as a named action. The route-item colon separates
+the `action:` key from the anonymous action value; its optional `fails` clause
+still belongs to that action header. The body is delimited by braces and
+indentation is never semantic.
 
 Reusable behaviour, a stable domain command, or behaviour that deserves its own
 testing, policy, or transaction boundary is extracted to a named action:

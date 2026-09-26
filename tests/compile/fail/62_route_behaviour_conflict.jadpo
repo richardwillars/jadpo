@@ -10,7 +10,7 @@ route GET /result {
     auth: none
     output: Result
     run: complete()
-    action {
+    action: {
         return Result { ok: true }
     }
 }

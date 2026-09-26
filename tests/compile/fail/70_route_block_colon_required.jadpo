@@ -4,11 +4,11 @@ output Health {
 
 route GET /health/{probe_id} {
     auth: none
-    path: {
-        probe_id: Uuid index
+    path {
+        probe_id: Uuid
     }
     output: Health
-    action: {
+    action {
         return Health { ok: true }
     }
 }

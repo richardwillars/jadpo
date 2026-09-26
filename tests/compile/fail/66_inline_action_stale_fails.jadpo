@@ -10,7 +10,7 @@ failure Refused {
 route GET /result {
     auth: none
     output: Result
-    action fails Refused {
+    action: fails Refused {
         return Result { ok: true }
     }
 }

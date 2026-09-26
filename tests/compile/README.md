@@ -47,7 +47,7 @@ Diagnostic codes in these fixtures are part of the compiler-facing contract.
 Renaming one requires updating the roadmap, relevant specification, and all
 affected fixture expectations together.
 
-The current eighty-two pairs comprise the original ten type/failure cases plus
+The current eighty-four pairs comprise the original ten type/failure cases plus
 coverage for optional omission, nullable widening, implicit narrowing,
 semantic-to-primitive unwrapping, incomplete records, invariant collections,
 transitive failure propagation, function/action separation, missing failure
@@ -82,7 +82,7 @@ precedence, and authored `test`/`assert` blocks. Their failure cases cover
 invalid payload construction and patterns, incomplete matches, incompatible
 operators, and non-Boolean assertions.
 
-Fixtures 59–69 establish the executable P10.6 subset: explicit `kind` members,
+Fixtures 59–70 establish the executable P10.6 subset: explicit `kind` members,
 flat failure context, exact `fails` sets, mandatory `attempt` at fallible call
 sites, typed and exactly matched route placeholders, `auth: none`, and exactly
 one named or inline route behaviour. They also reject stale failure declarations
@@ -99,6 +99,9 @@ An inline action's declared failure surface is also derived into route
 inventory and OpenAPI in the same way as a named action.
 Duplicate route items are diagnosed rather than silently replacing an earlier
 transport or behaviour declaration.
+Block-valued route items use the same colon separator as scalar items;
+`path:` and `action:` are canonical and the compiler offers an automatic edit
+for the rejected colonless spellings.
 
 Expectation files retain established compiler codes as migration aliases. CLI
 and LSP diagnostics expose the canonical lower-dotted `ruleId` alongside those
