@@ -599,6 +599,92 @@ fn semantic_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     })
 }
 
+fn failure_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "EFFECT_FUNCTION_CALLS_ACTION" => (
+            "Function cannot call an action",
+            "Functions are deterministic and effect-free. Calling an action would allow persistence or other effects to escape through a function boundary.",
+            "Move the call into an action, or change the callee to a pure function",
+        ),
+        "EFFECT_FUNCTION_PERSISTENCE" => (
+            "Function cannot perform persistence",
+            "Create, query, update, and delete expressions access stored state and are permitted only inside actions; functions remain pure and deterministic.",
+            "Move the persistence expression into an action",
+        ),
+        "FAIL_ATTEMPT_REQUIRED" => (
+            "Fallible expression requires `attempt`",
+            "Every expression with a recoverable problem set must make propagation visible with `attempt`.",
+            "Prefix the fallible expression with `attempt`",
+        ),
+        "FAIL_CONTEXT_FIELD_OVERLAP" => (
+            "Failure context field has conflicting disclosure",
+            "A flat failure value cannot be assigned safely when the declaration gives the same field both public and internal disclosure.",
+            "Choose one disclosure class for the failure context field",
+        ),
+        "FAIL_DUPLICATE_CODE" => (
+            "Failure code is already in use",
+            "Public failure codes identify domain failures across generated transports and must be unique even when declaration names differ.",
+            "Give one failure a distinct stable public code",
+        ),
+        "FAIL_DUPLICATE_CONTEXT_FIELD" => (
+            "Failure context field is declared more than once",
+            "A failure has one flat context object; repeating a field would make construction, disclosure, and serialization ambiguous.",
+            "Keep one declaration of the context field",
+        ),
+        "FAIL_DUPLICATE_DECLARATION" => (
+            "Problem is repeated in the `fails` set",
+            "A callable's authored `fails` list is a mathematical set. Repeating a problem does not add behavior and obscures exact failure review.",
+            "Remove the repeated problem from the `fails` list",
+        ),
+        "FAIL_MISSING_CONTEXT_FIELD" => (
+            "Rejected failure is missing required context",
+            "Every field declared by a failure must be supplied when that failure is rejected so its public and internal values are complete and typed.",
+            "Add the missing field to the `reject` value",
+        ),
+        "FAIL_MUTATION_CONFLICT_NOT_CONFLICT" => (
+            "Mutation conflict binding uses the wrong failure kind",
+            "A storage uniqueness or write conflict must map to a declared failure whose standard kind is `Conflict`; another kind would produce the wrong transport behavior.",
+            "Bind the conflict to a failure declared with `kind Conflict`",
+        ),
+        "FAIL_PATCH_EMPTY_NOT_INVALID_VALUE" => (
+            "Empty patch binding uses the wrong failure kind",
+            "A patch with no supplied changes is invalid input and must map to a failure whose standard kind is `InvalidValue`.",
+            "Bind `empty:` to a failure declared with `kind InvalidValue`",
+        ),
+        "FAIL_REQUIRED_MUTATION_NOT_NOT_FOUND" => (
+            "Required mutation missing binding uses the wrong failure kind",
+            "When a required update or delete finds no entity, its `missing:` binding must identify a failure with standard kind `NotFound`.",
+            "Bind `missing:` to a failure declared with `kind NotFound`",
+        ),
+        "FAIL_REQUIRED_QUERY_NOT_NOT_FOUND" => (
+            "Required query missing binding uses the wrong failure kind",
+            "When a required query finds no entity, its `missing:` binding must identify a failure with standard kind `NotFound`.",
+            "Bind `missing:` to a failure declared with `kind NotFound`",
+        ),
+        "FAIL_STALE_DECLARATION" => (
+            "Declared problem is not reachable",
+            "A callable's authored `fails` set must exactly equal its reachable unhandled problem set.",
+            "Remove the stale `fails` entry",
+        ),
+        "FAIL_UNDECLARED_PROPAGATION" => (
+            "Reachable problem is missing from the `fails` set",
+            "A callable must declare every problem that can escape its body after local handling; otherwise callers cannot reason about the complete failure surface.",
+            "Add the reachable problem to `fails`, or handle it before it escapes",
+        ),
+        "FAIL_UNKNOWN_CONTEXT_FIELD" => (
+            "Rejected failure contains an unknown context field",
+            "A `reject` value may assign only fields declared by that failure; extra fields have no disclosure classification or generated schema.",
+            "Remove the extra field or declare it on the failure",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let (category, remainder) = code.split_once('_').unwrap_or(("diagnostic", code));
     let category = match category {
@@ -622,7 +708,9 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     }
     .to_ascii_lowercase();
     let rule_id = format!("{category}.{}", remainder.to_ascii_lowercase());
-    let authored = syntax_catalogue_copy(code).or_else(|| semantic_catalogue_copy(code));
+    let authored = syntax_catalogue_copy(code)
+        .or_else(|| semantic_catalogue_copy(code))
+        .or_else(|| failure_catalogue_copy(code));
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
@@ -1413,6 +1501,22 @@ mod tests {
         for code in CATALOGUE_CODES
             .iter()
             .filter(|code| code.starts_with("SEM_"))
+        {
+            let definition = catalogue_definition(code);
+            assert!(definition.authored_copy, "{code}");
+            assert!(!definition.reason.contains(code), "{code}");
+            assert_ne!(
+                definition.recommended_title, "Update the source to satisfy this rule",
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_effect_and_failure_diagnostic_has_rule_specific_public_copy() {
+        for code in CATALOGUE_CODES
+            .iter()
+            .filter(|code| code.starts_with("EFFECT_") || code.starts_with("FAIL_"))
         {
             let definition = catalogue_definition(code);
             assert!(definition.authored_copy, "{code}");

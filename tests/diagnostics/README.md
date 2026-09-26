@@ -64,3 +64,8 @@ Real trigger-fixture coverage is still tracked independently by the strict gate.
 The `SEM_*` name-resolution family is also fully authored: duplicate names,
 unresolved names and callees, wrong declaration kinds, and non-callable names
 now explain resolution scope and the concrete declaration change required.
+
+The `EFFECT_*` and `FAIL_*` families are fully authored and mostly backed by
+existing compiler fixtures. Their copy explains the function/action purity
+boundary, exact failure-set propagation, failure-kind mappings, and flat
+public/internal context rules.
