@@ -1,3 +1,7 @@
+// CLI helpers return the complete structured diagnostic so every renderer sees
+// the same repair protocol; keep that contract intact at command boundaries.
+#![allow(clippy::result_large_err)]
+
 use jadpo_core::{
     accept_index_recommendation, analyze_project, checked_source_revision, create_project,
     derive_artifacts, derive_target, diff_schema_identities, discover_sources, format_source,

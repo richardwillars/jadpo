@@ -1,3 +1,7 @@
+// Rich compiler diagnostics are the intentional public error contract. Boxing
+// every `Result` error would spread transport concerns through the core API.
+#![allow(clippy::result_large_err)]
+
 use jadpo_diagnostics::Diagnostic;
 use jadpo_semantic::{
     build_semantic_graph, check_failures, check_types, FailureCheckResult, ScaffoldManifest,

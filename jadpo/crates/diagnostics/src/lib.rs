@@ -200,6 +200,20 @@ impl CompilerDiagnostic {
 
     fn new(code: &'static str, severity: Severity) -> Self {
         let definition = catalogue_definition(code);
+        let (behavioral_impact, public_contract_impact) = match severity {
+            Severity::Error => (
+                "Compilation is blocked until this problem is fixed.",
+                "No public-contract change has been applied.",
+            ),
+            Severity::Warning => (
+                "The project can still build; this recommendation is advisory.",
+                "No public-contract change has been applied.",
+            ),
+            Severity::Note => (
+                "This information does not block compilation.",
+                "No public-contract change has been applied.",
+            ),
+        };
         let recommended_next_step = RepairStep {
             kind: definition.repair_kind,
             title: definition.recommended_title.clone(),
@@ -226,8 +240,8 @@ impl CompilerDiagnostic {
             source_revision: "unversioned".to_owned(),
             context: Vec::new(),
             impact: Box::new(DiagnosticImpact {
-                behavioral: "Compilation is blocked until this rule is satisfied.".to_owned(),
-                public_contract: "No public-contract change has been applied.".to_owned(),
+                behavioral: behavioral_impact.to_owned(),
+                public_contract: public_contract_impact.to_owned(),
                 affected: Vec::new(),
                 query_id: None,
             }),
@@ -236,18 +250,14 @@ impl CompilerDiagnostic {
             notes: Vec::new(),
         };
         if code == "ROUTE_AUTH_VALUE_INVALID" {
-            diagnostic.impact.behavioral =
-                "Compilation is blocked until the route authentication boundary is chosen."
-                    .to_owned();
-            diagnostic.impact.public_contract =
-                "The public route security boundary is unresolved; the compiler will not guess."
-                    .to_owned();
-            diagnostic.recommended_next_step.behavioral_effect =
-                "No authentication behavior changes until a human chooses a valid boundary."
-                    .to_owned();
-            diagnostic.recommended_next_step.public_contract_effect =
-                "The route's public security contract remains unchanged while compilation is blocked."
-                    .to_owned();
+            "Compilation is blocked until the route authentication boundary is chosen."
+                .clone_into(&mut diagnostic.impact.behavioral);
+            "The public route security boundary is unresolved; the compiler will not guess."
+                .clone_into(&mut diagnostic.impact.public_contract);
+            "No authentication behavior changes until a human chooses a valid boundary."
+                .clone_into(&mut diagnostic.recommended_next_step.behavioral_effect);
+            "The route's public security contract remains unchanged while compilation is blocked."
+                .clone_into(&mut diagnostic.recommended_next_step.public_contract_effect);
         }
         diagnostic
     }
@@ -287,7 +297,7 @@ impl CompilerDiagnostic {
         self.reason = render_catalogue_text(&definition.reason, &self.context);
         self.recommended_next_step.title =
             render_catalogue_text(&definition.recommended_title, &self.context);
-        self.recommended_next_step.reason = self.reason.clone();
+        self.recommended_next_step.reason.clone_from(&self.reason);
         self.refresh_semantic_name_copy();
         self.refresh_type_copy();
         self.refresh_failure_copy();
@@ -313,8 +323,8 @@ impl CompilerDiagnostic {
                 self.reason = format!(
                     "There is already a visible declaration named `{name}`, so references would not know which one to use."
                 );
-                self.recommended_next_step.title =
-                    "Rename this declaration or remove the duplicate".to_owned();
+                "Rename this declaration or remove the duplicate"
+                    .clone_into(&mut self.recommended_next_step.title);
             }
             "SEM_UNKNOWN_NAME" => {
                 self.message = format!("`{name}` isn't defined");
@@ -342,15 +352,14 @@ impl CompilerDiagnostic {
             }
             "SEM_NOT_CALLABLE" => {
                 self.message = format!("`{name}` can't be called");
-                self.reason =
-                    "Only a function or action can be followed by parentheses and called."
-                        .to_owned();
-                self.recommended_next_step.title =
-                    "Call a function or action instead, or remove the parentheses".to_owned();
+                "Only a function or action can be followed by parentheses and called."
+                    .clone_into(&mut self.reason);
+                "Call a function or action instead, or remove the parentheses"
+                    .clone_into(&mut self.recommended_next_step.title);
             }
             _ => return,
         }
-        self.recommended_next_step.reason = self.reason.clone();
+        self.recommended_next_step.reason.clone_from(&self.reason);
     }
 
     fn refresh_type_copy(&mut self) {
@@ -392,8 +401,8 @@ impl CompilerDiagnostic {
                     "`{subject}` expects {expected_count} {}, but received {received_count}",
                     plural("argument", expected_count)
                 );
-                self.reason =
-                    "Each declared parameter needs one value in the same order.".to_owned();
+                "Each declared parameter needs one value in the same order."
+                    .clone_into(&mut self.reason);
                 self.recommended_next_step.title = format!(
                     "Pass {expected_count} {} to `{subject}`",
                     plural("argument", expected_count)
@@ -473,8 +482,8 @@ impl CompilerDiagnostic {
                 };
                 self.message = format!("`{received}` values have no `{field}` field");
                 self.reason = format!("`{received}` is not a record with named fields.");
-                self.recommended_next_step.title =
-                    "Use a record value before `.`, or remove the field access".to_owned();
+                "Use a record value before `.`, or remove the field access"
+                    .clone_into(&mut self.recommended_next_step.title);
             }
             "TYPE_NULLABLE_SELECTION" => {
                 let (Some(received), Some(field)) = (received, field) else {
@@ -482,11 +491,10 @@ impl CompilerDiagnostic {
                 };
                 self.message =
                     format!("`{received}` may be `none`, so `{field}` can't be read yet");
-                self.reason =
-                    "Jadpo needs the `some(...)` case before it can safely read this field."
-                        .to_owned();
-                self.recommended_next_step.title =
-                    "Match the nullable value and read the field inside `some(...)`".to_owned();
+                "Jadpo needs the `some(...)` case before it can safely read this field."
+                    .clone_into(&mut self.reason);
+                "Match the nullable value and read the field inside `some(...)`"
+                    .clone_into(&mut self.recommended_next_step.title);
             }
             "TYPE_PRIMITIVE_SIGNATURE" => {
                 let (Some(received), Some(usage)) = (received, value("usage")) else {
@@ -510,7 +518,7 @@ impl CompilerDiagnostic {
             }
             _ => return,
         }
-        self.recommended_next_step.reason = self.reason.clone();
+        self.recommended_next_step.reason.clone_from(&self.reason);
     }
 
     fn refresh_failure_copy(&mut self) {
@@ -537,14 +545,16 @@ impl CompilerDiagnostic {
             "EFFECT_FUNCTION_PERSISTENCE" => {
                 let Some(function) = callable else { return };
                 self.message = format!("Function `{function}` can't use persistence");
-                self.reason = "Create, query, update, and delete operations are available only inside actions.".to_owned();
-                self.recommended_next_step.title =
-                    "Move this persistence operation into an action".to_owned();
+                "Create, query, update, and delete operations are available only inside actions."
+                    .clone_into(&mut self.reason);
+                "Move this persistence operation into an action"
+                    .clone_into(&mut self.recommended_next_step.title);
             }
             "FAIL_ATTEMPT_REQUIRED" => {
                 let usage = value("usage").unwrap_or("operation");
                 self.message = format!("This {usage} can fail and requires `attempt`");
-                self.reason = "`attempt` makes it clear that a declared failure may leave the current function or action.".to_owned();
+                "`attempt` makes it clear that a declared failure may leave the current function or action."
+                    .clone_into(&mut self.reason);
                 self.recommended_next_step.title = format!("Add `attempt` before this {usage}");
             }
             "FAIL_CONTEXT_FIELD_OVERLAP" => {
@@ -552,7 +562,8 @@ impl CompilerDiagnostic {
                     return;
                 };
                 self.message = format!("`{failure}.{field}` is both public and internal");
-                self.reason = "The same field cannot be returned to callers and hidden from them at the same time.".to_owned();
+                "The same field cannot be returned to callers and hidden from them at the same time."
+                    .clone_into(&mut self.reason);
                 self.recommended_next_step.title =
                     format!("Keep `{field}` in either `public` or `internal`, not both");
             }
@@ -647,7 +658,7 @@ impl CompilerDiagnostic {
             }
             _ => return,
         }
-        self.recommended_next_step.reason = self.reason.clone();
+        self.recommended_next_step.reason.clone_from(&self.reason);
     }
 
     pub fn with_impact(mut self, affected: impl Into<String>) -> Self {
@@ -3324,6 +3335,17 @@ mod tests {
             );
             assert!(json.contains("\"recommendedNextStep\":"), "{code}");
         }
+    }
+
+    #[test]
+    fn warnings_do_not_claim_that_they_block_compilation() {
+        let warning = Diagnostic::warning("INDEX_RECOMMENDATION_AVAILABLE");
+
+        assert_eq!(
+            warning.impact.behavioral,
+            "The project can still build; this recommendation is advisory."
+        );
+        assert!(!warning.impact.behavioral.contains("blocked"));
     }
 
     #[test]
