@@ -1302,22 +1302,28 @@ channels, operational faults, and non-HTTP mappings.
 
 ### 11.2 Propagation
 
-**Provisional:** a caller may call a failing operation directly when its own
-context declares or maps every possible failure. Failures propagate
-semantically, without a `Result` wrapper or `?` operator in ordinary code.
+**Accepted P10.6 direction:** every fallible expression is acknowledged with
+`attempt`, including straightforward propagation. After local handling and
+mapping, the callable's authored `fails` clause must exactly equal the closed
+set of recoverable problems that can still escape. Missing declarations and
+stale extra declarations are compile errors; the compiler reports the inferred
+difference but never silently edits the contract.
 
 ```text
-route POST /orders/:id/cancel {
-    var order = load_order(params.id)
-    return cancel_order(order)
+action cancel_order_by_id(id: Order.id) -> Order
+    fails OrderNotFound, NotOwner, AlreadyShipped, Unavailable
+{
+    var order = attempt load_order(id)
+    return attempt cancel_order(order)
 }
 ```
 
-The route does not map failures to numeric HTTP statuses. Reachable failures are
-derived through the call graph, and their standard kinds supply the mapping.
+The compiler calculates the transitive set through the call graph and checks it
+against the written clause. A named action's route does not repeat that list:
+the route derives its error surface from `run:`, and standard failure kinds
+supply transport mapping without numeric statuses in application code.
 
-For local handling or transformation, the proposed explicit construct is
-`attempt`:
+For local handling or transformation, `attempt` grows a handler block:
 
 ```text
 var order = attempt cancel_order(input.order_id) {
@@ -1327,13 +1333,16 @@ var order = attempt cancel_order(input.order_id) {
 }
 ```
 
-The precise grammar, return typing, and interaction with `match` remain open.
+The precise handler-arm grammar, replacement-value typing, and interaction with
+`match` remain open.
 
 ### 11.3 Operational failures
 
-Infrastructure failures such as a database outage or network timeout are not
-ordinary business results. They are handled by declared runtime/service policy
-and normally become logged operational faults with a generic external response.
+Recoverable infrastructure conditions such as a database outage or network
+timeout enter the same checked problem flow through source-agnostic built-ins
+such as `Unavailable` and `TimedOut`. They must be handled, mapped, or written
+in `fails`. Adapter names and raw driver failures remain internal, while true
+defects stay outside catchable flow.
 
 ```text
 service Stripe {
@@ -1444,43 +1453,66 @@ The route's `InvalidValue` and `Conflict` responses are derived from the failure
 kinds reachable through `place_order` and appear automatically in generated
 documentation.
 
-**Accepted:** public access must be conspicuous and explicit.
+**Accepted:** disabling authentication must be conspicuous and explicit.
 
 ```text
 route GET /public-status {
-    auth: public explicitly
+    auth: none
     output: PublicStatus
 }
 ```
 
-The public override uses the same `name: value` form as every other route item.
-The absence of an explicit access override retains authenticated access and
-never makes a route public.
+The opt-out uses the same `name: value` form as every other route field. The
+absence of `auth: none` retains authenticated access and never makes a route
+public. `none` changes authentication only; it does not bypass route policy,
+input validation, resource limits, or audit.
 
 The current generated runtime has no authentication adapter yet. Consequently,
-prototype acceptance routes use the explicit public override, while generation
-of a protected route fails rather than silently exposing it. This temporary
-fixture repetition is not the intended application model.
+prototype acceptance routes use the explicit authentication opt-out, while
+generation of a protected route fails rather than silently exposing it. This
+temporary fixture repetition is not the intended application model.
 
 **Accepted direction:** authentication strategies are configured outside route
 business logic. Whether a request arrived through a session, OIDC/JWT, API key,
 service identity, or another reviewed strategy, application code receives the
 same typed actor context: authenticated identity, tenant where applicable,
 allowlisted user information, permissions/capabilities, and authentication
-strength. Routes inherit authentication and may state a stronger requirement or
-the conspicuous public exception; they do not name provider SDKs or token
+strength. Routes inherit authentication and may eventually state a stronger
+typed requirement or the conspicuous `none` exception; they do not name
+provider SDKs or token
 formats. Multiple enabled strategies require deterministic selection and may
 not silently combine privileges. Exact configuration and strategy-declaration
 syntax remains a P11 issue.
 
-Routes may contain small, one-off action bodies so related behaviour remains
-local:
+Path placeholders use braces in the route template and are typed together in a
+`path { ... }` group:
+
+```text
+route GET /customers/{customer_id}/orders/{order_id} {
+    path {
+        customer_id: Customer.id
+        order_id: Order.id
+    }
+
+    run: get_customer_order(path.customer_id, path.order_id)
+    output: Order
+}
+```
+
+The compiler requires exact correspondence: every template placeholder has one
+typed path entry, every path entry appears in the template, and duplicate
+placeholder names are invalid. Path values are decoded and nominally validated
+before behaviour runs. Access through `path.name` prevents collisions with
+query, header, and body fields.
+
+Routes contain exactly one behaviour form: an inline `action` or a `run:`
+invocation of a named action. Small, one-off behaviour remains local:
 
 ```text
 route POST /todos {
     input: CreateTodo
 
-    action {
+    action fails Unavailable {
         var todo = create Todo {
             owner: current_user
             title: input.title
@@ -1494,12 +1526,51 @@ route POST /todos {
 }
 ```
 
-Reusable domain behaviour should be extracted to a named action. Abstraction is
-available, but the language should not encourage controller/service/repository/
-factory/mapper layers for straightforward operations.
+An inline action has the same effect, transaction, policy, and exhaustive
+recoverable-problem rules as a named action. Its `fails` clause sits in the
+action header and its body is delimited by braces; indentation is never
+semantic.
 
-**Open:** path parameter declarations, query-string input, pagination, streaming,
-file bodies, content negotiation, redirects, and route composition.
+Reusable behaviour, a stable domain command, or behaviour that deserves its own
+testing, policy, or transaction boundary is extracted to a named action:
+
+```text
+action create_todo(input: CreateTodo, actor: Actor) -> Todo
+    fails Unavailable
+{
+    return create Todo {
+        owner: actor
+        title: input.title
+        due_at: input.due_at
+    }
+}
+
+route POST /todos {
+    input: CreateTodo
+    run: create_todo(input, current_actor)
+    output: Todo
+}
+```
+
+`run:` is only for this extracted form and keeps the mapping from typed
+transport values to domain parameters visible. Abstraction remains available,
+but the language should not encourage controller/service/repository/factory/
+mapper layers for straightforward operations.
+
+Query-string, ordinary-header, and body bindings also belong in the route and
+are typed and validated before either behaviour form runs. Authentication
+headers belong to the generated authentication boundary and are not ordinary
+action inputs. Their exact binding-field grammar remains to be pressure-tested;
+it will extend the existing brace-and-field route form rather than introduce
+decorators, parameter annotations, or indentation-sensitive nesting.
+
+**Open:** exact query/header/body binding fields, pagination, streaming, file
+bodies, content negotiation, redirects, and route composition.
+
+The compiler grammar and fixtures still describe the implemented v0.1 route
+surface, including its former public-override spelling. They remain the current
+implementation contract until P10.6 lands; this section records the accepted
+replacement design rather than claiming it is already executable.
 
 ## 14. Policies
 

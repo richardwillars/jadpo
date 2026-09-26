@@ -76,10 +76,91 @@ Documentation support has three layers:
 - stable documentation URLs or identifiers that diagnostics and generated
   audits can reference.
 
-Every public diagnostic code should eventually have a short explanation,
-likely causes, a safe correction, and links to relevant rules. Examples must be
-compile fixtures or extracted from them so documentation cannot silently drift
-from accepted syntax.
+Every public diagnostic rule has a human-first summary, reason, recommended
+next step, bounded alternatives, decision owner, likely causes, impact, and a
+stable help identifier. Examples and repairs come from executable compile
+fixtures so documentation cannot silently drift from accepted syntax.
+
+### 3.1 Guided diagnostic contract
+
+Diagnostic definitions live in one versioned compiler-owned catalogue. A
+definition owns its lower-case dotted rule identifier, category, severity,
+human templates, typed context schema, repair alternatives, decision ownership,
+help identifier, fixtures, and any legacy upper-case aliases. Compiler call
+sites supply typed semantic facts rather than constructing prose with arbitrary
+strings.
+
+Every error classifies the recommended next step as exactly one of:
+
+- `automatic_fix`: a compiler-produced, revision-bound edit whose effect can be
+  previewed and checked;
+- `guided_choice`: a closed set of semantically valid alternatives that the
+  compiler cannot choose safely; or
+- `human_decision`: an intent, policy, disclosure, migration, or other protected
+  choice that an implementation agent may not make.
+
+The version-2 agent packet is concise but self-explanatory. Its canonical keys
+are `schemaVersion`, `diagnosticId`, `sourceRevision`, `summary`, `reason`,
+`recommendedNextStep`, `alternatives`, `ruleId`, `severity`, `location`,
+`context`, `impact`, and `helpId`. Vague compiler-oriented keys such as
+`primary`, `facts`, and `affected` are not part of the public contract. Context
+and impact are bounded; large dependency sets return a summary, examples, and a
+query identifier rather than flooding the agent context.
+
+The human renderer leads with the complete summary, explains the cause, and
+places the recommended step before alternatives. The stable rule identifier is
+searchable but visually secondary. Pipeline summaries such as
+`JADPO_TYPE_FAILED` become report status rather than duplicate errors, and
+dependent parse/type cascades are grouped under their root diagnostic.
+
+### 3.2 IDE presentation
+
+The LSP transports the same semantic diagnostic object, using standard
+diagnostic `data` and code-action mechanisms rather than embedding a second
+catalogue in the editor. Presentation is progressive:
+
+- the inline squiggle covers the smallest responsible source range;
+- the Problems panel shows only the plain human summary;
+- hover shows the summary, reason, recommended step, bounded alternatives, and
+  decision owner;
+- Quick Fix places a compiler-verified preferred edit first only when that
+  preference is justified, then lists other valid choices with their effects;
+- automatic and multi-file fixes show a diff preview and are rejected when the
+  diagnostic's source revision is stale;
+- an expandable details view shows affected routes, actions, policies, and
+  public contracts plus the stable help link; and
+- raw diagnostic JSON remains available for tools and debugging, not as the
+  normal human interface.
+
+Protocol fixtures must cover automatic fixes, guided choices, human-decision
+handoff, alternative ordering, source-revision rejection, related locations,
+root-cause grouping, multi-file previews, and exact CLI/LSP semantic parity.
+
+### 3.3 Audience and disclosure boundaries
+
+`CompilerDiagnostic`, `PublicFailureResponse`, `OperationalLogEvent`, and
+`AgentIncidentPacket` are separate compiler/runtime types. They cannot be
+serialized as one another.
+
+Public failure responses remain deliberately small: stable declared code,
+static safe message, request identifier, and explicitly public detail only.
+Operational events contain redacted semantic facts, correlation identifiers,
+and stable operation/source-revision IDs. They support structured JSON,
+OpenTelemetry, and constrained vendor adapters without exposing raw provider
+errors, SQL, parameters, headers, bodies, credentials, stacks, or arbitrary
+application values.
+
+Diagnostic and logging APIs accept only compiler-approved safe value types.
+Secret values are non-renderable, and an `internal` failure field is not assumed
+safe for logging or an LLM. Third-party adapters apply the runtime disclosure
+policy before export; vendor-side scrubbing is defence in depth rather than the
+primary boundary.
+
+For runtime investigation, a trusted local tool joins the safe event's stable
+operation and source-revision IDs with the matching compiler manifest. It then
+constructs a rich, bounded agent incident packet containing source location,
+semantic context, impact, occurrence summary, and guided repairs without
+passing customer data or secrets through the telemetry provider.
 
 ## 4. LLM and chat presentation
 
@@ -245,14 +326,35 @@ compiler checks after a valid frontend pass. Initial declaration-to-artifact
 links cover validation plans, callable inventories, failure audits, and OpenAPI.
 Diagnostic documentation remains DX2 work rather than editor-owned semantics.
 
-### DX2 — agent and documentation integration
+### DX2 — guided diagnostics, agent context, and documentation
 
-- diagnostic documentation is searchable and versioned;
-- a compact skill/plugin or MCP interface retrieves compiler-backed language
-  facts on demand;
-- fenced code output and source-file links are evaluated in supported clients;
-  and
-- failures in unsupported clients degrade to exact readable plain text.
+- replace scattered message construction with the central versioned diagnostic
+  catalogue and readable dotted rule identifiers;
+- emit version-2 guided diagnostic packets with a human-first summary,
+  recommended next step, alternatives, decision ownership, bounded semantic
+  context, impact, help identifiers, and revision-bound verified repairs;
+- give CLI and LSP human renderers the same guidance while presenting it through
+  clean Problems, hover, Quick Fix, diff-preview, and details experiences;
+- generate searchable diagnostic documentation and executable examples from
+  the same catalogue and fixtures;
+- emit audience-specific public failures and secret-safe operational events,
+  with OpenTelemetry/structured-log compatibility and constrained third-party
+  adapters;
+- enrich runtime events locally into rich agent incident packets through stable
+  operation/source-revision IDs and the compiler manifest;
+- expose a compact skill/plugin or MCP interface for on-demand grammar,
+  diagnostic, symbol, impact, repair-preview, and documentation queries;
+- evaluate fenced code output and source-file links in supported clients; and
+- degrade to exact readable plain text in unsupported clients.
+
+**Exit gate:** every public diagnostic is catalogue-backed and fixture-backed;
+common mechanical errors offer a verified one-step repair; semantic ambiguity
+offers bounded alternatives rather than vague advice; protected choices name
+the required human decision; CLI, JSON, LSP, and documentation agree; stale
+repairs fail closed; planted secrets and customer-value canaries do not appear
+in browser responses, diagnostic packets, operational events, exporter buffers,
+or third-party adapter captures; and fresh-agent plus first-user trials meet the
+roadmap's diagnostic-quality and two-cycle repair thresholds.
 
 ### P12 tooling freeze gate
 

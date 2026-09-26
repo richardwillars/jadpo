@@ -62,16 +62,24 @@ act as a machine-readable specification that remains aligned with execution.
 Compiler output should be actionable and bounded. Each diagnostic should
 include:
 
-- stable code and category;
+- a complete plain-language summary and short reason before structured detail;
+- a readable lower-case dotted rule identifier and category;
 - source and semantic node;
 - the violated invariant or unresolved decision;
 - affected routes/entities/effects;
-- allowed choices when the choice set is closed;
-- whether the agent may decide or human approval is required;
+- one recommended next step plus allowed alternatives when the choice set is
+  closed;
+- whether the step is an automatic verified edit, an agent-owned semantic
+  choice, or a human-owned decision;
+- the source revision and behavioural/public-contract effect of any proposed
+  edit; and
 - relevant declarations, not an unfiltered stack or dependency trace.
 
 This converts compilation into part of the agent's reasoning loop rather than a
-late pass/fail tool.
+late pass/fail tool. The agent receives rich compiler and locally enriched
+incident packets, while browsers and third-party telemetry receive separate,
+smaller audience-safe schemas. Stable semantic operation IDs join those views
+without sending customer values or secrets through an external logging system.
 
 ## 5. Change impact
 

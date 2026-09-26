@@ -1,8 +1,8 @@
 # Jadpo implementation roadmap
 
-**Status:** active progress tracker  
-**Last updated:** 2026-09-25  
-**Current phase:** P10.5 exploratory implementation under an explicit P10R review deferral
+**Status:** active progress tracker
+**Last updated:** 2026-09-26
+**Current phase:** DX0.5 implementation, with P10.6 accepted before P11 under an explicit P10R review deferral
 
 This document is the implementation control plane. It records what must be
 built, what evidence completes each phase, what is deliberately deferred, and
@@ -149,8 +149,10 @@ which semantic risks remain.
 | P10R  | Assurance and validation reset            | deferred    | Candidate packages exist; outside review and five first-user sessions are deferred until feature-complete implementation, not passed                                                    |
 | P10.5 | Pre-P11 language completion               | complete    | Exploratory under P10R deferral; patches, bounded relationships, migration review, index acceptance, bounded modules/imports, and immutable-value/scoped-local-rebinding semantics are implemented; advanced extensions remain deferred |
 | DX0.5 | Checked local development loop             | in progress | JSON plus source-rendered diagnostics, coalesced atomic watch, compiler-owned HTTP health, structured runtime faults, and initial Bun restart with invalid-edit continuity implemented; startup rollback and structured shutdown remain |
+| P10.6 | Problems, routes, and entity boundary      | not started | Revise the completed P7/P10 slices before P11: exhaustive recoverable problems, local-first routes, source-agnostic operational problems, optional entity persistence, and entity-local policy |
 | DX1   | Compiler-backed language service            | complete    | Standard `jadpo lsp`, live unsaved diagnostics, symbols, cross-file definitions/references, hover, contextual completion, signature help, semantic tokens, rename, formatting, generated-artifact links, and a persistent VS Code client pass protocol tests |
-| P11   | Authentication, policy, and golden todo   | not started | May proceed as exploratory implementation after P10.5 and DX0.5; Milestone C and assurance claims still require the deferred P10R evidence                                               |
+| DX2   | Guided diagnostics and agent context        | not started | Central catalogue, readable rule IDs, recommended verified steps and alternatives, clean IDE code actions, secret-safe telemetry, and local runtime-event enrichment before the P12 tooling freeze |
+| P11   | Authentication, policy, and golden todo   | not started | May proceed as exploratory implementation after P10.6 and DX0.5; Milestone C and assurance claims still require the deferred P10R evidence                                               |
 | P12   | Order/payment application and TS baseline | not started | Reference implementations may proceed; external sessions and protocol freeze precede final comparative trials and the continuation decision                                             |
 
 The bounded module core now parses explicit logical module headers and selective
@@ -958,6 +960,318 @@ The remaining gate is review evidence, not more unreviewed surface area: resolve
 ambiguities found by independent contract review, freeze digests and fixtures,
 conduct the five structured first-user reviews, and record the freeze decision.
 
+### P10.6 — Recoverable problems, routes, and entity boundary revision
+
+**Status:** accepted design direction; implementation and final grammar not
+started.
+
+**Why this phase exists:** first-user review of the implemented P7 and P10
+surfaces found two related abstraction leaks before P11. The failure model
+closes expected domain rejection but leaves recoverable operational conditions
+outside the callable contract. The entity model also makes persistence part of
+the meaning of `entity`, forcing domain identity, storage, and policy into one
+assumption. P10.6 revises those boundaries before authentication and policy
+make them harder to change.
+
+#### Failure declaration and disclosure decisions
+
+- Retain the term `failure`; it distinguishes a typed negative outcome from an
+  uncatchable compiler/runtime defect.
+- Replace the visually understated `failure Name: Kind` relationship with an
+  explicit `kind Kind` member in the failure body.
+- Define each application failure once and reuse it across callables. Group
+  declarations by domain rather than redefining failures per action.
+- Retain an explicit stable public `code` and an optional static safe
+  `message`. A source declaration may be renamed without silently changing the
+  public code.
+- Retain separate declaration-time `public` and `internal` context schemas.
+  Public fields are part of the boundary contract; internal fields never enter
+  a client response merely because a failure is produced.
+- Flatten context values at production sites. `reject`, persistence mappings,
+  and future adapters supply one object; the canonical declaration permanently
+  determines which fields are public or internal.
+- Reject overlapping public/internal field names so flattened construction is
+  unambiguous.
+- At every production site require all non-optional context fields, reject
+  unknown and duplicate fields, resolve every value in lexical scope, and
+  check its exact nominal type. Adding a required context field is therefore a
+  checked change across every production site.
+
+The intended declaration shape is:
+
+```text
+failure CustomerNotFound {
+    kind NotFound
+    code "customer_not_found"
+    message "Customer not found."
+
+    public {
+        customer_id: Customer.id
+    }
+
+    internal {
+        lookup_id: Customer.id
+    }
+}
+```
+
+An intended production site is flat:
+
+```text
+missing: CustomerNotFound {
+    customer_id: input.id
+    lookup_id: input.id
+}
+```
+
+#### Exhaustive recoverable-problem decisions
+
+- Broaden `fails` from domain failures to the complete set of recoverable
+  problems that a callable may propagate. This includes application-defined
+  failures and normalized operational problems.
+- For every callable expression, compute a success type and a closed set of
+  recoverable problems. Every member of that set must be handled locally,
+  mapped to another declared failure, or propagated in the enclosing
+  callable's `fails` set.
+- Apply this rule to functions, actions, jobs, handlers, and generated boundary
+  operations. Purity remains separate: a function may handle a failure from a
+  fallible pure call but still may not perform persistence or other effects.
+- Add one explicit `attempt` mechanism. Without a handler block it unwraps the
+  success value and visibly propagates the recoverable problem set. With a
+  handler block it handles or translates named problems; any residual problem
+  must still appear in the enclosing `fails` set.
+- Require `attempt` at every fallible expression, even when the only decision
+  is propagation. Require the authored `fails` clause to equal the exact
+  reachable unhandled set: missing and stale extra entries both fail
+  compilation, and compiler inference is diagnostic help rather than an
+  implicit source edit.
+- Make handling exhaustive after accounting for declared propagation. No
+  failure or operational problem may disappear through a wildcard, implicit
+  catch, or unchecked target exception.
+- Reuse the language's existing exhaustive-match analysis where possible, but
+  do not require authored `Result<T, E>` plumbing through ordinary source.
+- Finalize how an `attempt` arm supplies a replacement success value. A
+  `recover` spelling is a candidate, not yet accepted grammar.
+
+The intended propagation shape is:
+
+```text
+action load_customer(id: Customer.id) -> Customer
+    fails CustomerNotFound, Unavailable
+{
+    return attempt query required Customer {
+        where: id == id
+        missing: CustomerNotFound {
+            customer_id: id
+        }
+    }
+}
+```
+
+#### Operational problems and defects
+
+- Expose a deliberately small, source-agnostic built-in operational vocabulary.
+  The initial candidates are `Unavailable`, `TimedOut`, `RateLimited`, and
+  `OutcomeUnknown`.
+- Do not expose adapter, vendor, database, or provider names in those problem
+  types. An action handles `Unavailable`, not `PrimaryStore.Unavailable` or a
+  raw driver exception. The attempted operation provides source context to the
+  reader; compiler/runtime metadata retains exact provenance for diagnostics,
+  audit, and telemetry.
+- Keep `OutcomeUnknown` distinct from `Unavailable`. In particular, a failed
+  write may have taken effect even when acknowledgement was lost; fallback or
+  retry is unsafe without idempotency or reconciliation evidence.
+- Allow application logic to catch normalized operational problems and select
+  a fallback, secondary capability, domain-specific translation, or early
+  response. Any recoverable problem raised by that fallback is checked in the
+  same way.
+- Allow a generic operational problem to propagate directly, using a safe
+  built-in boundary code, or be translated into a named application failure
+  with its own `kind`, stable `code`, message, and disclosure contract.
+- Keep true defects and impossible states outside the catchable problem set.
+  Generated-code invariant failures, corrupt runtime state, and compiler/runtime
+  defects terminate the operation and are contained and reported at the
+  runtime boundary.
+
+#### Boundary mapping decisions
+
+- Continue to derive HTTP status from semantic `kind`; application and route
+  code may not choose numeric statuses ad hoc.
+- Continue to derive a named application's stable response error identifier
+  from its declared `code`.
+- Give built-in operational problems safe generic boundary codes and messages.
+  Finalize the HTTP status and retry semantics for `OutcomeUnknown` before
+  implementation.
+- Derive every route's domain and operational error surface from the callable
+  graph. Generated OpenAPI, audit, tests, and runtime adapters must agree with
+  that graph.
+
+#### Entity, persistence, and policy decisions
+
+- Redefine `entity` as identity-bearing domain data rather than data that is
+  necessarily stored in a database. Keep `value` for structured data without
+  entity identity.
+- Permit ordinary construction and use of an entity without a persistence
+  capability.
+- Make persistence an optional explicit part of an entity contract. Only an
+  entity with persistence may participate in generated insert/query/update/
+  delete operations, indexes, uniqueness, references, and migrations.
+- Separate ordinary entity construction from persistence. Revisit the current
+  database `create` spelling; `insert` is a candidate because it does not imply
+  that constructing an entity value requires storage.
+- Place entity-specific access, field, and lifecycle policy under the entity's
+  semantic definition so reviewers do not have to reconcile a distant policy
+  catalogue with the data it governs.
+- Retain an application/capability-level policy home for authentication
+  strategy, public routes, cross-entity rules, external effects, secrets, jobs,
+  and deployment behaviour.
+- Preserve the human-approval boundary for policy changes even if policy is
+  semantically colocated with an entity. The implementation must decide whether
+  physical colocation, protected source regions, or a checked augmentation form
+  best preserves that authority.
+
+An illustrative direction, not final grammar, is:
+
+```text
+entity Customer {
+    id: Uuid
+    email: Email
+
+    persistence {
+        identity id
+        unique email
+    }
+
+    policy {
+        // Entity-specific access, field, and lifecycle rules.
+    }
+}
+```
+
+An entity without `persistence` remains constructible domain data but has no
+generated storage operations.
+
+#### Route, action, and locality decisions
+
+- Preserve `route`, `action`, and `function` as distinct semantic declarations:
+  a route is an HTTP boundary, an action is reusable effectful domain
+  behaviour, and a function is reusable pure computation.
+- Do not require every route to delegate to a one-to-one named action. The
+  canonical starting point for small endpoint-specific behaviour is a local
+  inline action inside the route.
+- Extract a named action when behaviour is reused by another route, action,
+  job, handler, or test boundary; when it represents a stable domain command;
+  or when it needs its own policy, transaction, idempotency, or observability
+  boundary. Do not extract merely to reproduce controller/service layering.
+- A route contains exactly one behaviour form: either an inline `action` body
+  or `run:` invoking a named action. Supplying both or neither is invalid.
+- `run:` remains because it explicitly maps route-local typed transport values
+  into a genuinely reusable named action. It is not required for the common
+  inline case and cannot contain arbitrary route logic.
+- An inline action has the same effect, transaction, policy, return, and
+  recoverable-problem rules as a named action. Its closed problem set is
+  declared on the action header as `action fails A, B { ... }`.
+- Inline action structure is brace-delimited. Indentation and line breaks are
+  never semantic; no YAML-style continuation or tab-sensitive syntax is
+  permitted.
+- Retain required authentication as the route default. Replace the current
+  `auth: public explicitly` spelling with the exact opt-out `auth: none`.
+  Omission never disables authentication, and the override must remain
+  conspicuous in source, audit, tests, and generated documentation.
+- Keep authentication and authorisation separate. `auth: none` changes the
+  inbound identity requirement; it does not bypass entity or application
+  policy. A no-auth route whose behaviour requires an authenticated actor is a
+  compile/proof error.
+- Configure authentication strategies outside ordinary route business logic.
+  Strategy narrowing may be added later, but route syntax must not expose
+  provider SDKs, raw tokens, cookies, or provider-specific identity data.
+- Keep body, path, query, and ordinary-header decoding in the route boundary.
+  These become validated typed bindings visible to the inline action or passed
+  explicitly through `run:`. Named actions and functions remain transport-
+  independent.
+- Declare path placeholders in the route template as `{name}` and type them in
+  a brace-delimited `path { name: Type }` group. Expose validated values through
+  the `path.name` namespace so they cannot collide with query, header, or body
+  fields.
+- Require an exact one-to-one correspondence between template placeholders and
+  path bindings: every placeholder is declared once, every declaration appears
+  in the template, and duplicate placeholders are invalid.
+- Reserve authentication credentials and trusted identity headers for the
+  generated authentication adapter; ordinary header binding cannot expose
+  them to application logic.
+- Preserve the current field-style route body and braces. Final query/header/
+  body binding spelling remains a focused grammar task; the accepted semantics
+  do not authorise decorators, significant indentation, parameter annotations,
+  or a wholesale route syntax redesign.
+
+The accepted local-first shape is:
+
+```text
+route GET /customers/{customer_id}/orders/{order_id} {
+    path {
+        customer_id: Customer.id
+        order_id: Order.id
+    }
+
+    action fails CustomerNotFound, OrderNotFound, Unavailable {
+        // Endpoint-local effectful behaviour.
+    }
+
+    output: OrderView
+}
+```
+
+An explicit authentication exception is:
+
+```text
+route GET /health {
+    auth: none
+    output: Health
+
+    action {
+        return Health { ok: true }
+    }
+}
+```
+
+The extraction form remains:
+
+```text
+route POST /orders {
+    input: CreateOrder
+    output: OrderView
+    run: place_order(input)
+}
+```
+
+#### Required implementation evidence
+
+- focused parser, semantic, failure-flow, and target fixtures for explicit
+  `kind`, flat context construction, and exact context checking;
+- direct, transitive, handled, mapped, and propagated operational-problem
+  fixtures across functions and actions;
+- exhaustive `attempt` fixtures, including fallback operations that introduce
+  new problems;
+- runtime cases for unavailable reads, definitely-not-executed writes, unknown
+  write outcomes, safe idempotent retry, and unsafe fallback rejection;
+- route/OpenAPI/audit agreement for named failures and generic operational
+  problems;
+- route fixtures proving authenticated default, exact `auth: none` opt-out,
+  inline-action problem checking, mutually exclusive inline/`run:` behaviour,
+  exact multi-placeholder path binding and namespacing, transport binding,
+  named-action extraction, and whitespace-insensitive brace structure;
+- constructible non-persistent entity fixtures and diagnostics rejecting
+  persistence operations against them;
+- persistent entity parity with the existing SQLite/PostgreSQL evidence; and
+- entity-local policy fixtures plus approval/proof evidence showing that
+  colocation cannot bypass human-owned policy authority.
+
+**Exit gate:** every recoverable problem is mechanically handled, mapped, or
+propagated; no raw adapter exception enters authored source; defects remain
+contained; non-persistent entities work without storage; persistent entities
+retain the existing database guarantees; and entity-local policy composes with
+the application policy and approval model.
+
 ### P11 — Authentication, policy, and golden todo
 
 **Objective:** implement the frozen P10R assurance contracts and demonstrate the
@@ -1133,9 +1447,15 @@ The delivery order is:
    hover documentation, completion, and semantic tokens over LSP;
 4. formatter, rename, conservative code actions, and links to generated
    contracts/audits;
-5. Shiki, Prism, Highlight.js, and Monaco adapters for documentation and chat
+5. a central diagnostic catalogue, human-first summaries, guided and verified
+   repairs, decision ownership, bounded semantic context, clean IDE Quick Fix
+   alternatives, and root-cause grouping;
+6. audience-specific browser, telemetry, and agent incident schemas with
+   secret-safe OpenTelemetry/structured-log adapters and local semantic
+   enrichment through stable operation/source-revision IDs;
+7. Shiki, Prism, Highlight.js, and Monaco adapters for documentation and chat
    clients that allow custom grammars; and
-6. a compact skill/plugin or MCP interface that lets agents retrieve versioned
+8. a compact skill/plugin or MCP interface that lets agents retrieve versioned
    grammar, diagnostics, symbols, and documentation from the same language
    service.
 
@@ -1150,6 +1470,64 @@ DX0.5 is scheduled during P10.5 and must pass before P11 application authoring.
 The minimum LSP and agent-context baseline must be recorded and frozen before
 P12 so tooling quality is measured honestly and does not change midway through
 the TypeScript comparison.
+
+### DX2 guided-diagnostic and safe-enrichment contract
+
+Implement diagnostics as compiler-owned semantic repair protocols rather than
+scattered strings. One versioned catalogue defines each lower-case dotted rule
+identifier, human summary and reason, typed context, recommended next step,
+bounded alternatives, decision owner, impact, help identifier, fixtures, and
+legacy aliases. Compiler call sites provide typed facts only.
+
+The version-2 agent packet uses the clear keys `schemaVersion`, `diagnosticId`,
+`sourceRevision`, `summary`, `reason`, `recommendedNextStep`, `alternatives`,
+`ruleId`, `severity`, `location`, `context`, `impact`, and `helpId`. Repair kinds
+are `automatic_fix`, `guided_choice`, and `human_decision`. Automatic fixes are
+revision-bound compiler edits with a preview of behavioural and public-contract
+impact; ambiguous semantic choices remain alternatives, and protected choices
+become explicit human questions.
+
+The LSP renders the same object without exposing raw JSON: the smallest precise
+squiggle, plain summary in Problems, summary/reason/recommendation on hover,
+recommended verified edit plus clean alternatives in Quick Fix, multi-file diff
+preview, and an expandable impact/help view. Stale fixes fail closed. Parser and
+type cascades group beneath a root cause, while terminal stage summaries move to
+report status rather than appearing as extra problems.
+
+Keep `CompilerDiagnostic`, `PublicFailureResponse`, `OperationalLogEvent`, and
+`AgentIncidentPacket` as distinct audience types. Browser failures contain only
+declared public data. Operational events contain safe correlation and semantic
+IDs and map to structured JSON, OpenTelemetry, and constrained provider
+adapters. Diagnostic/logging APIs reject arbitrary rendered values; secrets are
+non-renderable and internal context is not automatically loggable. A trusted
+local tool enriches a runtime event with the matching compiler graph and source
+revision to give an LLM rich source, context, impact, occurrence, and repair
+information without exporting customer data or secrets.
+
+**Required evidence:**
+
+- a generated catalogue manifest and documentation page covering every public
+  diagnostic, with no remaining ad hoc user-facing message construction;
+- fixtures for summary/reason rendering, each repair kind, decision ownership,
+  related locations, bounded impact, root-cause grouping, and legacy aliases;
+- CLI/JSON/LSP parity tests plus IDE protocol cases for Problems, hover, ordered
+  Quick Fix alternatives, stale-edit rejection, and multi-file preview;
+- counterfactual repair tests proving the recommended edit resolves the named
+  diagnostic and accurately reports any new diagnostic or public-contract
+  change;
+- browser, log, trace, exporter-buffer, and provider-adapter tests planted with
+  credential, header, body, connection-string, customer-data, and raw-exception
+  canaries; and
+- fresh-agent and first-user trials showing that common mechanical errors are
+  corrected in one cycle and the overall median valid repair remains within the
+  two-cycle roadmap threshold.
+
+**Exit gate:** every public diagnostic is central, readable, actionable,
+fixture-backed, and rendered consistently across CLI, JSON, documentation, and
+IDE; safe preferred repairs are verifiably correct; semantic alternatives and
+human decisions are explicit; no audience boundary can serialize another
+audience's payload; and the secret-canary and repair-cycle evidence passes before
+the P12 tooling freeze.
 
 ## 7. Typed configuration and deployment-readiness workstream
 
@@ -2155,6 +2533,66 @@ A phase may move backwards if a golden application invalidates its assumptions.
   specific parser. Fixtures 53–58 cover the successful and principal language
   failure paths; protocol tests cover Unicode positions and cross-file imports.
 
+### 2026-09-26 — Guided diagnostics and safe observability accepted
+
+- Accepted one versioned compiler-owned diagnostic catalogue in place of
+  scattered message strings and editor-specific advice.
+- Selected readable lower-case dotted rule identifiers, human-first summaries,
+  concise reasons, one recommended next step, bounded alternatives, explicit
+  decision ownership, precise locations, bounded context/impact, help IDs, and
+  revision-bound repair previews as the version-2 contract.
+- Required IDEs to render the same semantic object through precise squiggles,
+  plain Problems summaries, explanatory hover, a recommended verified Quick Fix
+  followed by clean alternatives, multi-file diff preview, and expandable
+  impact/help rather than raw JSON.
+- Separated compiler diagnostics, public failure responses, operational events,
+  and agent incident packets into non-interchangeable audience schemas.
+- Required safe typed diagnostic/log values, non-renderable secrets, no
+  assumption that internal context is loggable, and planted-secret tests across
+  browser, log, trace, buffer, and third-party adapter outputs.
+- Chose redacted structured/OpenTelemetry-compatible production events carrying
+  stable semantic operation and source-revision IDs, with trusted local
+  compiler-graph enrichment producing the rich runtime packet used by an LLM.
+- Added DX2 and its catalogue, IDE, repair, disclosure, compatibility, and
+  repair-cycle exit evidence before the P12 tooling freeze.
+
+### 2026-09-26 — Problem, route, and entity boundary revision accepted
+
+- Accepted an explicit `kind` member for reusable application failure
+  declarations, while retaining stable public codes, safe messages, and
+  declaration-owned public/internal context schemas.
+- Selected flat failure construction with exact completeness, name, scope, and
+  nominal-type checks at every production site.
+- Expanded the planned callable contract from domain-only rejection to an
+  exhaustive set of recoverable application and operational problems: each
+  problem must be handled, mapped, or propagated in `fails`.
+- Selected `attempt` as the single explicit propagation/handling mechanism;
+  exact replacement-value syntax remains open.
+- Selected source-agnostic operational categories rather than storage/provider-
+  qualified names, with provenance retained in compiler/runtime metadata.
+  `Unavailable`, `TimedOut`, `RateLimited`, and `OutcomeUnknown` are the initial
+  candidates, and unknown write outcomes remain distinct from definite
+  unavailability.
+- Kept defects and impossible states outside catchable problem flow.
+- Kept `route`, `action`, and `function` as distinct concepts while selecting a
+  local-first route form: one-off behaviour is an inline brace-delimited action;
+  reusable or independently meaningful behaviour is a named action invoked by
+  `run:`. A route has exactly one of those forms.
+- Made inline `fails` explicit in the action header, retained field-style route
+  members, and rejected indentation-sensitive nesting and decorator syntax.
+- Retained authentication-required-by-default and selected `auth: none` as the
+  sole initial opt-out. Authentication remains separate from policy and from
+  provider strategy configuration.
+- Selected `{name}` path placeholders with a typed `path { name: Type }` group,
+  `path.name` access, and exact one-to-one compiler checks across multiple path
+  parameters. Query, header, and body field spelling remains open.
+- Accepted `entity` as identity-bearing domain data with optional explicit
+  persistence, ordinary construction without a database, and entity-local
+  access/field/lifecycle policy. Cross-cutting policy and human approval remain
+  application-level concerns.
+- Added P10.6 before P11 to implement and pressure-test the revised contracts
+  without rewriting the already-recorded P7/P10 evidence.
+
 ### 2026-09-25 — Public website documentation benchmark queued
 
 - Added a conditional public-facing website and documentation benchmark
@@ -2195,4 +2633,5 @@ until golden-application evidence shows they are necessary; other migration
 transforms continue to fail closed. The language-learning slice and initial
 DX1 language service are complete. The next technical work returns to DX0.5
 startup-failure restoration, portable structured shutdown, and the remaining
-edit-recovery protocol cases before P11 application authoring.
+edit-recovery protocol cases, followed by the P10.6 problem, route, and entity
+boundary revision before P11 application authoring.

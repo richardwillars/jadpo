@@ -240,8 +240,8 @@ inherits:
 - rate/resource policy;
 - generated and authored tests.
 
-Public access is an explicit weakening of the default, not the result of an
-omitted authentication line.
+Authentication is required by default. Disabling it is an explicit weakening,
+written `auth: none`, not the result of an omitted authentication line.
 
 Authentication mechanism is not route business logic. Session cookies,
 OIDC/JWT, API keys, service identities, and future strategies terminate at a
@@ -250,8 +250,24 @@ actor context. Routes inherit the requirement for an authenticated actor and
 may describe stronger requirements or an explicit public exception; they do
 not select a provider. Actions and policy see only stable identity, tenant,
 allowlisted user information, permissions/capabilities, and authentication
-strength. When several strategies are enabled, selection and conflicts are
-deterministic and privileges are never combined implicitly.
+strength. A route may eventually require a stronger application-defined
+authentication capability, but it does not select a provider. When several
+strategies are enabled, selection and conflicts are deterministic and
+privileges are never combined implicitly.
+
+Path placeholders use `{name}` in the route template and are typed together in
+a brace-delimited `path { name: Type }` group. The template and group must have
+exactly the same names with no duplicates. Decoded and validated values are
+available as `path.name`, keeping them distinct from query, header, and body
+inputs. Authentication headers remain reserved for the generated
+authentication boundary.
+
+A route contains exactly one behaviour form. Small one-off behaviour is an
+inline brace-delimited `action`, which has the same effect, transaction, and
+exhaustive `fails` rules as a named action. Reusable behaviour, a stable domain
+command, or behaviour deserving an independently reviewed boundary is a named
+action invoked with `run:`. The route keeps the explicit mapping from transport
+values to that action's parameters.
 
 ### 2.12 `policy`
 
@@ -438,10 +454,16 @@ core value of the compiler.
 
 ## 7. Locality and abstraction
 
-The language should keep a small behaviour local rather than force it through
+The language should keep small behaviour local rather than force it through
 controller, service, repository, DTO, mapper, factory, and middleware layers.
-A route may contain a small action and tests. Reusable domain behaviour can be
-extracted to a named action or function.
+A route may contain one inline action and related tests. It is extracted to a
+named action only for reuse, a stable domain command, or an independently useful
+transaction, policy, or testing boundary. Pure reusable computation is
+extracted to a function.
+
+Locality does not introduce indentation-sensitive structure. Actions, handlers,
+and every other executable block are delimited by braces; formatting is
+canonical but indentation has no semantic meaning.
 
 Abstraction remains possible but should be more intentional than in TypeScript.
 LLMs frequently invent layers that increase navigation and context without

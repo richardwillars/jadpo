@@ -283,7 +283,8 @@ runtime knows what the application was trying to do.
 
 ## 12. Agent-facing diagnostics
 
-Diagnostics should minimise the context an agent must ingest. Prefer:
+Diagnostics should minimise the context an agent must ingest while actively
+guiding it toward a valid repair. Prefer:
 
 ```text
 Required Todo lookup failed in GET /todos/:id
@@ -303,8 +304,29 @@ over a target stack such as:
 TypeError at generated/runtime/db/query.ts:874
 ```
 
-Structured error codes and machine-readable diagnostic payloads should let an
-agent apply precise edits or request the missing human decision.
+The implemented direction is one catalogue-backed semantic diagnostic with a
+human-first summary, reason, recommended next step, bounded alternatives,
+readable lower-case dotted rule identifier, precise location, typed context,
+bounded impact, decision owner, help identifier, and source revision. A proposed
+edit is marked preferred only when the compiler can justify it, preview its
+behavioural and public-contract effect, and validate it against that revision.
+
+The LLM packet is intentionally richer than production telemetry. Safe runtime
+events carry correlation, semantic operation, and source-revision IDs; a trusted
+local tool joins those IDs with the compiler manifest to recover source
+location, call graph, affected routes, declared problem sets, and repair choices.
+Raw customer values, credentials, provider errors, SQL, request bodies, and
+headers are neither required nor permitted in that join.
+
+The LSP renders the same object progressively: summary in the Problems panel,
+cause and recommendation on hover, preferred verified edit plus alternatives in
+Quick Fix, and impact/documentation in an expandable detail view. Editor plugins
+do not construct their own advice.
+
+`CompilerDiagnostic`, `PublicFailureResponse`, `OperationalLogEvent`, and
+`AgentIncidentPacket` remain distinct types. Logging and diagnostic APIs accept
+only compiler-approved safe values; secret values cannot be rendered, and an
+internal failure field is not automatically loggable.
 
 ## 13. Formatting
 

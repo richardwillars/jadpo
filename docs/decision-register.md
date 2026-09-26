@@ -1,7 +1,7 @@
 # Decision register
 
 **Status:** current design authority  
-**Last consolidated:** 2026-09-25
+**Last consolidated:** 2026-09-26
 
 This register separates decisions from attractive ideas. Changing an accepted
 item should update the charter, affected specifications, and examples.
@@ -116,11 +116,31 @@ item should update the charter, affected specifications, and examples.
   never infers a relationship name by stripping `_id` or another suffix.
 - External calls occur through reviewed, typed service contracts.
 - External/provider failures are normalised at the service boundary.
-- Expected domain failures are typed, declared, and must be handled or
-  propagated.
-- Operational faults are distinct from domain failures.
+- Application failures are typed, declared once, and reusable. Every callable
+  has a closed set of recoverable application failures and source-agnostic
+  operational problems; each must be handled, mapped, or propagated through
+  `fails`.
+- Recoverable operational problems use a deliberately small vocabulary such as
+  `Unavailable`, `TimedOut`, `RateLimited`, and `OutcomeUnknown`. Adapter,
+  vendor, and storage names remain internal provenance rather than source-level
+  problem types.
+- Defects and impossible runtime states are not catchable failures. They are
+  contained and reported at the runtime boundary.
+- `attempt` is the single explicit mechanism for unwrapping, handling, mapping,
+  or visibly propagating recoverable problems. Exhaustiveness is checked after
+  declared propagation.
+- Every fallible expression must be acknowledged with `attempt`. After local
+  handling and mapping, the enclosing callable's authored `fails` clause must
+  exactly equal its reachable unhandled problem set; a missing or stale extra
+  entry is a compile error. The compiler may explain the inferred difference,
+  but it never silently adds to or repairs the source contract.
 - Every application domain failure derives from exactly one standard failure
   kind; the kind supplies default transport and runtime behaviour.
+- An application failure declares its standard kind with an explicit `kind`
+  member, a stable public `code`, an optional safe static `message`, and
+  declaration-owned `public` and `internal` context schemas. Production sites
+  supply one flat object whose fields are checked for completeness, uniqueness,
+  lexical availability, and exact nominal type.
 - Application code cannot throw arbitrary exceptions, reject strings, select
   numeric HTTP error statuses, or construct ad hoc error responses.
 - Public failure output contains no application data by default. Any public
@@ -131,7 +151,8 @@ item should update the charter, affected specifications, and examples.
   internally; public clients never receive them.
 - `NotVisible` is distinct from `NotPermitted` so policy can conceal resource
   existence with a 404-shaped response.
-- Public routes and weakened protections are explicit and conspicuous.
+- Disabling authentication on a route is explicit and conspicuous as
+  `auth: none`.
 - Required authentication is inherited by every route and is not repeated as
   `auth required` in canonical source.
 - Provider-specific authentication terminates at a generated boundary. Routes,
@@ -139,8 +160,30 @@ item should update the charter, affected specifications, and examples.
   user data, permissions/capabilities, and authentication strength rather than
   provider SDKs, tokens, or strategy names. Multiple configured strategies must
   resolve deterministically and must not merge privileges implicitly.
-- Route items use the field-style colon separator consistently: `auth:`,
-  `input:`, `output:`, and `run:`. The former space-only spelling is invalid.
+- A route is the HTTP boundary, an action is effectful domain behaviour, and a
+  function is computation. The three remain distinct even when behaviour is
+  colocated.
+- A small, one-off endpoint keeps an inline `action` inside its route. A named
+  action is extracted only for reuse, a stable domain command, or a boundary
+  that deserves independent testing, policy, or transaction reasoning.
+- A route contains exactly one behaviour form: either an inline `action` or a
+  `run:` invocation of a named action. `run:` exists only for the extracted
+  form and makes transport-to-domain argument mapping explicit.
+- An inline action has the same semantics as a named action and declares its
+  recoverable surface in its brace-delimited header, for example
+  `action fails TodoNotFound, Unavailable { ... }`.
+- Route items use the field-style colon separator consistently where they are
+  fields: `auth:`, `input:`, `output:`, and `run:`. The former space-only
+  spelling is invalid. Blocks use braces; indentation is never semantic.
+- Path, query, header, and body bindings belong to the route transport
+  boundary and are statically typed before the action runs. Authentication
+  headers remain owned by the generated authentication boundary rather than
+  ordinary action input.
+- Route templates spell path placeholders as `{name}`. A brace-delimited
+  `path { name: Type }` group types them, and behaviour reads the validated
+  values through `path.name`. Template placeholders and declarations must
+  correspond exactly one-to-one; missing, extra, or duplicate names are
+  invalid.
 - Policy is human-owned; audit is compiler-derived.
 - CI blocks policy/implementation disagreement.
 - Generated target code is not normal developer-facing source.
@@ -170,6 +213,53 @@ item should update the charter, affected specifications, and examples.
 - IDE semantics should come from one compiler-backed LSP. TextMate and renderer
   grammars are presentation adapters and cannot become a second parser or type
   system.
+
+### Diagnostics and observability
+
+- Diagnostic definitions live in one versioned compiler-owned catalogue. Call
+  sites supply typed facts; they do not invent user-facing prose, repair advice,
+  or editor-only variants.
+- User-facing rule identifiers use readable lower-case dotted names such as
+  `failure.must_be_declared`. Existing upper-case codes remain migration aliases
+  only while fixtures and integrations move to the catalogue.
+- A diagnostic is a guided repair protocol rather than an error string. It has
+  a human-first `summary`, a short `reason`, one `recommendedNextStep`, bounded
+  `alternatives`, a precise `location`, typed `context`, bounded `impact`, a
+  `decisionOwner`, and a stable `helpId`.
+- Every error classifies its next step as an automatic fix, a guided semantic
+  choice, or a human-owned decision. The compiler marks a fix as preferred only
+  when it can justify that preference, previews its behavioural/public-contract
+  impact, and validates the edit against the diagnostic's source revision.
+- The same semantic diagnostic object generates human CLI text, versioned agent
+  JSON, LSP diagnostics and code actions, and reference documentation. Raw JSON
+  is not the normal IDE presentation.
+- IDEs show the plain summary in the Problems panel and inline squiggle, then
+  show the reason, recommended step, alternatives, impact, and help link through
+  hover and an expandable details view. Quick Fix lists the recommended verified
+  edit first and cleanly separates other valid choices; multi-file edits receive
+  a diff preview.
+- Parser cascades and dependent consequences are grouped beneath one root cause.
+  Pipeline summaries such as "type checking failed" are report status, not
+  additional user problems.
+- Compiler diagnostics, public HTTP failures, operational telemetry, and
+  agent incident packets are distinct audience-specific schemas. None can be
+  serialized directly as another.
+- Public HTTP failures contain only the declared stable code, static safe
+  message, request identifier, and explicitly public details. They never expose
+  source locations, repair advice, adapter/provider data, stacks, or internal
+  context.
+- Diagnostic and logging APIs accept compiler-approved safe value types rather
+  than arbitrary formatted values. Secret values are non-renderable; `internal`
+  means client-hidden, not automatically safe for logs, telemetry, or an LLM.
+- Operational telemetry uses a redacted vendor-neutral event model compatible
+  with structured JSON and OpenTelemetry correlation. Provider adapters may map
+  safe fields into third-party grouping, tagging, release, and trace features,
+  but application code does not call vendor SDKs directly.
+- Production events carry stable semantic operation and source-revision IDs. A
+  trusted local tool joins those IDs with the compiler graph to build a rich,
+  bounded agent incident packet containing source location, rule, context,
+  impact, and repair choices without sending customer values or secrets through
+  third-party telemetry.
 
 ### Process
 
@@ -207,10 +297,12 @@ These are recommended but must survive the golden applications:
   exhaustive `match` remain the initial behaviour model;
 - `for item in items` as the initial iteration form;
 - pure functions separated from effectful actions;
-- `fails` and `reject` for domain failures;
-- an `attempt` construct for local failure mapping;
+- `fails` for the exhaustive recoverable-problem surface and `reject` for
+  producing application failures;
+- the exact arm and replacement-value grammar inside `attempt`;
 - declarative `create`, `query`, `update`, and `delete` syntax;
-- co-located small route behaviour and tests, with extraction for reuse;
+- the exact field syntax for typed query, header, and body bindings inside the
+  accepted route boundary;
 - Rust for a serious compiler/toolchain;
 - TypeScript/Bun as a pragmatic first executable target;
 - a possible native binary target later;
@@ -308,12 +400,13 @@ These are recommended but must survive the golden applications:
   interaction between database transactions and external effects;
 - relationship, index, uniqueness, and lifecycle syntax;
 - partial-update mechanics;
-- final failure declaration, public payload, cause-wrapping, and `attempt`
-  grammar;
-- final standard failure-kind catalogue and non-HTTP adapter mappings;
+- exact cause-wrapping and `attempt` arm/recovery grammar;
+- final built-in operational-problem boundary table and non-HTTP adapter
+  mappings;
 - whether application authors can explicitly `panic`;
 - output `none` as JSON `null` versus omission controls;
-- route path/query/header/file/streaming semantics;
+- exact route query/header/body binding grammar, plus file and streaming
+  semantics;
 - authentication identity, roles, tenancy, and ownership proofs;
 - policy storage, protection, and approval mechanism;
 - external contract import/versioning/review;
