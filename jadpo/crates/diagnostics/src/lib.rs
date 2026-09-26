@@ -1755,6 +1755,217 @@ fn cli_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     })
 }
 
+fn migration_workflow_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "MIG_DECISION_ARTIFACT_EXISTS" => (
+            "Migration decision file already exists",
+            "Decision templates are immutable review inputs and are never overwritten because doing so could erase authored approval evidence.",
+            "Choose a new output path or review the existing decision file",
+        ),
+        "MIG_DECISION_ARTIFACT_INVALID" => (
+            "Migration decision file is invalid",
+            "The decision JSON does not match the versioned schema required to bind strategies and evidence to exact schema changes.",
+            "Regenerate a decision template and transfer reviewed decisions into its schema",
+        ),
+        "MIG_DECISION_ARTIFACT_READ_FAILED" => (
+            "Migration decision file could not be read",
+            "The selected reviewed decision artifact was unavailable before validation could bind it to the current change set.",
+            "Restore read access and retry with the reviewed decision file",
+        ),
+        "MIG_DECISION_ARTIFACT_WRITE_FAILED" => (
+            "Migration decision template could not be written",
+            "The compiler derived the required decisions but could not write the immutable review artifact.",
+            "Choose a writable output path and generate the template again",
+        ),
+        "MIG_DECISION_CHANGE_SET_STALE" => (
+            "Migration decisions refer to a different change set",
+            "The decision artifact is cryptographically bound to the exact canonical schema diff and cannot be reused after that diff changes.",
+            "Regenerate the template and review every decision for the current change set",
+        ),
+        "MIG_DECISION_DUPLICATE" => (
+            "Schema change has more than one migration decision",
+            "Each identity and change pair must select one strategy so planning has a single reviewed instruction.",
+            "Keep one decision for this schema change",
+        ),
+        "MIG_DECISION_EVIDENCE_DUPLICATE" => (
+            "Migration decision repeats an evidence kind",
+            "Each strategy-specific evidence kind has one value; duplicates make the reviewed justification ambiguous.",
+            "Keep one value for each required evidence kind",
+        ),
+        "MIG_DECISION_EVIDENCE_EMPTY" => (
+            "Migration decision contains empty evidence",
+            "A required evidence field must contain a meaningful reviewed value rather than an empty or whitespace-only placeholder.",
+            "Provide the reviewed evidence value",
+        ),
+        "MIG_DECISION_EVIDENCE_MISSING" => (
+            "Migration decision is missing required evidence",
+            "The selected strategy requires specific evidence before the compiler can record it as an approved migration instruction.",
+            "Supply every evidence kind required by the selected strategy",
+        ),
+        "MIG_DECISION_EVIDENCE_UNEXPECTED" => (
+            "Migration decision contains unsupported evidence",
+            "The supplied evidence kind is not part of the selected strategy's review contract and cannot broaden that contract implicitly.",
+            "Remove the unsupported evidence or choose the matching strategy",
+        ),
+        "MIG_DECISION_MISSING" => (
+            "Schema change has no migration decision",
+            "This change crosses an approval boundary and cannot be planned until a human selects a strategy and supplies its required evidence.",
+            "Review the generated template and add the missing human-owned decision",
+        ),
+        "MIG_DECISION_STRATEGY_INVALID" => (
+            "Migration strategy is not valid for this change",
+            "Allowed strategies depend on the exact change and disposition; an unrelated strategy cannot be applied by name alone.",
+            "Choose one of the strategies generated for this schema change",
+        ),
+        "MIG_DECISION_UNEXPECTED" => (
+            "Decision file contains an unrelated schema change",
+            "The identity and change pair is not among the decisions required by the bound current change set.",
+            "Remove the unrelated decision or regenerate the template for the intended change set",
+        ),
+        "MIG_DECISION_UNRESOLVED" => (
+            "Migration decision still needs a strategy",
+            "A generated `null` strategy is an explicit review placeholder and cannot authorize planning or SQL generation.",
+            "Have the responsible human select and evidence an allowed strategy",
+        ),
+        "MIG_IDENTITY_ADDITIONS_HAVE_REMOVAL" => (
+            "Schema additions cannot be registered while identities are missing",
+            "The live schema removed or renamed a registered identity; an additions-only command cannot decide that lifecycle change.",
+            "Resolve renames or reviewed removals before registering additions",
+        ),
+        "MIG_IDENTITY_DUPLICATE_ID" => (
+            "Schema registry repeats a stable identity",
+            "One stable identifier cannot belong to multiple schema entries because diffs would no longer track a single object across renames.",
+            "Restore the compiler-owned registry from a valid version or reinitialize before deployment",
+        ),
+        "MIG_IDENTITY_DUPLICATE_PATH" => (
+            "Schema registry repeats a semantic path",
+            "Each entity, field, constraint, reference, and index path must map to exactly one stable identity.",
+            "Restore the compiler-owned registry or resolve the duplicate through schema commands",
+        ),
+        "MIG_IDENTITY_PHYSICAL_NAME" => (
+            "Schema identity has no physical storage name",
+            "Every persistent identity needs a stable physical name so migration SQL can address the same database object after logical renames.",
+            "Restore a valid compiler-owned registry entry",
+        ),
+        "MIG_IDENTITY_REGISTRY_DRIFT" => (
+            "Schema identities differ from checked source",
+            "A persistent identity was added, removed, or renamed outside the explicit schema registry workflow, so intent cannot be inferred safely.",
+            "Use the matching schema add or rename command, or restore the source declaration",
+        ),
+        "MIG_IDENTITY_REGISTRY_EXISTS" => (
+            "Schema identity registry already exists",
+            "Initialization never overwrites persistent identities because regeneration could silently assign new identities to deployed objects.",
+            "Validate and use the existing registry",
+        ),
+        "MIG_IDENTITY_REGISTRY_INVALID" => (
+            "Schema identity registry is invalid",
+            "The registry JSON does not match the versioned compiler-owned schema required for stable migration identity.",
+            "Restore the registry from version control or a verified backup",
+        ),
+        "MIG_IDENTITY_REGISTRY_MISSING" => (
+            "Schema identity registry is missing",
+            "This schema operation requires persistent identities, but the project has not initialized its compiler-owned registry.",
+            "Run `jadpo schema init <project>` before this operation",
+        ),
+        "MIG_IDENTITY_REGISTRY_NOT_CANONICAL" => (
+            "Schema identity registry was edited outside Jadpo",
+            "The parsed entries do not serialize to the exact canonical compiler-owned representation, so manual edits cannot be trusted as lifecycle operations.",
+            "Restore the canonical file and use schema commands for changes",
+        ),
+        "MIG_IDENTITY_REGISTRY_OWNER" => (
+            "Schema identity has the wrong entity owner",
+            "A field, constraint, reference, or index entry must carry the stable identity of the entity that owns its semantic path.",
+            "Restore a valid registry or reapply the change through schema commands",
+        ),
+        "MIG_IDENTITY_REGISTRY_READ_FAILED" => (
+            "Schema identity file could not be read",
+            "The registry or snapshot path was unavailable, so the compiler cannot validate persistent identity before changing schema artifacts.",
+            "Restore read access and retry the schema operation",
+        ),
+        "MIG_IDENTITY_REGISTRY_WRITE_FAILED" => (
+            "Schema identity registry could not be written",
+            "A checked initialization, addition, or rename could not persist its canonical identity update.",
+            "Restore write access and retry the same schema operation",
+        ),
+        "MIG_IDENTITY_RENAME_KIND" => (
+            "Schema rename kind is not supported",
+            "Identity-preserving rename currently accepts only an `entity` or `field` semantic path.",
+            "Choose `entity` or `field` as the rename kind",
+        ),
+        "MIG_IDENTITY_RENAME_SOURCE_UNKNOWN" => (
+            "Schema rename source identity does not exist",
+            "The old semantic path is not registered under the selected kind, so there is no stable identity to carry forward.",
+            "Use the registered old path and matching kind",
+        ),
+        "MIG_IDENTITY_RENAME_TARGET_EXISTS" => (
+            "Schema rename target already has an identity",
+            "Moving the old stable identity onto an already registered target would merge two distinct persistent objects.",
+            "Choose the unregistered renamed target or resolve the existing identity first",
+        ),
+        "MIG_IDENTITY_RENAME_TARGET_UNKNOWN" => (
+            "Schema rename target is absent from checked source",
+            "The new semantic path must already exist in the source before its old stable identity can be reassigned.",
+            "Rename the source declaration first, then update its registry identity",
+        ),
+        "MIG_IDENTITY_SNAPSHOT_EXISTS" => (
+            "Schema snapshot output already exists",
+            "Snapshots are immutable comparison inputs and are never overwritten after review or archival.",
+            "Choose a new output path or use the existing snapshot",
+        ),
+        "MIG_IDENTITY_SNAPSHOT_INVALID" => (
+            "Schema snapshot is invalid",
+            "The snapshot JSON does not match the versioned schema required for a deterministic identity and shape comparison.",
+            "Create a new snapshot with `jadpo schema snapshot`",
+        ),
+        "MIG_IDENTITY_SNAPSHOT_MISSING" => (
+            "Previous schema snapshot is missing",
+            "The requested comparison needs an immutable earlier snapshot, but the selected path does not exist.",
+            "Provide the verified snapshot path",
+        ),
+        "MIG_IDENTITY_SNAPSHOT_NOT_CANONICAL" => (
+            "Previous schema snapshot is not canonical",
+            "The parsed snapshot differs from Jadpo's exact serialization, indicating it was edited or produced by an incompatible process.",
+            "Recreate the snapshot using `jadpo schema snapshot`",
+        ),
+        "MIG_IDENTITY_SNAPSHOT_SHAPE_MISSING" => (
+            "Snapshot entry is missing its schema shape",
+            "A persistent identity snapshot must include the prior structural shape needed to classify changes and generate reviewed migration operations.",
+            "Regenerate the snapshot from a valid identity registry",
+        ),
+        "MIG_IDENTITY_SNAPSHOT_WRITE_FAILED" => (
+            "Schema snapshot could not be written",
+            "The compiler derived a canonical immutable snapshot but could not create the selected output file.",
+            "Choose a writable output path and take the snapshot again",
+        ),
+        "MIG_PLAN_ADAPTER_INVALID" => (
+            "Migration adapter is not supported",
+            "Migration planning and SQL review currently require an explicit `postgres` or `sqlite` adapter because their operations differ.",
+            "Choose `postgres` or `sqlite`",
+        ),
+        "MIG_PLAN_DECISION_REJECTS_CHANGE" => (
+            "Reviewed decision rejects this schema change",
+            "The human-selected `reject` strategy intentionally denies this change, so the compiler will not turn it into a migration plan.",
+            "Restore the rejected schema shape or obtain a new reviewed decision for a different allowed strategy",
+        ),
+        "MIG_PLAN_EXISTS" => (
+            "Migration plan output already exists",
+            "Plans are immutable review artifacts and are never overwritten because replacement could invalidate an approval trail.",
+            "Choose a new output path or review the existing plan",
+        ),
+        "MIG_PLAN_WRITE_FAILED" => (
+            "Migration plan could not be written",
+            "The compiler validated the bound decisions and derived the non-executable plan but could not create its output file.",
+            "Choose a writable output path and generate the plan again",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let (category, remainder) = code.split_once('_').unwrap_or(("diagnostic", code));
     let category = match category {
@@ -1790,7 +2001,8 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         .or_else(|| tooling_catalogue_copy(code))
         .or_else(|| index_catalogue_copy(code))
         .or_else(|| toolchain_catalogue_copy(code))
-        .or_else(|| cli_catalogue_copy(code));
+        .or_else(|| cli_catalogue_copy(code))
+        .or_else(|| migration_workflow_catalogue_copy(code));
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
@@ -2765,6 +2977,22 @@ mod tests {
             .iter()
             .filter(|code| code.starts_with("CLI_"))
         {
+            let definition = catalogue_definition(code);
+            assert!(definition.authored_copy, "{code}");
+            assert!(!definition.reason.contains(code), "{code}");
+            assert_ne!(
+                definition.recommended_title, "Update the source to satisfy this rule",
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_migration_identity_decision_and_plan_diagnostic_has_rule_specific_public_copy() {
+        for code in CATALOGUE_CODES.iter().filter(|code| {
+            code.strip_prefix("MIG_")
+                .is_some_and(|remainder| !remainder.starts_with("SQL_"))
+        }) {
             let definition = catalogue_definition(code);
             assert!(definition.authored_copy, "{code}");
             assert!(!definition.reason.contains(code), "{code}");

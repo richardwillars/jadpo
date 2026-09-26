@@ -116,3 +116,9 @@ The `CLI_*` family is fully authored. Command-shape errors now give the exact
 usable form, while watch/dev and incident-enrichment failures explain process,
 revision, manifest, and output-stream recovery without copying event payloads
 or secrets into diagnostics.
+
+Migration identity, decision, and plan diagnostics are fully authored. They
+preserve immutable artifact and stable-identity guarantees, distinguish stale
+change sets from malformed files, and keep unresolved, missing-evidence,
+rejected-change, and strategy selection outcomes visibly human-owned. SQL
+review-generation diagnostics remain separately tracked.
