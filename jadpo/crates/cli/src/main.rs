@@ -1,12 +1,13 @@
 use jadpo_core::{
-    accept_index_recommendation, analyze_project, create_project, derive_artifacts, derive_target,
-    diff_schema_identities, discover_sources, format_source, index_recommendation_count,
-    index_recommendations_json, initialize_schema_identities, register_schema_additions,
-    rename_schema_identity, snapshot_schema_identities, validate_schema_decisions,
-    validate_schema_identities, write_artifacts, write_schema_decision_template,
-    write_schema_migration_plan, write_schema_migration_sql_review, AnalyzedProject,
+    accept_index_recommendation, analyze_project, checked_source_revision, create_project,
+    derive_artifacts, derive_target, diff_schema_identities, discover_sources, format_source,
+    index_recommendation_count, index_recommendations_json, initialize_schema_identities,
+    register_schema_additions, rename_schema_identity, snapshot_schema_identities,
+    validate_schema_decisions, validate_schema_identities, write_artifacts,
+    write_schema_decision_template, write_schema_migration_plan, write_schema_migration_sql_review,
+    AnalyzedProject,
 };
-use jadpo_diagnostics::{json_string, Diagnostic};
+use jadpo_diagnostics::{catalogue_definition, json_string, Diagnostic};
 use jadpo_semantic::checked_manifest_json;
 use std::collections::BTreeMap;
 use std::env;
@@ -116,6 +117,16 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
             Ok(())
         }
         "build" => run_human_build(project),
+        "incident" => {
+            if arguments.len() != 3 {
+                return Err(Diagnostic::error(
+                    "CLI_INCIDENT_ARGUMENTS",
+                    "incident enrichment requires a project and one local event JSON file",
+                )
+                .with_note("expected: jadpo incident <project> <event-json-file>"));
+            }
+            run_incident_enrichment(project, Path::new(&arguments[2]))
+        }
         "test" => run_human_test(project),
         "fmt" => {
             let check = match arguments.get(2).map(String::as_str) {
@@ -491,6 +502,7 @@ fn print_help() {
     println!("https://jadpo.dev/");
     println!();
     println!("jadpo <new|check|inspect|artifacts|build|test|fmt|watch|dev> <project>");
+    println!("jadpo incident <project> <event-json-file>");
     println!("jadpo lsp");
     println!("jadpo schema init <project>");
     println!("jadpo schema check <project>");
@@ -519,6 +531,7 @@ fn print_help() {
     println!("lsp      run the compiler-backed language server over standard input/output");
     println!("watch    rebuild atomically after coalesced authored-input changes");
     println!("dev      watch, run Bun, and restart after successful ready builds");
+    println!("incident enrich one secret-safe runtime event from the local compiler graph");
     println!("schema init  create the checked-in persistent schema identity registry");
     println!("schema check  validate registry identity against checked source");
     println!("schema add  register additions only; reject removals and renames");
@@ -533,7 +546,7 @@ fn print_help() {
     println!("schema rename  preserve identity across an explicit source rename");
 }
 
-const DIAGNOSTIC_SCHEMA_VERSION: u32 = 1;
+const DIAGNOSTIC_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct CheckSummary {
@@ -647,15 +660,20 @@ fn checked_project(project: &Path) -> Result<CheckedProject, CheckReport> {
         declarations: analyzed.syntax.declaration_count(),
         semantic_nodes: analyzed.semantics.nodes.len(),
     };
+    let source_revision = checked_source_revision(project, &analyzed);
 
-    if let Some(diagnostics) = frontend_failure_diagnostics(&analyzed) {
+    if let Some(mut diagnostics) = frontend_failure_diagnostics(&analyzed) {
+        for diagnostic in &mut diagnostics {
+            diagnostic.source_revision.clone_from(&source_revision);
+        }
         return Err(CheckReport {
             passed: false,
             diagnostics,
             summary: Some(summary),
         });
     }
-    if let Err(diagnostic) = validate_schema_identities(project, &analyzed) {
+    if let Err(mut diagnostic) = validate_schema_identities(project, &analyzed) {
+        diagnostic.source_revision.clone_from(&source_revision);
         return Err(CheckReport {
             passed: false,
             diagnostics: vec![diagnostic],
@@ -679,12 +697,218 @@ fn checked_project(project: &Path) -> Result<CheckedProject, CheckReport> {
             )),
         );
     }
+    for diagnostic in &mut diagnostics {
+        diagnostic.source_revision.clone_from(&source_revision);
+    }
 
     Ok(CheckedProject {
         analyzed,
         diagnostics,
         summary,
     })
+}
+
+fn run_incident_enrichment(project_path: &Path, event_path: &Path) -> Result<(), Diagnostic> {
+    let packet = incident_packet(project_path, event_path)?;
+    println!(
+        "{}",
+        serde_json::to_string(&packet).expect("incident packet is serializable")
+    );
+    Ok(())
+}
+
+fn incident_packet(
+    project_path: &Path,
+    event_path: &Path,
+) -> Result<serde_json::Value, Diagnostic> {
+    let analyzed = analyze_project(project_path)?;
+    require_valid_frontend(&analyzed)?;
+    let event_text = fs::read_to_string(event_path).map_err(|error| {
+        Diagnostic::error(
+            "CLI_INCIDENT_READ_FAILED",
+            format!(
+                "could not read local runtime event {}: {error}",
+                event_path.display()
+            ),
+        )
+    })?;
+    let event: serde_json::Value = serde_json::from_str(&event_text).map_err(|error| {
+        Diagnostic::error(
+            "CLI_INCIDENT_INVALID",
+            format!("local runtime event is not valid JSON: {error}"),
+        )
+    })?;
+    if event.get("kind").and_then(serde_json::Value::as_str) != Some("operational_log_event") {
+        return Err(Diagnostic::error(
+            "CLI_INCIDENT_INVALID",
+            "incident enrichment accepts only an OperationalLogEvent",
+        ));
+    }
+    let revision = checked_source_revision(project_path, &analyzed);
+    let project_root = if project_path.is_dir() {
+        project_path
+    } else {
+        project_path.parent().unwrap_or_else(|| Path::new("."))
+    };
+    let manifest_path = project_root.join("build/app.meta.json");
+    let manifest_text = fs::read_to_string(&manifest_path).map_err(|error| {
+        Diagnostic::error(
+            "CLI_INCIDENT_MANIFEST_MISSING",
+            format!(
+                "could not read matching compiler manifest {}: {error}",
+                manifest_path.display()
+            ),
+        )
+        .with_note("run `jadpo build` for the exact source revision before enrichment")
+    })?;
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_text).map_err(|error| {
+        Diagnostic::error(
+            "CLI_INCIDENT_MANIFEST_INVALID",
+            format!("compiler manifest is invalid: {error}"),
+        )
+    })?;
+    if manifest
+        .get("source_revision")
+        .and_then(serde_json::Value::as_str)
+        != Some(revision.as_str())
+    {
+        return Err(Diagnostic::error(
+            "CLI_INCIDENT_MANIFEST_STALE",
+            "compiler manifest does not match the current checked source revision",
+        ));
+    }
+    let event_revision = event
+        .get("sourceRevision")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    if event_revision != revision {
+        return Err(Diagnostic::error(
+            "CLI_INCIDENT_REVISION_MISMATCH",
+            "runtime event source revision does not match the local compiler graph",
+        )
+        .with_context("eventRevision", event_revision)
+        .with_context("localRevision", revision));
+    }
+    let operation = bounded_identifier(&event, "semanticOperationId")?;
+    let classification = event
+        .get("classification")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| matches!(*value, "RUNTIME_UNHANDLED_FAULT" | "RUNTIME_STARTUP_FAILED"))
+        .ok_or_else(|| {
+            Diagnostic::error(
+                "CLI_INCIDENT_INVALID",
+                "runtime event classification is not compiler-owned",
+            )
+        })?;
+    let request_id = event
+        .get("requestId")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| *value == "startup" || valid_generated_request_id(value))
+        .ok_or_else(|| {
+            Diagnostic::error(
+                "CLI_INCIDENT_INVALID",
+                "runtime event request ID is not compiler-generated",
+            )
+        })?;
+    let operation_entry = manifest
+        .get("operations")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|operations| {
+            operations.iter().find(|candidate| {
+                candidate.get("id").and_then(serde_json::Value::as_str) == Some(operation)
+            })
+        });
+    let (source, range) = if let Some(entry) = operation_entry {
+        let source = entry
+            .get("source")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("<unknown>")
+            .to_owned();
+        let start = entry
+            .pointer("/range/start")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0) as usize;
+        let end = entry
+            .pointer("/range/end")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(start as u64) as usize;
+        (source, jadpo_syntax::TextRange::new(start, end))
+    } else if operation == "runtime:start" {
+        ("<runtime>".to_owned(), jadpo_syntax::TextRange::new(0, 0))
+    } else {
+        return Err(Diagnostic::error(
+            "CLI_INCIDENT_OPERATION_UNKNOWN",
+            "runtime event operation is not present in the compiler manifest",
+        ));
+    };
+    let definition = catalogue_definition(classification);
+    let packet = serde_json::json!({
+        "schemaVersion": 1,
+        "kind": "agent_incident_packet",
+        "sourceRevision": revision,
+        "semanticOperationId": operation,
+        "occurrence": {
+            "summary": "A secret-safe operational event was reported for this semantic operation.",
+            "requestId": request_id,
+            "classification": classification
+        },
+        "location": {
+            "source": source,
+            "range": { "start": range.start, "end": range.end }
+        },
+        "ruleId": definition.rule_id,
+        "context": {
+            "operation": operation,
+            "classification": classification
+        },
+        "impact": {
+            "affected": [operation],
+            "summary": "The named semantic operation failed; customer values and provider payloads were intentionally omitted."
+        },
+        "recommendedNextStep": {
+            "kind": definition.repair_kind.as_str(),
+            "title": definition.recommended_title,
+            "decisionOwner": definition.decision_owner.as_str()
+        },
+        "alternatives": [],
+        "helpId": definition.help_id
+    });
+    Ok(packet)
+}
+
+fn bounded_identifier<'a>(event: &'a serde_json::Value, key: &str) -> Result<&'a str, Diagnostic> {
+    let value = event
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= 256
+                && value.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric()
+                        || matches!(byte, b'_' | b'-' | b':' | b'/' | b'{' | b'}' | b'.')
+                })
+        })
+        .ok_or_else(|| {
+            Diagnostic::error(
+                "CLI_INCIDENT_INVALID",
+                format!("runtime event `{key}` is missing or is not a bounded identifier"),
+            )
+        })?;
+    Ok(value)
+}
+
+fn valid_generated_request_id(value: &str) -> bool {
+    let Some(uuid) = value.strip_prefix("req_") else {
+        return false;
+    };
+    uuid.len() == 36
+        && uuid.bytes().enumerate().all(|(index, byte)| {
+            if matches!(index, 8 | 13 | 18 | 23) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit()
+            }
+        })
 }
 
 fn run_human_build(project: &Path) -> Result<(), Diagnostic> {
@@ -895,7 +1119,7 @@ fn lifecycle_event_json(
         |path| json_string(&path.to_string_lossy()),
     );
     format!(
-        "{{\"schema_version\":{DIAGNOSTIC_SCHEMA_VERSION},\"kind\":\"lifecycle_event\",\"command\":{},\"sequence\":{sequence},\"revision\":{revision},\"event\":{},\"status\":{},\"project\":{},\"stale\":{stale},\"summary\":{summary},\"artifact_count\":{artifact_count},\"output\":{output},\"diagnostics\":{diagnostics}}}",
+        "{{\"schemaVersion\":{DIAGNOSTIC_SCHEMA_VERSION},\"kind\":\"lifecycle_event\",\"command\":{},\"sequence\":{sequence},\"revision\":{revision},\"event\":{},\"status\":{},\"project\":{},\"stale\":{stale},\"summary\":{summary},\"artifactCount\":{artifact_count},\"output\":{output},\"diagnostics\":{diagnostics}}}",
         json_string(command),
         json_string(event),
         json_string(status),
@@ -1472,36 +1696,16 @@ fn stable_bytes_hash(bytes: &[u8]) -> u64 {
 
 fn frontend_failure_diagnostics(project: &AnalyzedProject) -> Option<Vec<Diagnostic>> {
     let stages = [
-        (
-            project.syntax.diagnostics().cloned().collect::<Vec<_>>(),
-            "JADPO_SYNTAX_FAILED",
-            "syntax checking",
-        ),
-        (
-            project.semantics.diagnostics.clone(),
-            "JADPO_SEMANTIC_FAILED",
-            "semantic graph construction",
-        ),
-        (
-            project.typing.diagnostics.clone(),
-            "JADPO_TYPE_FAILED",
-            "type checking",
-        ),
-        (
-            project.failures.diagnostics.clone(),
-            "JADPO_FAILURE_CHECK_FAILED",
-            "failure checking",
-        ),
+        project.syntax.diagnostics().cloned().collect::<Vec<_>>(),
+        project.semantics.diagnostics.clone(),
+        project.typing.diagnostics.clone(),
+        project.failures.diagnostics.clone(),
     ];
 
-    for (mut diagnostics, code, stage) in stages {
+    for diagnostics in stages {
         if diagnostics.is_empty() {
             continue;
         }
-        diagnostics.push(Diagnostic::error(
-            code,
-            format!("{stage} failed with {} diagnostic(s)", diagnostics.len()),
-        ));
         return Some(diagnostics);
     }
     None
@@ -1520,7 +1724,7 @@ fn check_report_json(project: &Path, report: &CheckReport) -> String {
     let summary = summary_json(report.summary);
     let diagnostics = diagnostics_json(&report.diagnostics);
     format!(
-        "{{\"schema_version\":{DIAGNOSTIC_SCHEMA_VERSION},\"kind\":\"diagnostic_report\",\"command\":\"check\",\"status\":\"{status}\",\"project\":{},\"summary\":{summary},\"diagnostics\":{diagnostics}}}",
+        "{{\"schemaVersion\":{DIAGNOSTIC_SCHEMA_VERSION},\"kind\":\"diagnostic_report\",\"command\":\"check\",\"status\":\"{status}\",\"project\":{},\"summary\":{summary},\"diagnostics\":{diagnostics}}}",
         json_string(&project.to_string_lossy()),
     )
 }
@@ -1551,10 +1755,7 @@ fn print_human_diagnostic(diagnostic: &Diagnostic) {
 }
 
 fn human_diagnostic(diagnostic: &Diagnostic) -> String {
-    let mut output = format!(
-        "{}[{}]: {}\n",
-        diagnostic.severity, diagnostic.code, diagnostic.message
-    );
+    let mut output = format!("{}: {}\n", diagnostic.severity, diagnostic.message);
 
     if let Some(primary) = &diagnostic.primary {
         match fs::read_to_string(&primary.source)
@@ -1582,6 +1783,18 @@ fn human_diagnostic(diagnostic: &Diagnostic) -> String {
             )),
         }
     }
+
+    output.push_str(&format!("  reason: {}\n", diagnostic.reason));
+    output.push_str(&format!(
+        "  next: {} ({}, owner: {})\n",
+        diagnostic.recommended_next_step.title,
+        diagnostic.recommended_next_step.kind.as_str(),
+        diagnostic.decision_owner.as_str()
+    ));
+    output.push_str(&format!(
+        "  rule: {} (legacy: {})\n  help: {}\n",
+        diagnostic.rule_id, diagnostic.code, diagnostic.help_id
+    ));
 
     for note in &diagnostic.notes {
         output.push_str(&format!("  note: {note}\n"));
@@ -1649,8 +1862,8 @@ fn require_valid_frontend(project: &AnalyzedProject) -> Result<(), Diagnostic> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_project, check_project, check_report_json, human_diagnostic, lifecycle_event_json,
-        parse_dev_port, watch_input_snapshot, CheckReport, CheckSummary,
+        build_project, check_project, check_report_json, human_diagnostic, incident_packet,
+        lifecycle_event_json, parse_dev_port, watch_input_snapshot, CheckReport, CheckSummary,
     };
     use jadpo_diagnostics::{Diagnostic, SourceSpan};
     use std::fs;
@@ -1676,9 +1889,14 @@ mod tests {
             }),
         };
 
+        let json = check_report_json(Path::new("example"), &report);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid report JSON");
+        assert_eq!(parsed["schemaVersion"], 2);
+        assert_eq!(parsed["diagnostics"][0]["ruleId"], "test.warning");
+        assert_eq!(parsed["diagnostics"][0]["summary"], "check this");
         assert_eq!(
-            check_report_json(Path::new("example"), &report),
-            "{\"schema_version\":1,\"kind\":\"diagnostic_report\",\"command\":\"check\",\"status\":\"passed\",\"project\":\"example\",\"summary\":{\"source_files\":2,\"declarations\":3,\"semantic_nodes\":5},\"diagnostics\":[{\"severity\":\"warning\",\"code\":\"TEST_WARNING\",\"message\":\"check this\",\"source\":null,\"range\":null,\"notes\":[\"use the evidence command\"]}]}"
+            parsed["diagnostics"][0]["recommendedNextStep"]["kind"],
+            "guided_choice"
         );
     }
 
@@ -1698,13 +1916,12 @@ mod tests {
             vec![
                 "TYPE_ASSIGN_IMMUTABLE",
                 "TYPE_ASSIGN_IMMUTABLE",
-                "TYPE_MISMATCH",
-                "JADPO_TYPE_FAILED"
+                "TYPE_MISMATCH"
             ]
         );
         let json = check_report_json(&fixture, &report);
         assert!(json.contains("\"status\":\"failed\""));
-        assert!(json.contains("\"source\":"));
+        assert!(json.contains("\"location\":{\"source\":"));
         assert!(json.contains("\"range\":{\"start\":132,\"end\":154}"));
     }
 
@@ -1772,6 +1989,57 @@ mod tests {
     }
 
     #[test]
+    fn enriches_safe_runtime_ids_locally_without_copying_event_payloads() {
+        let root = std::env::temp_dir().join(format!(
+            "jadpo-cli-incident-enrichment-{}",
+            std::process::id()
+        ));
+        if root.exists() {
+            fs::remove_dir_all(&root).expect("stale fixture should be removable");
+        }
+        fs::create_dir_all(&root).expect("fixture should be created");
+        fs::write(root.join("app.jadpo"), "type Name = Text {}\n")
+            .expect("source should be written");
+        build_project(&root).expect("project should build a matching manifest");
+        let manifest: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(root.join("build/app.meta.json"))
+                .expect("manifest should be readable"),
+        )
+        .expect("manifest should be JSON");
+        let revision = manifest["source_revision"]
+            .as_str()
+            .expect("manifest should carry source revision");
+        let canary = "customer-secret-canary";
+        let event_path = root.join("event.json");
+        fs::write(
+            &event_path,
+            serde_json::to_vec(&serde_json::json!({
+                "schemaVersion": 1,
+                "kind": "operational_log_event",
+                "eventName": "operation.failed",
+                "classification": "RUNTIME_STARTUP_FAILED",
+                "requestId": "startup",
+                "traceId": null,
+                "semanticOperationId": "runtime:start",
+                "sourceRevision": revision,
+                "attributes": { "unsafe": canary },
+                "rawError": canary
+            }))
+            .expect("event should serialize"),
+        )
+        .expect("event should be written");
+
+        let packet = incident_packet(&root, &event_path).expect("event should enrich locally");
+        let encoded = serde_json::to_string(&packet).expect("packet should serialize");
+        assert!(!encoded.contains(canary));
+        assert_eq!(packet["kind"], "agent_incident_packet");
+        assert_eq!(packet["semanticOperationId"], "runtime:start");
+        assert_eq!(packet["sourceRevision"], revision);
+        assert_eq!(packet["location"]["source"], "<runtime>");
+        fs::remove_dir_all(root).expect("fixture should be removable");
+    }
+
+    #[test]
     fn emits_versioned_watch_lifecycle_events() {
         let diagnostic = Diagnostic::warning("TEST_WARNING", "review this");
         let json = lifecycle_event_json(
@@ -1793,13 +2061,13 @@ mod tests {
         );
 
         assert!(json.starts_with(
-            "{\"schema_version\":1,\"kind\":\"lifecycle_event\",\"command\":\"watch\""
+            "{\"schemaVersion\":2,\"kind\":\"lifecycle_event\",\"command\":\"watch\""
         ));
         assert!(json.contains("\"sequence\":2,\"revision\":1"));
         assert!(json.contains("\"event\":\"build_succeeded\""));
-        assert!(json.contains("\"artifact_count\":8"));
+        assert!(json.contains("\"artifactCount\":8"));
         assert!(json.contains("\"output\":\"example/build\""));
-        assert!(json.contains("\"code\":\"TEST_WARNING\""));
+        assert!(json.contains("\"ruleId\":\"test.warning\""));
     }
 
     #[test]

@@ -39,5 +39,32 @@
       "}"
     ],
     "description": "Exhaustively match and narrow a nullable value"
+  },
+  "Failure declaration": {
+    "prefix": "failure",
+    "body": [
+      "failure ${1:DomainFailure} {",
+      "    kind ${2:Rejected}",
+      "    code \"${3:domain_failure}\"",
+      "    message \"${4:Request failed.}\"",
+      "}"
+    ],
+    "description": "Reusable application failure with an explicit standard kind"
+  },
+  "Inline route action": {
+    "prefix": "route-action",
+    "body": [
+      "route ${1:GET} ${2:/resource/{resource_id}} {",
+      "    auth: none",
+      "    path {",
+      "        resource_id: ${3:Resource.id}",
+      "    }",
+      "    output: ${4:Resource}",
+      "    action${5} {",
+      "        ${6}",
+      "    }",
+      "}"
+    ],
+    "description": "Route-local action with typed path binding"
   }
 }

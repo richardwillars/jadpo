@@ -1,8 +1,9 @@
 use jadpo_core::{
-    analyze_sources, discover_sources, format_source, index_recommendation_count,
-    validate_schema_identities, AnalyzedProject, LanguageIndex, LanguageSymbol,
+    analyze_sources, checked_source_revision, discover_sources, format_source,
+    index_recommendation_count, validate_schema_identities, AnalyzedProject, LanguageIndex,
+    LanguageSymbol,
 };
-use jadpo_diagnostics::{Diagnostic, Severity};
+use jadpo_diagnostics::{Diagnostic, Severity, TextEdit};
 use jadpo_syntax::{Declaration, SourceFile, TextRange, TokenKind, TypeReference};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -13,8 +14,9 @@ use std::path::{Path, PathBuf};
 
 const KEYWORDS: &[&str] = &[
     "type", "enum", "entity", "value", "input", "output", "failure", "function", "action", "test",
-    "route", "module", "import", "var", "mut", "return", "reject", "if", "else", "match", "assert",
-    "some", "none", "true", "false", "and", "or", "not", "create", "query", "update", "delete",
+    "route", "module", "import", "var", "mut", "return", "reject", "attempt", "if", "else",
+    "match", "assert", "some", "none", "true", "false", "and", "or", "not", "kind", "fails",
+    "auth", "path", "run", "create", "query", "update", "delete",
 ];
 
 pub fn run_stdio() -> Result<(), Diagnostic> {
@@ -64,6 +66,7 @@ impl Server {
                             "signatureHelpProvider": { "triggerCharacters": ["(", ","] },
                             "renameProvider": { "prepareProvider": true },
                             "documentFormattingProvider": true,
+                            "codeActionProvider": { "resolveProvider": false },
                             "documentLinkProvider": { "resolveProvider": false },
                             "semanticTokensProvider": {
                                 "legend": {
@@ -190,7 +193,14 @@ impl Server {
                     let (source, offset) = request_offset(project, &params)?;
                     let symbol = index.symbol_at(&source, offset);
                     let inferred = index.inferred_type_at(project, &source, offset);
-                    if symbol.is_none() && inferred.is_none() {
+                    let guided = frontend_diagnostics(project).into_iter().find(|diagnostic| {
+                            diagnostic.primary.as_ref().is_some_and(|primary| {
+                                same_source(&primary.source, &source)
+                                    && primary.start <= offset
+                                    && offset <= primary.end
+                            })
+                        });
+                    if symbol.is_none() && inferred.is_none() && guided.is_none() {
                         return None;
                     }
                     let mut lines = Vec::new();
@@ -199,6 +209,17 @@ impl Server {
                     }
                     if let Some(inferred) = inferred {
                         lines.push(format!("Inferred type: `{inferred}`"));
+                    }
+                    if let Some(diagnostic) = guided {
+                        lines.push(format!(
+                            "**{}**\n\n{}\n\nRecommended: {}\n\nOwner: `{}` · Rule: `{}` · Help: `{}`",
+                            diagnostic.message,
+                            diagnostic.reason,
+                            diagnostic.recommended_next_step.title,
+                            diagnostic.decision_owner.as_str(),
+                            diagnostic.rule_id,
+                            diagnostic.help_id
+                        ));
                     }
                     Some(json!({
                         "contents": { "kind": "markdown", "value": lines.join("\n\n") }
@@ -319,6 +340,112 @@ impl Server {
                     })
                     .unwrap_or(Value::Null);
                 respond(writer, id, result)?;
+            }
+            Some("textDocument/codeAction") => {
+                self.respond_analysis(writer, id, |project, _index| {
+                    let source = request_source(&params)?;
+                    let source_name = source.to_string_lossy();
+                    let requested_range = parsed_source(project, &source).and_then(|parsed| {
+                        let start_line = params.pointer("/range/start/line")?.as_u64()? as usize;
+                        let start_character =
+                            params.pointer("/range/start/character")?.as_u64()? as usize;
+                        let end_line = params.pointer("/range/end/line")?.as_u64()? as usize;
+                        let end_character =
+                            params.pointer("/range/end/character")?.as_u64()? as usize;
+                        Some(TextRange::new(
+                            position_to_offset(
+                                &parsed.source_text,
+                                start_line,
+                                start_character,
+                            ),
+                            position_to_offset(&parsed.source_text, end_line, end_character),
+                        ))
+                    });
+                    let revision = checked_source_revision(
+                        self.root.as_deref().unwrap_or_else(|| Path::new(".")),
+                        project,
+                    );
+                    let supplied_revisions = params
+                        .pointer("/context/diagnostics")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|diagnostic| {
+                            diagnostic
+                                .pointer("/data/sourceRevision")
+                                .and_then(Value::as_str)
+                        })
+                        .collect::<BTreeSet<_>>();
+                    if !supplied_revisions.is_empty()
+                        && supplied_revisions.iter().any(|value| *value != revision)
+                    {
+                        return Some(Value::Array(Vec::new()));
+                    }
+                    let mut actions = Vec::new();
+                    for diagnostic in frontend_diagnostics(project) {
+                        let Some(primary) = &diagnostic.primary else { continue };
+                        if !same_source(&primary.source, &source_name) {
+                            continue;
+                        }
+                        if requested_range.is_some_and(|range| {
+                            primary.end < range.start || primary.start > range.end
+                        }) {
+                            continue;
+                        }
+                        if !diagnostic.recommended_next_step.edits.is_empty() {
+                            let changes = workspace_changes(
+                                project,
+                                &diagnostic.recommended_next_step.edits,
+                            );
+                            actions.push(json!({
+                                "title": diagnostic.recommended_next_step.title,
+                                "kind": "quickfix",
+                                "isPreferred": diagnostic.recommended_next_step.preferred,
+                                "diagnostics": [{
+                                    "range": lsp_range(project, &primary.source, TextRange::new(primary.start, primary.end)),
+                                    "message": diagnostic.message,
+                                    "code": diagnostic.rule_id,
+                                    "source": "jadpo"
+                                }],
+                                "edit": { "changes": changes },
+                                "data": {
+                                    "sourceRevision": revision,
+                                    "preview": {
+                                        "behavioral": diagnostic.recommended_next_step.behavioral_effect,
+                                        "publicContract": diagnostic.recommended_next_step.public_contract_effect
+                                    }
+                                }
+                            }));
+                        } else {
+                            actions.push(json!({
+                                "title": diagnostic.recommended_next_step.title,
+                                "kind": "quickfix.jadpo.recommended",
+                                "isPreferred": diagnostic.recommended_next_step.preferred,
+                                "command": {
+                                    "title": diagnostic.recommended_next_step.title,
+                                    "command": "jadpo.showDiagnosticAlternative",
+                                    "arguments": [{
+                                        "ruleId": diagnostic.rule_id,
+                                        "reason": diagnostic.recommended_next_step.reason,
+                                        "decisionOwner": diagnostic.recommended_next_step.decision_owner.as_str()
+                                    }]
+                                }
+                            }));
+                        }
+                        for alternative in &diagnostic.alternatives {
+                            actions.push(json!({
+                                "title": alternative.title,
+                                "kind": "quickfix.jadpo.alternative",
+                                "command": {
+                                    "title": alternative.title,
+                                    "command": "jadpo.showDiagnosticAlternative",
+                                    "arguments": [{ "ruleId": diagnostic.rule_id, "reason": alternative.reason }]
+                                }
+                            }));
+                        }
+                    }
+                    Some(Value::Array(actions))
+                })?;
             }
             Some("textDocument/semanticTokens/full") => {
                 self.respond_analysis(writer, id, |project, index| {
@@ -471,14 +598,15 @@ impl Server {
                 ));
             }
         }
-        let diagnostics = project
-            .syntax
-            .diagnostics()
-            .chain(project.semantics.diagnostics.iter())
-            .chain(project.typing.diagnostics.iter())
-            .chain(project.failures.diagnostics.iter())
+        let diagnostics = frontend_diagnostics(&project)
+            .into_iter()
             .chain(additional.iter());
         for diagnostic in diagnostics {
+            let mut diagnostic = diagnostic.clone();
+            diagnostic.source_revision = checked_source_revision(
+                self.root.as_deref().unwrap_or_else(|| Path::new(".")),
+                &project,
+            );
             let located = diagnostic.primary.as_ref().and_then(|primary| {
                 project
                     .syntax
@@ -496,16 +624,38 @@ impl Server {
             }) else {
                 continue;
             };
+            let related_information = diagnostic
+                .related
+                .iter()
+                .filter_map(|related| {
+                    let parsed = project
+                        .syntax
+                        .sources
+                        .iter()
+                        .find(|source| same_source(&source.source_name, &related.source))?;
+                    Some(json!({
+                        "location": {
+                            "uri": path_to_uri(Path::new(&related.source)),
+                            "range": byte_range(
+                                &parsed.source_text,
+                                TextRange::new(related.start, related.end),
+                            )
+                        },
+                        "message": format!("Related location for {}", diagnostic.rule_id)
+                    }))
+                })
+                .collect::<Vec<_>>();
             by_source
                 .entry(source.source_name.clone())
                 .or_default()
                 .push(json!({
                     "range": byte_range(&source.source_text, range),
                     "severity": match diagnostic.severity { Severity::Error => 1, Severity::Warning => 2, Severity::Note => 3 },
-                    "code": diagnostic.code,
+                    "code": diagnostic.rule_id,
                     "source": "jadpo",
                     "message": diagnostic.message,
-                    "data": { "notes": diagnostic.notes }
+                    "relatedInformation": related_information,
+                    "data": serde_json::from_str::<Value>(&diagnostic.to_json()).unwrap_or(Value::Null)
                 }));
         }
         for (source, diagnostics) in by_source {
@@ -959,6 +1109,48 @@ fn same_source(left: &str, right: &str) -> bool {
     normalise_path(Path::new(left)) == normalise_path(Path::new(right))
 }
 
+fn frontend_diagnostics(project: &AnalyzedProject) -> Vec<&Diagnostic> {
+    let syntax = project.syntax.diagnostics().collect::<Vec<_>>();
+    if !syntax.is_empty() {
+        return syntax;
+    }
+    if !project.semantics.diagnostics.is_empty() {
+        return project.semantics.diagnostics.iter().collect();
+    }
+    if !project.typing.diagnostics.is_empty() {
+        return project.typing.diagnostics.iter().collect();
+    }
+    project.failures.diagnostics.iter().collect()
+}
+
+fn workspace_changes(
+    project: &AnalyzedProject,
+    edits: &[TextEdit],
+) -> BTreeMap<String, Vec<Value>> {
+    let mut changes = BTreeMap::<String, Vec<Value>>::new();
+    for edit in edits {
+        let Some(parsed) = project
+            .syntax
+            .sources
+            .iter()
+            .find(|item| same_source(&item.source_name, &edit.source))
+        else {
+            continue;
+        };
+        changes
+            .entry(path_to_uri(Path::new(&edit.source)))
+            .or_default()
+            .push(json!({
+                "range": byte_range(
+                    &parsed.source_text,
+                    TextRange::new(edit.start, edit.end),
+                ),
+                "newText": edit.replacement
+            }));
+    }
+    changes
+}
+
 fn normalise_path(path: &Path) -> PathBuf {
     if path.is_absolute() {
         path.to_owned()
@@ -1101,9 +1293,11 @@ fn io_diagnostic(code: &'static str, message: &str, error: io::Error) -> Diagnos
 mod tests {
     use super::{
         completion_container, offset_to_line_character, path_to_uri, position_to_offset,
-        read_message, uri_to_path, Server,
+        read_message, uri_to_path, workspace_changes, Server,
     };
-    use jadpo_core::{analyze_project, LanguageIndex};
+    use jadpo_core::{analyze_project, analyze_sources, checked_source_revision, LanguageIndex};
+    use jadpo_diagnostics::TextEdit;
+    use jadpo_syntax::SourceFile;
     use serde_json::{json, Value};
     use std::io::Cursor;
     use std::path::Path;
@@ -1121,6 +1315,38 @@ mod tests {
     fn round_trips_file_uris_with_spaces() {
         let path = Path::new("/tmp/Jadpo project/app.jadpo");
         assert_eq!(uri_to_path(&path_to_uri(path)), path);
+    }
+
+    #[test]
+    fn preserves_multi_file_repairs_as_one_workspace_preview() {
+        let first = Path::new("/tmp/jadpo-multi-edit/first.jadpo");
+        let second = Path::new("/tmp/jadpo-multi-edit/second.jadpo");
+        let project = analyze_sources(vec![
+            SourceFile::new(first.to_owned(), "type First = Text {}\n".to_owned()),
+            SourceFile::new(second.to_owned(), "type Second = Text {}\n".to_owned()),
+        ])
+        .expect("multi-file source should analyze");
+        let changes = workspace_changes(
+            &project,
+            &[
+                TextEdit {
+                    source: first.to_string_lossy().into_owned(),
+                    start: 5,
+                    end: 10,
+                    replacement: "Primary".to_owned(),
+                },
+                TextEdit {
+                    source: second.to_string_lossy().into_owned(),
+                    start: 5,
+                    end: 11,
+                    replacement: "Secondary".to_owned(),
+                },
+            ],
+        );
+
+        assert_eq!(changes.len(), 2);
+        assert_eq!(changes[&path_to_uri(first)][0]["newText"], "Primary");
+        assert_eq!(changes[&path_to_uri(second)][0]["newText"], "Secondary");
     }
 
     #[test]
@@ -1273,10 +1499,233 @@ mod tests {
             .expect("diagnostic notification should decode")
             .expect("diagnostic notification should exist");
         assert_eq!(published["method"], "textDocument/publishDiagnostics");
-        assert!(published["params"]["diagnostics"]
+        let diagnostics = published["params"]["diagnostics"]
             .as_array()
-            .is_some_and(|diagnostics| !diagnostics.is_empty()));
+            .expect("diagnostic list should be published");
+        assert!(diagnostics.iter().all(|diagnostic| diagnostic["code"]
+            .as_str()
+            .is_some_and(|code| code.starts_with("syntax."))));
+        let diagnostic = diagnostics
+            .first()
+            .expect("one guided diagnostic should be published");
+        assert!(diagnostic["code"]
+            .as_str()
+            .is_some_and(|code| code.contains('.')));
+        assert_eq!(diagnostic["data"]["schemaVersion"], 2);
+        assert!(diagnostic["data"]["recommendedNextStep"].is_object());
+        assert!(diagnostic["data"]["sourceRevision"]
+            .as_str()
+            .is_some_and(|revision| revision.starts_with("src_")));
         std::fs::remove_dir_all(temporary).expect("temporary project should be removable");
+    }
+
+    #[test]
+    fn serves_guided_diagnostic_hover_repairs_and_rejects_stale_edits() {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("CLI crate should be inside the repository");
+        let fixture = repository.join("tests/compile/fail/60_fallible_call_requires_attempt.jadpo");
+        let source = std::fs::read_to_string(&fixture).expect("fixture should be readable");
+        let byte = source.rfind("child()").expect("fallible call should exist");
+        let (line, character) = offset_to_line_character(&source, byte);
+        let uri = path_to_uri(&fixture);
+        let mut server = Server::default();
+        request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": { "rootUri": uri }
+            }),
+        );
+
+        let mut published_output = Vec::new();
+        server
+            .handle(
+                json!({
+                    "jsonrpc": "2.0", "method": "textDocument/didOpen",
+                    "params": { "textDocument": {
+                        "uri": uri, "languageId": "jadpo", "version": 1, "text": source
+                    }}
+                }),
+                &mut published_output,
+            )
+            .expect("open notification should be handled");
+        let published = read_message(&mut Cursor::new(published_output))
+            .expect("diagnostic notification should decode")
+            .expect("diagnostic notification should exist");
+        let lsp_data = &published["params"]["diagnostics"][0]["data"];
+        let analyzed = analyze_project(&fixture).expect("fixture should analyze");
+        let mut shared = analyzed.failures.diagnostics[0].clone();
+        shared.source_revision = checked_source_revision(&fixture, &analyzed);
+        let shared_json: Value =
+            serde_json::from_str(&shared.to_json()).expect("shared diagnostic should be JSON");
+        assert_eq!(lsp_data, &shared_json);
+
+        let actions = request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 2, "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": { "uri": uri },
+                    "range": {
+                        "start": { "line": line, "character": character },
+                        "end": { "line": line, "character": character + 5 }
+                    },
+                    "context": { "diagnostics": [] }
+                }
+            }),
+        );
+        let action = actions["result"]
+            .as_array()
+            .and_then(|items| items.first())
+            .expect("attempt repair should be available");
+        assert_eq!(action["kind"], "quickfix");
+        assert_eq!(action["isPreferred"], true);
+        assert_eq!(action["diagnostics"][0]["code"], "failure.attempt_required");
+        assert_eq!(action["edit"]["changes"][&uri][0]["newText"], "attempt ");
+        assert!(action["data"]["sourceRevision"]
+            .as_str()
+            .is_some_and(|revision| revision.starts_with("src_")));
+
+        let stale = request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 3, "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": { "uri": uri },
+                    "range": {
+                        "start": { "line": line, "character": character },
+                        "end": { "line": line, "character": character + 5 }
+                    },
+                    "context": { "diagnostics": [{
+                        "data": { "sourceRevision": "src_stale" }
+                    }] }
+                }
+            }),
+        );
+        assert_eq!(stale["result"], json!([]));
+
+        let hover = request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 4, "method": "textDocument/hover",
+                "params": {
+                    "textDocument": { "uri": uri },
+                    "position": { "line": line, "character": character + 1 }
+                }
+            }),
+        );
+        let markdown = hover["result"]["contents"]["value"]
+            .as_str()
+            .expect("guided hover should contain markdown");
+        assert!(markdown.contains("Recommended:"));
+        assert!(markdown.contains("failure.attempt_required"));
+        assert!(markdown.contains("diagnostics/failure.attempt_required"));
+    }
+
+    #[test]
+    fn orders_the_recommended_guided_choice_before_bounded_alternatives() {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("CLI crate should be inside the repository");
+        let fixture = repository.join("tests/compile/fail/59_route_path_binding_mismatch.jadpo");
+        let source = std::fs::read_to_string(&fixture).expect("fixture should be readable");
+        let byte = source
+            .find("/customers/")
+            .expect("route template should exist");
+        let (line, character) = offset_to_line_character(&source, byte);
+        let uri = path_to_uri(&fixture);
+        let mut server = Server::default();
+        request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": { "rootUri": uri }
+            }),
+        );
+        let mut output = Vec::new();
+        server
+            .handle(
+                json!({
+                    "jsonrpc": "2.0", "method": "textDocument/didOpen",
+                    "params": { "textDocument": {
+                        "uri": uri, "languageId": "jadpo", "version": 1, "text": source
+                    }}
+                }),
+                &mut output,
+            )
+            .expect("open notification should be handled");
+
+        let actions = request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 2, "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": { "uri": uri },
+                    "range": {
+                        "start": { "line": line, "character": character },
+                        "end": { "line": line, "character": character + 10 }
+                    },
+                    "context": { "diagnostics": [] }
+                }
+            }),
+        );
+        let items = actions["result"]
+            .as_array()
+            .expect("guided choices should be returned");
+        assert_eq!(items[0]["kind"], "quickfix.jadpo.recommended");
+        assert_eq!(
+            items[0]["command"]["arguments"][0]["decisionOwner"],
+            "agent"
+        );
+        assert_eq!(items[1]["kind"], "quickfix.jadpo.alternative");
+        assert_eq!(items[1]["title"], "Remove or rename the route placeholder");
+    }
+
+    #[test]
+    fn publishes_related_locations_from_the_shared_diagnostic_object() {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("CLI crate should be inside the repository");
+        let fixture = repository.join("tests/compile/fail/20_duplicate_failure_code.jadpo");
+        let text = std::fs::read_to_string(&fixture).expect("fixture should be readable");
+        let uri = path_to_uri(&fixture);
+        let mut server = Server::default();
+        request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": { "rootUri": uri }
+            }),
+        );
+        let mut output = Vec::new();
+        server
+            .handle(
+                json!({
+                    "jsonrpc": "2.0", "method": "textDocument/didOpen",
+                    "params": { "textDocument": {
+                        "uri": uri, "languageId": "jadpo", "version": 1, "text": text
+                    }}
+                }),
+                &mut output,
+            )
+            .expect("open notification should be handled");
+        let published = read_message(&mut Cursor::new(output))
+            .expect("diagnostic notification should decode")
+            .expect("diagnostic notification should exist");
+        let diagnostic = published["params"]["diagnostics"]
+            .as_array()
+            .and_then(|items| items.first())
+            .expect("duplicate code diagnostic should be published");
+        assert_eq!(diagnostic["code"], "failure.duplicate_code");
+        assert_eq!(diagnostic["relatedInformation"][0]["location"]["uri"], uri);
+        assert_eq!(
+            diagnostic["data"]["location"]["related"][0]["source"],
+            fixture.to_string_lossy().as_ref()
+        );
     }
 
     #[test]

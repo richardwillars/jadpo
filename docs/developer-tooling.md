@@ -324,7 +324,8 @@ rename/reference sets, semantic tokens, authored tests, and imported definitions
 across files. Schema-identity and index-advice diagnostics reuse the same
 compiler checks after a valid frontend pass. Initial declaration-to-artifact
 links cover validation plans, callable inventories, failure audits, and OpenAPI.
-Diagnostic documentation remains DX2 work rather than editor-owned semantics.
+Diagnostic documentation is generated from the compiler-owned DX2 catalogue;
+the editor remains a presentation client rather than an independent authority.
 
 ### DX2 — guided diagnostics, agent context, and documentation
 
@@ -346,6 +347,18 @@ Diagnostic documentation remains DX2 work rather than editor-owned semantics.
   diagnostic, symbol, impact, repair-preview, and documentation queries;
 - evaluate fenced code output and source-file links in supported clients; and
 - degrade to exact readable plain text in unsupported clients.
+
+**Status: implemented; external trial evidence pending.** The compiler emits
+the version-2 object through CLI JSON and LSP `data`, generates catalogue JSON
+and Markdown reference artifacts, supplies revision-bound Quick Fix edits and
+bounded alternatives, and renders related locations without editor-owned
+rules. Generated runtimes use separate public-failure and operational-event
+schemas, safe OpenTelemetry/provider mappings, stable operation/source IDs, and
+trusted local `jadpo incident` enrichment. `skills/jadpo-agent/SKILL.md` exposes
+the bounded grammar, diagnostic, symbol, impact, repair-preview, documentation,
+and incident workflow without duplicating compiler semantics. Fresh-agent and
+first-user repair-cycle trials remain required external evidence for the exit
+gate.
 
 **Exit gate:** every public diagnostic is catalogue-backed and fixture-backed;
 common mechanical errors offer a verified one-step repair; semantic ambiguity

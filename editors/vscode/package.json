@@ -26,7 +26,9 @@
     ],
     "snippets": [{ "language": "jadpo", "path": "./snippets/jadpo.json" }],
     "commands": [
-      { "command": "jadpo.check", "title": "Jadpo: Check Project" }
+      { "command": "jadpo.check", "title": "Jadpo: Check Project" },
+      { "command": "jadpo.showDiagnosticDetails", "title": "Jadpo: Show Diagnostic Details" },
+      { "command": "jadpo.showDiagnosticAlternative", "title": "Jadpo: Show Diagnostic Alternative" }
     ],
     "configuration": {
       "title": "Jadpo",

@@ -14,6 +14,7 @@ class JadpoLanguageClient {
     this.diagnostics = vscode.languages.createDiagnosticCollection("jadpo");
     this.output = vscode.window.createOutputChannel("Jadpo Language Server");
     this.changeTimers = new Map();
+    this.diagnosticDetails = new Map();
     this.context.subscriptions.push(this.diagnostics, this.output);
     this.ready = this.start();
   }
@@ -93,13 +94,19 @@ class JadpoLanguageClient {
     }
     if (message.method === "textDocument/publishDiagnostics") {
       const uri = vscode.Uri.parse(message.params.uri);
+      for (const key of [...this.diagnosticDetails.keys()]) {
+        if (key.startsWith(`${uri.toString()}|`)) this.diagnosticDetails.delete(key);
+      }
       const diagnostics = (message.params.diagnostics || []).map(item => {
         const diagnostic = new vscode.Diagnostic(fromRange(item.range), item.message, fromDiagnosticSeverity(item.severity));
         diagnostic.code = item.code;
         diagnostic.source = item.source || "jadpo";
-        if (item.data && Array.isArray(item.data.notes) && item.data.notes.length) {
-          diagnostic.message += `\n${item.data.notes.map(note => `Note: ${note}`).join("\n")}`;
-        }
+        diagnostic.relatedInformation = (item.relatedInformation || []).map(related =>
+          new vscode.DiagnosticRelatedInformation(
+            fromLocation(related.location),
+            related.message,
+          ));
+        this.diagnosticDetails.set(diagnosticKey(uri, diagnostic), item.data || {});
         return diagnostic;
       });
       this.diagnostics.set(uri, diagnostics);
@@ -196,6 +203,18 @@ function activate(context) {
       vscode.window.setStatusBarMessage("Jadpo project checked", 2000);
     }
   }));
+  context.subscriptions.push(vscode.commands.registerCommand("jadpo.showDiagnosticAlternative", argument => {
+    vscode.window.showInformationMessage(`${argument.ruleId}: ${argument.reason}`);
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand("jadpo.showDiagnosticDetails", (uri, diagnostic) => {
+    const data = client.diagnosticDetails.get(diagnosticKey(uri, diagnostic));
+    if (!data) return;
+    const panel = vscode.window.createWebviewPanel("jadpoDiagnostic", diagnostic.message, vscode.ViewColumn.Beside, {});
+    const next = data.recommendedNextStep || {};
+    const impact = data.impact || {};
+    const alternatives = (data.alternatives || []).map(item => `<li><strong>${escapeHtml(item.title || "")}</strong><br>${escapeHtml(item.reason || "")}</li>`).join("");
+    panel.webview.html = `<!doctype html><meta charset="utf-8"><style>body{font-family:var(--vscode-font-family);padding:1.2rem;line-height:1.5}code{font-family:var(--vscode-editor-font-family)}li{margin:.6rem 0}</style><h1>${escapeHtml(data.summary || diagnostic.message)}</h1><p>${escapeHtml(data.reason || "")}</p><h2>Recommended next step</h2><p>${escapeHtml(next.title || "")}</p><p><code>${escapeHtml(next.kind || "")}</code> · owner <code>${escapeHtml(data.decisionOwner || "")}</code></p>${alternatives ? `<h2>Alternatives</h2><ul>${alternatives}</ul>` : ""}<h2>Impact</h2><p>${escapeHtml(impact.behavioral || "")}</p><p>${escapeHtml(impact.publicContract || "")}</p><p>Rule <code>${escapeHtml(data.ruleId || "")}</code> · Help <code>${escapeHtml(data.helpId || "")}</code></p>`;
+  }));
 
   context.subscriptions.push(vscode.languages.registerDocumentSymbolProvider("jadpo", {
     async provideDocumentSymbols(document) {
@@ -279,6 +298,28 @@ function activate(context) {
       return (result || []).map(item => vscode.TextEdit.replace(fromRange(item.range), item.newText));
     }
   }));
+  context.subscriptions.push(vscode.languages.registerCodeActionsProvider("jadpo", {
+    async provideCodeActions(document, range, context) {
+      const diagnostics = context.diagnostics.map(diagnostic => ({
+        range: toRange(diagnostic.range),
+        message: diagnostic.message,
+        code: diagnostic.code,
+        source: diagnostic.source,
+        data: client.diagnosticDetails.get(diagnosticKey(document.uri, diagnostic)) || null
+      }));
+      const result = await client.request("textDocument/codeAction", {
+        ...textDocumentParams(document),
+        range: toRange(range),
+        context: { diagnostics }
+      });
+      const actions = (result || []).map(fromCodeAction);
+      for (const diagnostic of context.diagnostics) {
+        actions.push(new vscode.CodeAction(`Show details for ${diagnostic.code}`, vscode.CodeActionKind.QuickFix));
+        actions[actions.length - 1].command = { command: "jadpo.showDiagnosticDetails", title: "Show details", arguments: [document.uri, diagnostic] };
+      }
+      return actions;
+    }
+  }, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }));
   context.subscriptions.push(vscode.languages.registerDocumentLinkProvider("jadpo", {
     async provideDocumentLinks(document) {
       const result = await client.request("textDocument/documentLink", textDocumentParams(document));
@@ -320,6 +361,31 @@ function fromDiagnosticSeverity(severity) {
   if (severity === 2) return vscode.DiagnosticSeverity.Warning;
   if (severity === 3 || severity === 4) return vscode.DiagnosticSeverity.Information;
   return vscode.DiagnosticSeverity.Error;
+}
+
+function diagnosticKey(uri, diagnostic) {
+  return `${uri.toString()}|${diagnostic.range.start.line}:${diagnostic.range.start.character}-${diagnostic.range.end.line}:${diagnostic.range.end.character}|${diagnostic.code}`;
+}
+
+function toRange(range) {
+  return { start: { line: range.start.line, character: range.start.character }, end: { line: range.end.line, character: range.end.character } };
+}
+
+function fromCodeAction(item) {
+  const action = new vscode.CodeAction(item.title, new vscode.CodeActionKind(item.kind || "quickfix"));
+  action.isPreferred = Boolean(item.isPreferred);
+  if (item.edit && item.edit.changes) {
+    action.edit = new vscode.WorkspaceEdit();
+    for (const [uri, edits] of Object.entries(item.edit.changes)) {
+      for (const edit of edits) action.edit.replace(vscode.Uri.parse(uri), fromRange(edit.range), edit.newText);
+    }
+  }
+  if (item.command) action.command = item.command;
+  return action;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[character]);
 }
 
 async function deactivate() {}

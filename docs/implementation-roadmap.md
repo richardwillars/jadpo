@@ -2,7 +2,7 @@
 
 **Status:** active progress tracker
 **Last updated:** 2026-09-26
-**Current phase:** DX0.5 implementation, with P10.6 accepted before P11 under an explicit P10R review deferral
+**Current phase:** DX0.5/P10.6 implementation and DX2 external exit evidence, before P11 under an explicit P10R review deferral
 
 This document is the implementation control plane. It records what must be
 built, what evidence completes each phase, what is deliberately deferred, and
@@ -137,21 +137,21 @@ which semantic risks remain.
 | ----- | ----------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | P0    | Design foundation                         | complete    | Charter, semantic model, type system, failure model, acceptance cases                                                                                                                   |
 | P1    | Jadpo seed and core grammar            | complete    | [Core grammar](grammar-v0.1.md), [seed application](../examples/jadpo-seed/app.jadpo), [expected semantics](../examples/jadpo-seed/expected.md), [issue log](language-issues.md) |
-| P2    | Executable compiler fixtures              | complete    | [Sixty-three source/expectation pairs](../tests/compile/README.md) cover syntax, names, types, failures, disclosure, effects, typed CRUD, patches, relationships, modules, local mutation, enums, matching, operators, and authored tests |
+| P2    | Executable compiler fixtures              | complete    | [Eighty-two source/expectation pairs](../tests/compile/README.md) cover syntax, names, types, failures, disclosure, effects, typed CRUD, patches, relationships, modules, local mutation, enums, matching, operators, authored tests, and the executable P10.6 surface |
 | P3    | Rust workspace and CLI                    | complete    | [Rust workspace](../jadpo/README.md), deterministic scaffold manifest, discovery tests, stable build-stage diagnostics                                                               |
 | P4    | Lexer, parser, and syntax tree            | complete    | Span-preserving lexer and AST, recovering parser, exact seed outline, fixture coverage, real `jadpo check` syntax pass                                                               |
 | P5    | Declaration index and semantic graph      | complete    | Deterministic IDs, resolved declaration references, field/refinement nodes, callable edges, semantic JSON manifest                                                                       |
 | P6    | Nominal type and constraint checker       | complete    | Expression typing, nominal compatibility, validated constructors, nested structured-field selection, nullable/optional records, invariant collections, stable fixture diagnostics      |
 | P7    | Failure and effect checker                | complete    | Closed failure propagation, typed rejection context, derived route status, disclosure contracts, effect checks; Milestone A                                                            |
-| P8    | Derived artifacts and layout boundaries   | complete    | Seven byte-stable artifact files, explicit discovery/output boundary, three layout candidates, and deterministic static scaffold                                                       |
+| P8    | Derived artifacts and layout boundaries   | complete    | Nine byte-stable artifact files, explicit discovery/output boundary, generated diagnostic catalogue/reference, three layout candidates, and deterministic static scaffold                                                       |
 | P9    | TypeScript/Bun target and runtime         | complete    | Dependency-free generated Bun target and six real HTTP acceptance cases; Milestone B                                                                                                   |
 | P10   | Postgres and persistence constructs       | complete    | Typed CRUD, inferred transactions, foreign keys, bounded repeated relationship loads, atomic multi-field updates, named compound uniqueness, and precise unique-conflict mappings pass SQLite and live PostgreSQL exit suites            |
 | P10R  | Assurance and validation reset            | deferred    | Candidate packages exist; outside review and five first-user sessions are deferred until feature-complete implementation, not passed                                                    |
 | P10.5 | Pre-P11 language completion               | complete    | Exploratory under P10R deferral; patches, bounded relationships, migration review, index acceptance, bounded modules/imports, and immutable-value/scoped-local-rebinding semantics are implemented; advanced extensions remain deferred |
 | DX0.5 | Checked local development loop             | in progress | JSON plus source-rendered diagnostics, coalesced atomic watch, compiler-owned HTTP health, structured runtime faults, and initial Bun restart with invalid-edit continuity implemented; startup rollback and structured shutdown remain |
-| P10.6 | Problems, routes, and entity boundary      | not started | Revise the completed P7/P10 slices before P11: exhaustive recoverable problems, local-first routes, source-agnostic operational problems, optional entity persistence, and entity-local policy |
+| P10.6 | Problems, routes, and entity boundary      | in progress | Explicit failure kinds and flat context, exact callable failures with `attempt`, typed path bindings, `auth: none`, and local/named route behaviour are executable; operational boundary mapping, handler arms, optional-persistence grammar, and policy authority remain recorded decisions rather than invented syntax |
 | DX1   | Compiler-backed language service            | complete    | Standard `jadpo lsp`, live unsaved diagnostics, symbols, cross-file definitions/references, hover, contextual completion, signature help, semantic tokens, rename, formatting, generated-artifact links, and a persistent VS Code client pass protocol tests |
-| DX2   | Guided diagnostics and agent context        | not started | Central catalogue, readable rule IDs, recommended verified steps and alternatives, clean IDE code actions, secret-safe telemetry, and local runtime-event enrichment before the P12 tooling freeze |
+| DX2   | Guided diagnostics and agent context        | implemented; external evidence pending | Central catalogue/artifacts, dotted rule IDs, version-2 packets, verified repairs and alternatives, CLI/LSP/VS Code presentation, secret-safe telemetry adapters, local event enrichment, and the `jadpo-agent` skill are implemented; fresh-agent/first-user trials remain external exit evidence |
 | P11   | Authentication, policy, and golden todo   | not started | May proceed as exploratory implementation after P10.6 and DX0.5; Milestone C and assurance claims still require the deferred P10R evidence                                               |
 | P12   | Order/payment application and TS baseline | not started | Reference implementations may proceed; external sessions and protocol freeze precede final comparative trials and the continuation decision                                             |
 
@@ -962,8 +962,9 @@ conduct the five structured first-user reviews, and record the freeze decision.
 
 ### P10.6 — Recoverable problems, routes, and entity boundary revision
 
-**Status:** accepted design direction; implementation and final grammar not
-started.
+**Status:** unblocked syntax, failure-flow, route, artifact, and target work is
+implemented; the explicitly unresolved operational mapping, handler-arm,
+optional-persistence, and protected policy-authority choices remain open.
 
 **Why this phase exists:** first-user review of the implemented P7 and P10
 surfaces found two related abstraction leaks before P11. The failure model
