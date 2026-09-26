@@ -1927,8 +1927,7 @@ impl<'source> Parser<'source> {
                         self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
                     }
                     auth_seen = true;
-                    let colon =
-                        self.expect(TokenKind::Colon, "expected `:` after route item `auth`")?;
+                    let colon_end = self.expect_route_item_colon(item.range);
                     if self.at(TokenKind::NoneLiteral) {
                         self.bump();
                         public = true;
@@ -1953,7 +1952,7 @@ impl<'source> Parser<'source> {
                             "supplied token".to_owned()
                         };
                         let invalid_range = if value_is_missing {
-                            TextRange::new(colon.range.end, colon.range.end)
+                            TextRange::new(colon_end, colon_end)
                         } else {
                             invalid.range
                         };
@@ -1962,7 +1961,7 @@ impl<'source> Parser<'source> {
                             self.source,
                             item.range.start,
                             if value_is_missing {
-                                colon.range.end
+                                colon_end
                             } else {
                                 invalid.range.end
                             },
@@ -2019,7 +2018,7 @@ impl<'source> Parser<'source> {
                     if input.is_some() {
                         self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
                     }
-                    self.expect(TokenKind::Colon, "expected `:` after route item `input`")?;
+                    self.expect_route_item_colon(item.range);
                     input = self.parse_type_reference();
                 }
                 TokenKind::Output => {
@@ -2027,7 +2026,7 @@ impl<'source> Parser<'source> {
                     if output.is_some() {
                         self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
                     }
-                    self.expect(TokenKind::Colon, "expected `:` after route item `output`")?;
+                    self.expect_route_item_colon(item.range);
                     output = self.parse_type_reference();
                 }
                 TokenKind::Run => {
@@ -2035,7 +2034,7 @@ impl<'source> Parser<'source> {
                     if run.is_some() {
                         self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
                     }
-                    self.expect(TokenKind::Colon, "expected `:` after route item `run`")?;
+                    self.expect_route_item_colon(item.range);
                     let expression = self.parse_named_expression();
                     match expression {
                         Expression::Invocation(invocation) => run = Some(invocation),
@@ -2268,10 +2267,9 @@ impl<'source> Parser<'source> {
         self.error_at(code, self.current().range);
     }
 
-    fn expect_route_item_colon(&mut self, item_range: TextRange) {
+    fn expect_route_item_colon(&mut self, item_range: TextRange) -> usize {
         if self.at(TokenKind::Colon) {
-            self.bump();
-            return;
+            return self.bump().range.end;
         }
         let mut diagnostic = Diagnostic::error("ROUTE_ITEM_COLON_REQUIRED").with_edit(TextEdit {
             source: self.source_name.clone(),
@@ -2285,6 +2283,7 @@ impl<'source> Parser<'source> {
             end: item_range.end,
         });
         self.diagnostics.push(diagnostic);
+        item_range.end
     }
 
     fn error_at(&mut self, code: &'static str, range: TextRange) {
@@ -2511,8 +2510,11 @@ output PrivateResult { todo: Todo }
         assert!(parsed
             .diagnostics
             .iter()
-            .any(|diagnostic| diagnostic.code == "SYN_UNEXPECTED_TOKEN"
-                && diagnostic.message == "Unexpected token"));
+            .any(|diagnostic| diagnostic.code == "ROUTE_ITEM_COLON_REQUIRED"));
+        assert!(parsed
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "ROUTE_AUTH_VALUE_INVALID"));
     }
 
     #[test]
@@ -2933,6 +2935,12 @@ function choose(initial: Choice, replacement: Choice) -> Choice {
                     parsed.diagnostics[0].message,
                     "`path` cannot start a top-level declaration"
                 );
+            } else if file_name == "73_route_scalar_colon_required.jadpo" {
+                assert_eq!(parsed.diagnostics.len(), 4, "{:#?}", parsed.diagnostics);
+                assert!(parsed
+                    .diagnostics
+                    .iter()
+                    .all(|diagnostic| diagnostic.code == "ROUTE_ITEM_COLON_REQUIRED"));
             } else {
                 assert!(
                     parsed.diagnostics.is_empty(),
