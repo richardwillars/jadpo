@@ -1,11 +1,11 @@
 type PostalCode = Text {
-    min_length 3
-    max_length 12
+    min_length: 3
+    max_length: 12
 }
 
 value Address {
     line_1: Text {
-        min_length 1
+        min_length: 1
     }
 
     postal_code: PostalCode

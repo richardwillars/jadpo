@@ -11,19 +11,19 @@ failure-mapping grammar may change without changing the expected result.
 
 ```text
 type Email = Text {
-    format email
-    max_length 254
+    format: email
+    max_length: 254
 }
 
 type Username = Text {
-    min_length 3
-    max_length 30
-    pattern "[a-z0-9_]+"
+    min_length: 3
+    max_length: 30
+    pattern: "[a-z0-9_]+"
 }
 
 type Quantity = Int {
-    min 1
-    max 1000
+    min: 1
+    max: 1000
 }
 
 entity Customer {
@@ -423,8 +423,8 @@ metadata rather than treating the types as structurally equal.
 
 ```text
 type PostalCode = Text {
-    min_length 3
-    max_length 12
+    min_length: 3
+    max_length: 12
 }
 
 value Address {

@@ -1,9 +1,9 @@
 type PublicReference = Text {
-    max_length 32
+    max_length: 32
 }
 
 type InternalReference = Text {
-    max_length 64
+    max_length: 64
 }
 
 value RefusalResult {

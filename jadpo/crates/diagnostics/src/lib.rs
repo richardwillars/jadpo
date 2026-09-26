@@ -793,6 +793,11 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "This constraint describes stored data, so its object type needs a separate `persist Type { ... }` declaration.",
             "Move the constraint into the object's `persist` declaration, or remove it",
         ),
+        "SYN_CONSTRAINT_COLON_REQUIRED" => (
+            "Type constraint requires a `:` separator",
+            "Every type constraint uses the explicit `name: value` form. The old `format email` spelling is not valid.",
+            "Insert `:` after the constraint name",
+        ),
         "SYN_DUPLICATE_FIELD_MODIFIER" => (
             "Field modifier is repeated",
             "Each field modifier may be written once. Repeating a modifier makes the field's authored storage or validation contract ambiguous.",
@@ -2530,7 +2535,10 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     );
     let automatic = matches!(
         code,
-        "FAIL_ATTEMPT_REQUIRED" | "FAIL_STALE_DECLARATION" | "ROUTE_ITEM_COLON_REQUIRED"
+        "FAIL_ATTEMPT_REQUIRED"
+            | "FAIL_STALE_DECLARATION"
+            | "ROUTE_ITEM_COLON_REQUIRED"
+            | "SYN_CONSTRAINT_COLON_REQUIRED"
     );
     let (repair_kind, decision_owner, recommended_title) = if human_owned {
         (
@@ -2553,6 +2561,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
                 "FAIL_ATTEMPT_REQUIRED" => "Prefix the fallible expression with `attempt`",
                 "FAIL_STALE_DECLARATION" => "Remove the stale `fails` entry",
                 "ROUTE_ITEM_COLON_REQUIRED" => "Insert `:` after the route item name",
+                "SYN_CONSTRAINT_COLON_REQUIRED" => "Insert `:` after the constraint name",
                 _ => "Apply the compiler-verified edit",
             }
             .to_owned(),
@@ -2727,6 +2736,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             "TYPE_PRIMITIVE_SIGNATURE" => vec!["received", "usage"],
             "TYPE_INVALID_LITERAL" => vec!["subject", "constraint"],
             "SYN_EXPECTED_DECLARATION" => vec!["found"],
+            "SYN_CONSTRAINT_COLON_REQUIRED" => vec!["name"],
             "SYN_UNEXPECTED_TOKEN" => vec!["expected", "found"],
             _ => Vec::new(),
         },

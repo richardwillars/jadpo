@@ -1,6 +1,6 @@
 value Address {
     postal_code: Text {
-        min_length 3
+        min_length: 3
     }
 }
 

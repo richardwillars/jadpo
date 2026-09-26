@@ -2099,12 +2099,22 @@ impl<'source> Parser<'source> {
             TokenKind::Format => ConstraintKind::Format,
             _ => return None,
         };
-        self.bump();
-        // Constraint settings use the same `key: value` shape as the rest of
-        // the language. The temporary optionality keeps existing fixtures
-        // readable while they are mechanically migrated in this phase.
+        let name = self.bump();
         if self.at(TokenKind::Colon) {
             self.bump();
+        } else {
+            let constraint_name = name.text(self.source).to_owned();
+            let mut diagnostic = Diagnostic::error("SYN_CONSTRAINT_COLON_REQUIRED")
+                .with_fact(DiagnosticFact::Name(constraint_name.clone()))
+                .with_edit(TextEdit {
+                    source: self.source_name.clone(),
+                    start: name.range.end,
+                    end: name.range.end,
+                    replacement: ":".to_owned(),
+                });
+            diagnostic.recommended_next_step.title =
+                format!("Insert `:` after `{constraint_name}`");
+            self.diagnostic_at(diagnostic, name.range);
         }
 
         let value = match kind {
@@ -3395,7 +3405,7 @@ value Result {
     fn recovers_an_object_keyword_typo_without_cascading() {
         let source = r#"type foo = Okbject {
     foo: Text {
-        max_length 100
+        max_length: 100
     }
 }"#;
         let parsed = parse(Path::new("object-keyword-typo.jadpo"), source);
@@ -3416,6 +3426,29 @@ value Result {
         };
         assert_eq!(declaration.fields.len(), 1);
         assert_eq!(declaration.fields[0].name.text, "foo");
+    }
+
+    #[test]
+    fn requires_colons_after_every_type_constraint_name() {
+        let source = r#"type Legacy = Text {
+    min 1
+    max 2
+    min_length 1
+    max_length 3
+    pattern "[a-z]+"
+    format email
+}"#;
+        let parsed = parse(Path::new("legacy-constraints.jadpo"), source);
+
+        assert_eq!(parsed.diagnostics.len(), 6, "{:#?}", parsed.diagnostics);
+        assert!(parsed
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == "SYN_CONSTRAINT_COLON_REQUIRED"));
+        assert!(parsed.diagnostics.iter().all(|diagnostic| {
+            diagnostic.recommended_next_step.edits.len() == 1
+                && diagnostic.recommended_next_step.edits[0].replacement == ":"
+        }));
     }
 
     #[test]

@@ -67,19 +67,19 @@ its valid values:
 
 ```text
 type Email = Text {
-    format email
-    max_length 254
+    format: email
+    max_length: 254
 }
 
 type Username = Text {
-    min_length 3
-    max_length 30
-    pattern "[a-z0-9_]+"
+    min_length: 3
+    max_length: 30
+    pattern: "[a-z0-9_]+"
 }
 
 type Quantity = Int {
-    min 1
-    max 1000
+    min: 1
+    max: 1000
 }
 ```
 
@@ -178,7 +178,7 @@ A field type is a nominal refinement of the type written in its declaration:
 
 ```text
 type Email = Text {
-    format email
+    format: email
 }
 
 entity Customer {
