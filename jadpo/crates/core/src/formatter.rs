@@ -16,14 +16,16 @@ pub fn format_source(source: &str) -> String {
 
         let leading_closes = line
             .chars()
-            .take_while(|character| *character == '}')
+            .take_while(|character| matches!(character, '}' | ')' | ']'))
             .count();
         indent = indent.saturating_sub(leading_closes);
-        output.push_str(&"    ".repeat(indent));
+        let signature_continuation =
+            usize::from(line.starts_with("fails ") || line.starts_with("-> "));
+        output.push_str(&"    ".repeat(indent + signature_continuation));
         output.push_str(line);
         output.push('\n');
 
-        let (opens, closes) = structural_braces(line);
+        let (opens, closes) = structural_delimiters(line);
         indent = indent
             .saturating_add(opens)
             .saturating_sub(closes.saturating_sub(leading_closes));
@@ -32,7 +34,7 @@ pub fn format_source(source: &str) -> String {
     output
 }
 
-fn structural_braces(line: &str) -> (usize, usize) {
+fn structural_delimiters(line: &str) -> (usize, usize) {
     let mut opens = 0usize;
     let mut closes = 0usize;
     let mut quoted = false;
@@ -54,9 +56,9 @@ fn structural_braces(line: &str) -> (usize, usize) {
             }
         } else if character == '"' {
             quoted = true;
-        } else if character == '{' {
+        } else if matches!(character, '{' | '(' | '[') {
             opens += 1;
-        } else if character == '}' {
+        } else if matches!(character, '}' | ')' | ']') {
             closes += 1;
         }
         index += 1;
@@ -72,6 +74,14 @@ mod tests {
     fn formats_indentation_blank_lines_comments_and_is_idempotent() {
         let source = "enum State {\nready\nfailed {\nreason: Text\n}\n}\n\n\n// keep { braces } in comments\ntest \"works\" {\nassert true\n}\n";
         let expected = "enum State {\n    ready\n    failed {\n        reason: Text\n    }\n}\n\n// keep { braces } in comments\ntest \"works\" {\n    assert true\n}\n";
+        assert_eq!(format_source(source), expected);
+        assert_eq!(format_source(expected), expected);
+    }
+
+    #[test]
+    fn preserves_multiline_callable_signature_structure() {
+        let source = "action register_customer(\ninput: RegisterCustomer\n)\nfails InviteCodeRejected\n-> RegistrationAccepted\n{\nreturn input\n}\n";
+        let expected = "action register_customer(\n    input: RegisterCustomer\n)\n    fails InviteCodeRejected\n    -> RegistrationAccepted\n{\n    return input\n}\n";
         assert_eq!(format_source(source), expected);
         assert_eq!(format_source(expected), expected);
     }
