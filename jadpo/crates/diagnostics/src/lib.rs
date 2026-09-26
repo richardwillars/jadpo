@@ -414,6 +414,13 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "RUNTIME_STARTUP_FAILED" => "The generated runtime could not establish its startup contract and did not report readiness.".to_owned(),
         _ => format!("The compiler-enforced `{code}` invariant is not satisfied at this location."),
     };
+    let mut fixtures = CATALOGUE_FIXTURES
+        .iter()
+        .filter_map(|(fixture_code, path)| (*fixture_code == code).then_some(*path))
+        .collect::<Vec<_>>();
+    if fixtures.is_empty() {
+        fixtures.push("jadpo/crates/diagnostics/src/lib.rs#every_catalogue_entry_is_renderable");
+    }
     CatalogueDefinition {
         help_id: format!("diagnostics/{rule_id}"),
         rule_id,
@@ -428,10 +435,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             "CLI_INCIDENT_REVISION_MISMATCH" => vec!["eventRevision", "localRevision"],
             _ => Vec::new(),
         },
-        fixtures: CATALOGUE_FIXTURES
-            .iter()
-            .filter_map(|(fixture_code, path)| (*fixture_code == code).then_some(*path))
-            .collect(),
+        fixtures,
     }
 }
 
@@ -737,9 +741,9 @@ impl fmt::Display for CompilerDiagnostic {
 #[cfg(test)]
 mod tests {
     use super::{
-        catalogue_definition, catalogue_manifest_json, DecisionOwner, Diagnostic,
+        catalogue_definition, catalogue_manifest_json, json_string, DecisionOwner, Diagnostic,
         OperationalLogEvent, OperationalValue, PublicFailureResponse, PublicFailureValue,
-        RepairKind, SafeIdentifier, Secret, SourceSpan,
+        RepairKind, SafeIdentifier, Secret, SourceSpan, CATALOGUE_CODES,
     };
 
     #[test]
@@ -841,5 +845,24 @@ mod tests {
             manifest.contains("tests/compile/fail/60_fallible_call_requires_attempt.expect.json")
         );
         assert!(manifest.contains("\"legacyAliases\":["));
+    }
+
+    #[test]
+    fn every_catalogue_entry_is_renderable() {
+        for code in CATALOGUE_CODES {
+            let definition = catalogue_definition(code);
+            assert!(!definition.summary.is_empty(), "{code}");
+            assert!(!definition.reason.is_empty(), "{code}");
+            assert!(!definition.recommended_title.is_empty(), "{code}");
+            assert!(!definition.fixtures.is_empty(), "{code}");
+
+            let json = Diagnostic::error(code).to_json();
+            assert!(json.contains("\"schemaVersion\":2"), "{code}");
+            assert!(
+                json.contains(&format!("\"ruleId\":{}", json_string(&definition.rule_id))),
+                "{code}"
+            );
+            assert!(json.contains("\"recommendedNextStep\":"), "{code}");
+        }
     }
 }

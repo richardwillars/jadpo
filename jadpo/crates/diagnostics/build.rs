@@ -108,7 +108,12 @@ fn is_diagnostic_code(value: &str) -> bool {
         "CLI_", "DATA_", "EFFECT_", "FAIL_", "FMT_", "INDEX_", "JADPO_", "LSP_", "MIG_", "MOD_",
         "ROUTE_", "RUNTIME_", "SEM_", "SYN_", "TYPE_",
     ];
-    PREFIXES.iter().any(|prefix| value.starts_with(prefix))
+    value != "JADPO_DEBUG_TARGET_STACKS"
+        && PREFIXES.iter().any(|prefix| {
+            value
+                .strip_prefix(prefix)
+                .is_some_and(|rest| !rest.is_empty())
+        })
         && value
             .bytes()
             .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
