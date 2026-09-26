@@ -109,6 +109,7 @@ fn is_diagnostic_code(value: &str) -> bool {
         "ROUTE_", "RUNTIME_", "SEM_", "SYN_", "TYPE_",
     ];
     value != "JADPO_DEBUG_TARGET_STACKS"
+        && value != "JADPO_ASCII"
         && PREFIXES.iter().any(|prefix| {
             value
                 .strip_prefix(prefix)

@@ -52,14 +52,37 @@ expectations.each do |expectation_path|
 
   source = File.read(source_path)
   expected_diagnostics.zip(actual_diagnostics).each do |expected, actual|
-    next unless expected.key?("primary_match")
+    code = expected.fetch("code")
+    if expected.key?("primary_match")
+      location = actual.fetch("location")
+      range = location.fetch("range")
+      actual_match = source.byteslice(range.fetch("start")...range.fetch("end"))
+      if actual_match != expected.fetch("primary_match")
+        failures << "#{relative_source}: #{code} expected primary #{expected.fetch("primary_match").inspect}, got #{actual_match.inspect}"
+      end
+    end
 
-    location = actual.fetch("location")
-    range = location.fetch("range")
-    actual_match = source.byteslice(range.fetch("start")...range.fetch("end"))
-    next if actual_match == expected.fetch("primary_match")
+    {
+      "summary" => actual["summary"],
+      "recommended_title" => actual.dig("recommendedNextStep", "title"),
+      "repair_kind" => actual.dig("recommendedNextStep", "kind"),
+      "decision_owner" => actual["decisionOwner"],
+      "diagnostic_context" => actual["context"],
+      "alternative_titles" => actual.fetch("alternatives", []).map { |item| item["title"] },
+      "alternative_replacements" => actual.fetch("alternatives", []).map { |item| item.fetch("edits", []).first&.fetch("replacement") }
+    }.each do |key, actual_value|
+      next unless expected.key?(key)
+      next if actual_value == expected[key]
 
-    failures << "#{relative_source}: #{expected.fetch("code")} expected primary #{expected.fetch("primary_match").inspect}, got #{actual_match.inspect}"
+      failures << "#{relative_source}: #{code} expected #{key} #{expected[key].inspect}, got #{actual_value.inspect}"
+    end
+
+    if expected.key?("reason_includes") && !actual.fetch("reason", "").include?(expected["reason_includes"])
+      failures << "#{relative_source}: #{code} reason did not include #{expected["reason_includes"].inspect}"
+    end
+    if expected.key?("public_contract_impact_includes") && !actual.dig("impact", "publicContract").to_s.include?(expected["public_contract_impact_includes"])
+      failures << "#{relative_source}: #{code} public-contract impact did not include #{expected["public_contract_impact_includes"].inspect}"
+    end
   end
 end
 

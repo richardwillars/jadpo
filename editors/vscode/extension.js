@@ -2,6 +2,7 @@ const vscode = require("vscode");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { diagnosticDetailsHtml, problemMessage } = require("./diagnostic-presentation");
 
 const tokenTypes = ["namespace", "type", "enum", "enumMember", "property", "function", "variable", "parameter", "string", "number", "keyword", "operator", "comment"];
 
@@ -98,7 +99,7 @@ class JadpoLanguageClient {
         if (key.startsWith(`${uri.toString()}|`)) this.diagnosticDetails.delete(key);
       }
       const diagnostics = (message.params.diagnostics || []).map(item => {
-        const diagnostic = new vscode.Diagnostic(fromRange(item.range), item.message, fromDiagnosticSeverity(item.severity));
+        const diagnostic = new vscode.Diagnostic(fromRange(item.range), problemMessage(item), fromDiagnosticSeverity(item.severity));
         diagnostic.code = item.code;
         diagnostic.source = item.source || "jadpo";
         diagnostic.relatedInformation = (item.relatedInformation || []).map(related =>
@@ -210,10 +211,7 @@ function activate(context) {
     const data = client.diagnosticDetails.get(diagnosticKey(uri, diagnostic));
     if (!data) return;
     const panel = vscode.window.createWebviewPanel("jadpoDiagnostic", diagnostic.message, vscode.ViewColumn.Beside, {});
-    const next = data.recommendedNextStep || {};
-    const impact = data.impact || {};
-    const alternatives = (data.alternatives || []).map(item => `<li><strong>${escapeHtml(item.title || "")}</strong><br>${escapeHtml(item.reason || "")}</li>`).join("");
-    panel.webview.html = `<!doctype html><meta charset="utf-8"><style>body{font-family:var(--vscode-font-family);padding:1.2rem;line-height:1.5}code{font-family:var(--vscode-editor-font-family)}li{margin:.6rem 0}</style><h1>${escapeHtml(data.summary || diagnostic.message)}</h1><p>${escapeHtml(data.reason || "")}</p><h2>Recommended next step</h2><p>${escapeHtml(next.title || "")}</p><p><code>${escapeHtml(next.kind || "")}</code> · owner <code>${escapeHtml(data.decisionOwner || "")}</code></p>${alternatives ? `<h2>Alternatives</h2><ul>${alternatives}</ul>` : ""}<h2>Impact</h2><p>${escapeHtml(impact.behavioral || "")}</p><p>${escapeHtml(impact.publicContract || "")}</p><p>Rule <code>${escapeHtml(data.ruleId || "")}</code> · Help <code>${escapeHtml(data.helpId || "")}</code></p>`;
+    panel.webview.html = diagnosticDetailsHtml(data, diagnostic.message);
   }));
 
   context.subscriptions.push(vscode.languages.registerDocumentSymbolProvider("jadpo", {
@@ -382,10 +380,6 @@ function fromCodeAction(item) {
   }
   if (item.command) action.command = item.command;
   return action;
-}
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[character]);
 }
 
 async function deactivate() {}

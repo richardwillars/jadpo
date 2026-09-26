@@ -8,6 +8,7 @@
   "categories": ["Programming Languages", "Linters", "Formatters"],
   "activationEvents": ["onLanguage:jadpo", "onCommand:jadpo.check"],
   "main": "./extension.js",
+  "scripts": { "test": "node --test test/*.test.js" },
   "contributes": {
     "languages": [
       {

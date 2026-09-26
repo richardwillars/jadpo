@@ -288,12 +288,56 @@ fn render_plain_diagnostic(diagnostic: &Diagnostic) -> String {
         }
     }
     output.push_str(&format!("  reason: {}\n", diagnostic.reason));
+    let next_label = match diagnostic.recommended_next_step.kind.as_str() {
+        "automatic_fix" => "fix",
+        "human_decision" => "decision",
+        _ => "next",
+    };
     output.push_str(&format!(
-        "  next: {} ({}, owner: {})\n",
+        "  {next_label}: {} ({}, owner: {})\n",
         diagnostic.recommended_next_step.title,
         diagnostic.recommended_next_step.kind.as_str(),
         diagnostic.decision_owner.as_str()
     ));
+    for edit in &diagnostic.recommended_next_step.edits {
+        output.push_str(&format!(
+            "    edit: {}:{}..{} -> `{}`\n",
+            edit.source,
+            edit.start,
+            edit.end,
+            visible_replacement(&edit.replacement)
+        ));
+    }
+    for alternative in &diagnostic.alternatives {
+        output.push_str(&format!(
+            "  alternative: {} ({}, owner: {})\n    reason: {}\n    behavioral impact: {}\n    public contract impact: {}\n",
+            alternative.title,
+            alternative.kind.as_str(),
+            alternative.decision_owner.as_str(),
+            alternative.reason,
+            alternative.behavioral_effect,
+            alternative.public_contract_effect,
+        ));
+        for edit in &alternative.edits {
+            output.push_str(&format!(
+                "    edit: {}:{}..{} -> `{}`\n",
+                edit.source,
+                edit.start,
+                edit.end,
+                visible_replacement(&edit.replacement)
+            ));
+        }
+    }
+    output.push_str(&format!(
+        "  behavioral impact: {}\n  public contract impact: {}\n",
+        diagnostic.impact.behavioral, diagnostic.impact.public_contract
+    ));
+    if !diagnostic.impact.affected.is_empty() {
+        output.push_str(&format!(
+            "  affected: {}\n",
+            diagnostic.impact.affected.join(", ")
+        ));
+    }
     output.push_str(&format!(
         "  rule: {} (legacy: {})\n  help: {}\n",
         diagnostic.rule_id, diagnostic.code, diagnostic.help_id
@@ -344,14 +388,19 @@ fn render_rich_diagnostic(diagnostic: &Diagnostic, style: RenderStyle) -> String
     }
 
     labeled(&mut output, "Why", &diagnostic.reason, style);
+    let next_label = match diagnostic.recommended_next_step.kind.as_str() {
+        "automatic_fix" => "Fix",
+        "human_decision" => "Decision",
+        _ => "Next",
+    };
     labeled(
         &mut output,
-        "Fix",
+        next_label,
         &diagnostic.recommended_next_step.title,
         style,
     );
     let repair_meta = format!(
-        "{}{}{} decision",
+        "{}{}{}-owned",
         diagnostic.recommended_next_step.kind.as_str(),
         separator(style),
         diagnostic.decision_owner.as_str()
@@ -375,7 +424,16 @@ fn render_rich_diagnostic(diagnostic: &Diagnostic, style: RenderStyle) -> String
     }
 
     if !diagnostic.alternatives.is_empty() {
-        labeled(&mut output, "Other", "Valid alternatives", style);
+        labeled(
+            &mut output,
+            if diagnostic.recommended_next_step.kind.as_str() == "human_decision" {
+                "Choices"
+            } else {
+                "Other"
+            },
+            "Valid alternatives",
+            style,
+        );
         for (index, alternative) in diagnostic.alternatives.iter().enumerate() {
             continuation(
                 &mut output,
@@ -389,6 +447,30 @@ fn render_rich_diagnostic(diagnostic: &Diagnostic, style: RenderStyle) -> String
                 style,
                 false,
             );
+            continuation(
+                &mut output,
+                &format!(
+                    "Behavior: {} Public contract: {}",
+                    alternative.behavioral_effect, alternative.public_contract_effect
+                ),
+                style,
+                true,
+            );
+            for edit in &alternative.edits {
+                continuation(
+                    &mut output,
+                    &format!(
+                        "edit {}:{}..{} {} `{}`",
+                        edit.source,
+                        edit.start,
+                        edit.end,
+                        if style.unicode { "→" } else { "->" },
+                        visible_replacement(&edit.replacement)
+                    ),
+                    style,
+                    false,
+                );
+            }
         }
     }
 
@@ -401,12 +483,21 @@ fn render_rich_diagnostic(diagnostic: &Diagnostic, style: RenderStyle) -> String
             .join(separator(style));
         labeled(&mut output, "Context", &context, style);
     }
+    labeled(
+        &mut output,
+        "Impact",
+        &format!(
+            "{} Public contract: {}",
+            diagnostic.impact.behavioral, diagnostic.impact.public_contract
+        ),
+        style,
+    );
     if !diagnostic.impact.affected.is_empty() {
-        labeled(
+        continuation(
             &mut output,
-            "Impact",
-            &diagnostic.impact.affected.join(", "),
+            &format!("Affected: {}", diagnostic.impact.affected.join(", ")),
             style,
+            true,
         );
     }
     for related in &diagnostic.related {
@@ -633,7 +724,8 @@ mod tests {
         render_diagnostic, render_help, render_lifecycle, render_success, ColorChoice,
         LayoutChoice, Presentation, RenderStyle,
     };
-    use jadpo_diagnostics::{Diagnostic, SourceSpan, TextEdit};
+    use jadpo_core::analyze_project;
+    use jadpo_diagnostics::{Diagnostic, SourceSpan, TextEdit, CATALOGUE_CODES};
 
     #[test]
     fn plain_output_is_deterministic_and_escape_free() {
@@ -723,5 +815,90 @@ mod tests {
             "watch[build]: revision 7, status passed, stale false\n"
         );
         assert!(!format!("{help}{success}{lifecycle}").contains('\u{1b}'));
+    }
+
+    #[test]
+    fn every_catalogue_code_has_complete_plain_and_rich_terminal_projections() {
+        for code in CATALOGUE_CODES {
+            let diagnostic = Diagnostic::error(code);
+            let plain = render_diagnostic(&diagnostic, RenderStyle::plain());
+            let rich = render_diagnostic(&diagnostic, RenderStyle::rich_for_test(false, true, 92));
+
+            for (name, output) in [("plain", &plain), ("rich", &rich)] {
+                let normalised_output = normalise_words(output);
+                for required in [
+                    diagnostic.message.as_str(),
+                    diagnostic.reason.as_str(),
+                    diagnostic.recommended_next_step.title.as_str(),
+                    diagnostic.impact.behavioral.as_str(),
+                    diagnostic.impact.public_contract.as_str(),
+                    diagnostic.rule_id.as_str(),
+                    diagnostic.help_id.as_str(),
+                ] {
+                    assert!(
+                        normalised_output.contains(&normalise_words(required)),
+                        "{code}: {name} projection omitted `{required}`\n{output}"
+                    );
+                }
+                for alternative in &diagnostic.alternatives {
+                    assert!(
+                        normalised_output.contains(&normalise_words(&alternative.title)),
+                        "{code}: {name}"
+                    );
+                    assert!(
+                        normalised_output.contains(&normalise_words(&alternative.reason)),
+                        "{code}: {name}"
+                    );
+                    assert!(
+                        normalised_output
+                            .contains(&normalise_words(&alternative.behavioral_effect)),
+                        "{code}: {name}"
+                    );
+                    assert!(
+                        normalised_output
+                            .contains(&normalise_words(&alternative.public_contract_effect)),
+                        "{code}: {name}"
+                    );
+                }
+                assert!(!output.contains('\u{1b}'), "{code}: {name}");
+            }
+            assert!(!plain.contains('╭'), "{code}");
+            assert!(rich.ends_with("\n\n"), "{code}");
+        }
+    }
+
+    #[test]
+    fn invalid_auth_value_terminal_projection_is_a_security_decision_not_a_token_error() {
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("CLI crate should be inside the repository");
+        let fixture = repository.join("tests/compile/fail/71_invalid_route_auth_value.jadpo");
+        let project = analyze_project(&fixture).expect("fixture should analyze");
+        let diagnostics = project.syntax.diagnostics().collect::<Vec<_>>();
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        let diagnostic = diagnostics[0];
+
+        let rich = render_diagnostic(diagnostic, RenderStyle::rich_for_test(false, true, 100));
+        let plain = render_diagnostic(diagnostic, RenderStyle::plain());
+        for output in [&rich, &plain] {
+            let output = normalise_words(output);
+            assert!(output.contains("Route authentication value `nonke` is not valid"));
+            assert!(output.contains("Keep authentication required for this route"));
+            assert!(output.contains("Make this route explicitly unauthenticated"));
+            assert!(output.contains("Target generation may still be blocked until authentication runtime support is configured"));
+            assert!(output.contains("callable without authentication"));
+            assert!(output.contains("human"));
+            assert!(!output.contains("Unexpected token"));
+            assert!(!output.contains("SYN_UNEXPECTED_TOKEN"));
+        }
+        assert!(rich.contains("Why"));
+        assert!(rich.contains("Impact"));
+        assert!(plain.contains("behavioral impact:"));
+        assert!(!plain.contains('\u{1b}'));
+    }
+
+    fn normalise_words(value: &str) -> String {
+        value.split_whitespace().collect::<Vec<_>>().join(" ")
     }
 }

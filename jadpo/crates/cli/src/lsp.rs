@@ -3,7 +3,7 @@ use jadpo_core::{
     index_recommendation_count, validate_schema_identities, AnalyzedProject, LanguageIndex,
     LanguageSymbol,
 };
-use jadpo_diagnostics::{Diagnostic, Severity, TextEdit};
+use jadpo_diagnostics::{Diagnostic, RepairKind, Severity, TextEdit};
 use jadpo_syntax::{Declaration, SourceFile, TextRange, TokenKind, TypeReference};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -193,7 +193,9 @@ impl Server {
                     let (source, offset) = request_offset(project, &params)?;
                     let symbol = index.symbol_at(&source, offset);
                     let inferred = index.inferred_type_at(project, &source, offset);
-                    let guided = frontend_diagnostics(project).into_iter().find(|diagnostic| {
+                    let guided = frontend_diagnostics(project)
+                        .into_iter()
+                        .find(|diagnostic| {
                             diagnostic.primary.as_ref().is_some_and(|primary| {
                                 same_source(&primary.source, &source)
                                     && primary.start <= offset
@@ -211,15 +213,7 @@ impl Server {
                         lines.push(format!("Inferred type: `{inferred}`"));
                     }
                     if let Some(diagnostic) = guided {
-                        lines.push(format!(
-                            "**{}**\n\n{}\n\nRecommended: {}\n\nOwner: `{}` · Rule: `{}` · Help: `{}`",
-                            diagnostic.message,
-                            diagnostic.reason,
-                            diagnostic.recommended_next_step.title,
-                            diagnostic.decision_owner.as_str(),
-                            diagnostic.rule_id,
-                            diagnostic.help_id
-                        ));
+                        lines.push(diagnostic_hover_markdown(diagnostic));
                     }
                     Some(json!({
                         "contents": { "kind": "markdown", "value": lines.join("\n\n") }
@@ -416,7 +410,10 @@ impl Server {
                                     }
                                 }
                             }));
-                        } else {
+                        } else if diagnostic.recommended_next_step.kind
+                            != RepairKind::HumanDecision
+                            || diagnostic.alternatives.is_empty()
+                        {
                             actions.push(json!({
                                 "title": diagnostic.recommended_next_step.title,
                                 "kind": "quickfix.jadpo.recommended",
@@ -433,15 +430,48 @@ impl Server {
                             }));
                         }
                         for alternative in &diagnostic.alternatives {
-                            actions.push(json!({
-                                "title": alternative.title,
-                                "kind": "quickfix.jadpo.alternative",
-                                "command": {
+                            if alternative.edits.is_empty() {
+                                actions.push(json!({
                                     "title": alternative.title,
-                                    "command": "jadpo.showDiagnosticAlternative",
-                                    "arguments": [{ "ruleId": diagnostic.rule_id, "reason": alternative.reason }]
-                                }
-                            }));
+                                    "kind": "quickfix.jadpo.alternative",
+                                    "isPreferred": false,
+                                    "command": {
+                                        "title": alternative.title,
+                                        "command": "jadpo.showDiagnosticAlternative",
+                                        "arguments": [{
+                                            "ruleId": diagnostic.rule_id,
+                                            "reason": alternative.reason,
+                                            "decisionOwner": alternative.decision_owner.as_str(),
+                                            "preview": {
+                                                "behavioral": alternative.behavioral_effect,
+                                                "publicContract": alternative.public_contract_effect
+                                            }
+                                        }]
+                                    }
+                                }));
+                            } else {
+                                let changes = workspace_changes(project, &alternative.edits);
+                                actions.push(json!({
+                                    "title": alternative.title,
+                                    "kind": "quickfix.jadpo.alternative",
+                                    "isPreferred": false,
+                                    "diagnostics": [{
+                                        "range": lsp_range(project, &primary.source, TextRange::new(primary.start, primary.end)),
+                                        "message": diagnostic.message,
+                                        "code": diagnostic.rule_id,
+                                        "source": "jadpo"
+                                    }],
+                                    "edit": { "changes": changes },
+                                    "data": {
+                                        "sourceRevision": revision,
+                                        "decisionOwner": alternative.decision_owner.as_str(),
+                                        "preview": {
+                                            "behavioral": alternative.behavioral_effect,
+                                            "publicContract": alternative.public_contract_effect
+                                        }
+                                    }
+                                }));
+                            }
                         }
                     }
                     Some(Value::Array(actions))
@@ -662,6 +692,61 @@ impl Server {
         }
         Ok(())
     }
+}
+
+fn diagnostic_hover_markdown(diagnostic: &Diagnostic) -> String {
+    let mut sections = vec![
+        format!("**{}**", diagnostic.message),
+        diagnostic.reason.clone(),
+        format!(
+            "**Recommended next step**\n\n{}\n\n{}",
+            diagnostic.recommended_next_step.title, diagnostic.recommended_next_step.reason
+        ),
+    ];
+    if !diagnostic.alternatives.is_empty() {
+        let choices = diagnostic
+            .alternatives
+            .iter()
+            .map(|alternative| {
+                format!(
+                    "- **{}** — {}\n  - Behavior: {}\n  - Public contract: {}",
+                    alternative.title,
+                    alternative.reason,
+                    alternative.behavioral_effect,
+                    alternative.public_contract_effect
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        sections.push(format!("**Alternatives**\n\n{choices}"));
+    }
+    let affected = if diagnostic.impact.affected.is_empty() {
+        String::new()
+    } else {
+        format!("\n\nAffected: {}", diagnostic.impact.affected.join(", "))
+    };
+    sections.push(format!(
+        "**Impact**\n\nBehavior: {}\n\nPublic contract: {}{affected}",
+        diagnostic.impact.behavioral, diagnostic.impact.public_contract
+    ));
+    if !diagnostic.context.is_empty() {
+        sections.push(format!(
+            "**Context**\n\n{}",
+            diagnostic
+                .context
+                .iter()
+                .map(|(key, value)| format!("- `{key}`: `{value}`"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ));
+    }
+    sections.push(format!(
+        "Owner: `{}` · Rule: `{}` · Help: `{}`",
+        diagnostic.decision_owner.as_str(),
+        diagnostic.rule_id,
+        diagnostic.help_id
+    ));
+    sections.join("\n\n")
 }
 
 fn initialize_root(params: &Value) -> Option<PathBuf> {
@@ -1278,11 +1363,11 @@ fn io_diagnostic(code: &'static str, _message: &str, _error: io::Error) -> Diagn
 #[cfg(test)]
 mod tests {
     use super::{
-        completion_container, offset_to_line_character, path_to_uri, position_to_offset,
-        read_message, uri_to_path, workspace_changes, Server,
+        completion_container, diagnostic_hover_markdown, offset_to_line_character, path_to_uri,
+        position_to_offset, read_message, uri_to_path, workspace_changes, Server,
     };
     use jadpo_core::{analyze_project, analyze_sources, checked_source_revision, LanguageIndex};
-    use jadpo_diagnostics::TextEdit;
+    use jadpo_diagnostics::{Diagnostic, TextEdit, CATALOGUE_CODES};
     use jadpo_syntax::SourceFile;
     use serde_json::{json, Value};
     use std::io::Cursor;
@@ -1605,7 +1690,7 @@ mod tests {
         let markdown = hover["result"]["contents"]["value"]
             .as_str()
             .expect("guided hover should contain markdown");
-        assert!(markdown.contains("Recommended:"));
+        assert!(markdown.contains("Recommended next step"));
         assert!(markdown.contains("failure.attempt_required"));
         assert!(markdown.contains("diagnostics/failure.attempt_required"));
     }
@@ -1812,6 +1897,150 @@ mod tests {
         assert!(symbols["result"]
             .as_array()
             .is_some_and(|items| items.iter().any(|item| item["name"] == "RegisterCustomer")));
+    }
+
+    #[test]
+    fn every_catalogue_code_has_a_complete_ide_hover_projection() {
+        for code in CATALOGUE_CODES {
+            let diagnostic = Diagnostic::error(code);
+            let hover = diagnostic_hover_markdown(&diagnostic);
+            for required in [
+                diagnostic.message.as_str(),
+                diagnostic.reason.as_str(),
+                diagnostic.recommended_next_step.title.as_str(),
+                diagnostic.impact.behavioral.as_str(),
+                diagnostic.impact.public_contract.as_str(),
+                diagnostic.decision_owner.as_str(),
+                diagnostic.rule_id.as_str(),
+                diagnostic.help_id.as_str(),
+            ] {
+                assert!(
+                    hover.contains(required),
+                    "{code}: IDE hover omitted `{required}`\n{hover}"
+                );
+            }
+            for alternative in &diagnostic.alternatives {
+                assert!(hover.contains(&alternative.title), "{code}");
+                assert!(hover.contains(&alternative.reason), "{code}");
+                assert!(hover.contains(&alternative.behavioral_effect), "{code}");
+                assert!(
+                    hover.contains(&alternative.public_contract_effect),
+                    "{code}"
+                );
+            }
+            assert!(!hover.contains('\u{1b}'), "{code}");
+            assert!(!hover.contains("credential-canary"), "{code}");
+        }
+    }
+
+    #[test]
+    fn invalid_auth_value_is_one_precise_ide_problem_with_two_unpreferred_choices() {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("CLI crate should be inside the repository");
+        let fixture = repository.join("tests/compile/fail/71_invalid_route_auth_value.jadpo");
+        let source = std::fs::read_to_string(&fixture).expect("fixture should be readable");
+        let byte = source
+            .find("nonke")
+            .expect("invalid auth value should exist");
+        let (line, character) = offset_to_line_character(&source, byte);
+        let uri = path_to_uri(&fixture);
+        let mut server = Server::default();
+        request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": { "rootUri": uri }
+            }),
+        );
+
+        let mut published_output = Vec::new();
+        server
+            .handle(
+                json!({
+                    "jsonrpc": "2.0", "method": "textDocument/didOpen",
+                    "params": { "textDocument": {
+                        "uri": uri, "languageId": "jadpo", "version": 1, "text": source
+                    }}
+                }),
+                &mut published_output,
+            )
+            .expect("open notification should be handled");
+        let published = read_message(&mut Cursor::new(published_output))
+            .expect("diagnostic notification should decode")
+            .expect("diagnostic notification should exist");
+        let problems = published["params"]["diagnostics"]
+            .as_array()
+            .expect("Problems entries");
+        assert_eq!(problems.len(), 1, "{published:#}");
+        assert_eq!(
+            problems[0]["message"],
+            "Route authentication value `nonke` is not valid"
+        );
+        assert_eq!(problems[0]["code"], "route.auth_value_invalid");
+        assert_eq!(
+            problems[0]["range"]["start"],
+            json!({ "line": line, "character": character })
+        );
+        assert_eq!(
+            problems[0]["range"]["end"],
+            json!({ "line": line, "character": character + 5 })
+        );
+        assert_eq!(problems[0]["data"]["decisionOwner"], "human");
+        assert_eq!(
+            problems[0]["data"]["recommendedNextStep"]["kind"],
+            "human_decision"
+        );
+        assert_eq!(
+            problems[0]["data"]["alternatives"].as_array().map(Vec::len),
+            Some(2)
+        );
+
+        let hover = request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 2, "method": "textDocument/hover",
+                "params": {
+                    "textDocument": { "uri": uri },
+                    "position": { "line": line, "character": character + 1 }
+                }
+            }),
+        );
+        let markdown = hover["result"]["contents"]["value"]
+            .as_str()
+            .expect("diagnostic hover markdown");
+        assert!(markdown.contains("Keep authentication required for this route"));
+        assert!(markdown.contains("Make this route explicitly unauthenticated"));
+        assert!(markdown.contains("Target generation may still be blocked"));
+        assert!(markdown.contains("callable without authentication"));
+
+        let actions = request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 3, "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": { "uri": uri },
+                    "range": problems[0]["range"],
+                    "context": { "diagnostics": problems }
+                }
+            }),
+        );
+        let choices = actions["result"].as_array().expect("Quick Fix choices");
+        assert_eq!(choices.len(), 2, "{actions:#}");
+        assert_eq!(
+            choices[0]["title"],
+            "Keep authentication required for this route"
+        );
+        assert_eq!(
+            choices[1]["title"],
+            "Make this route explicitly unauthenticated"
+        );
+        assert!(choices.iter().all(|choice| choice["isPreferred"] == false));
+        assert_eq!(choices[0]["edit"]["changes"][&uri][0]["newText"], "");
+        assert_eq!(choices[1]["edit"]["changes"][&uri][0]["newText"], "none");
+        assert_eq!(choices[0]["data"]["decisionOwner"], "human");
+        assert_eq!(choices[1]["data"]["decisionOwner"], "human");
     }
 
     fn request(server: &mut Server, message: Value) -> Value {

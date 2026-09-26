@@ -231,7 +231,7 @@ mod tests {
         let fixtures = repository_root().join("tests/compile");
         let sources = discover_sources(&fixtures).expect("fixtures should be discoverable");
 
-        assert_eq!(sources.len(), 84);
+        assert_eq!(sources.len(), 85);
     }
 
     #[test]

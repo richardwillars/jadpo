@@ -57,6 +57,8 @@ pub enum DiagnosticFact {
     ReachableProblems(String),
     EventRevision(String),
     LocalRevision(String),
+    Route(String),
+    FoundValue(String),
 }
 
 impl DiagnosticFact {
@@ -67,6 +69,8 @@ impl DiagnosticFact {
             Self::ReachableProblems(value) => ("reachable", value),
             Self::EventRevision(value) => ("eventRevision", value),
             Self::LocalRevision(value) => ("localRevision", value),
+            Self::Route(value) => ("route", value),
+            Self::FoundValue(value) => ("found", value),
         }
     }
 }
@@ -121,6 +125,10 @@ pub struct CatalogueDefinition {
     pub help_id: String,
     pub context_keys: Vec<&'static str>,
     pub fixtures: Vec<&'static str>,
+    /// True only when the public copy is deliberately authored for this rule.
+    /// Structural fallbacks remain visible as catalogue debt and cannot satisfy
+    /// the strict diagnostic-copy conformance gate.
+    pub authored_copy: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -165,7 +173,7 @@ impl CompilerDiagnostic {
                 .to_owned(),
         };
         let alternatives = default_alternatives(code, &definition);
-        Self {
+        let mut diagnostic = Self {
             code,
             rule_id: definition.rule_id,
             severity,
@@ -186,7 +194,22 @@ impl CompilerDiagnostic {
             primary: None,
             related: Vec::new(),
             notes: Vec::new(),
+        };
+        if code == "ROUTE_AUTH_VALUE_INVALID" {
+            diagnostic.impact.behavioral =
+                "Compilation is blocked until the route authentication boundary is chosen."
+                    .to_owned();
+            diagnostic.impact.public_contract =
+                "The public route security boundary is unresolved; the compiler will not guess."
+                    .to_owned();
+            diagnostic.recommended_next_step.behavioral_effect =
+                "No authentication behavior changes until a human chooses a valid boundary."
+                    .to_owned();
+            diagnostic.recommended_next_step.public_contract_effect =
+                "The route's public security contract remains unchanged while compilation is blocked."
+                    .to_owned();
         }
+        diagnostic
     }
 
     pub fn with_note(mut self, note: impl Into<String>) -> Self {
@@ -206,10 +229,25 @@ impl CompilerDiagnostic {
     pub fn with_fact(mut self, fact: DiagnosticFact) -> Self {
         let (key, value) = fact.into_pair();
         let definition = catalogue_definition(self.code);
-        if self.context.len() < 16 && definition.context_keys.contains(&key) {
-            self.context.push((key.to_owned(), value));
+        if definition.context_keys.contains(&key) {
+            if let Some((_, current)) = self.context.iter_mut().find(|(current, _)| current == key)
+            {
+                *current = value;
+            } else if self.context.len() < 16 {
+                self.context.push((key.to_owned(), value));
+            }
+            self.refresh_catalogue_copy();
         }
         self
+    }
+
+    fn refresh_catalogue_copy(&mut self) {
+        let definition = catalogue_definition(self.code);
+        self.message = render_catalogue_text(&definition.summary, &self.context);
+        self.reason = render_catalogue_text(&definition.reason, &self.context);
+        self.recommended_next_step.title =
+            render_catalogue_text(&definition.recommended_title, &self.context);
+        self.recommended_next_step.reason = self.reason.clone();
     }
 
     pub fn with_impact(mut self, affected: impl Into<String>) -> Self {
@@ -356,6 +394,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
+            | "ROUTE_AUTH_VALUE_INVALID"
             | "MIG_DECISION_UNRESOLVED"
             | "MIG_DECISION_MISSING"
             | "MIG_DECISION_EVIDENCE_MISSING"
@@ -369,7 +408,11 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         (
             RepairKind::HumanDecision,
             DecisionOwner::Human,
-            "Request the named human-owned decision".to_owned(),
+            match code {
+                "ROUTE_AUTH_VALUE_INVALID" => "Choose the authentication boundary for `{route}`",
+                _ => "Request the named human-owned decision",
+            }
+            .to_owned(),
         )
     } else if automatic {
         (
@@ -387,7 +430,29 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         (
             RepairKind::GuidedChoice,
             DecisionOwner::Agent,
-            "Update the source to satisfy this rule".to_owned(),
+            match code {
+                "FAIL_CONTEXT_FIELD_OVERLAP" => {
+                    "Choose one disclosure class for the failure context field"
+                }
+                "ROUTE_PATH_BINDING_MISSING" => "Add a typed path field for the route placeholder",
+                "ROUTE_PATH_BINDING_EXTRA" => "Remove the typed path field that has no placeholder",
+                "ROUTE_BEHAVIOUR_CONFLICT" => "Keep either `run:` or the inline `action:`",
+                "ROUTE_BEHAVIOUR_REQUIRED" => "Add `run:` or an inline `action:`",
+                "CLI_INCIDENT_REVISION_MISMATCH" => {
+                    "Use the checked sources that produced the runtime event"
+                }
+                "CLI_PRESENTATION_ARGUMENTS" => {
+                    "Choose one supported diagnostic format and colour mode"
+                }
+                "RUNTIME_UNHANDLED_FAULT" => {
+                    "Inspect the matching local incident using its request identifier"
+                }
+                "RUNTIME_STARTUP_FAILED" => {
+                    "Inspect the generated runtime startup event before retrying"
+                }
+                _ => "Update the source to satisfy this rule",
+            }
+            .to_owned(),
         )
     };
     let summary = match code {
@@ -401,6 +466,9 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "ROUTE_BEHAVIOUR_CONFLICT" => "Route declares two behaviour forms".to_owned(),
         "ROUTE_BEHAVIOUR_REQUIRED" => "Route has no behaviour".to_owned(),
         "ROUTE_ITEM_COLON_REQUIRED" => "Route item requires a `:` separator".to_owned(),
+        "ROUTE_AUTH_VALUE_INVALID" => {
+            "Route authentication value `{found}` is not valid".to_owned()
+        }
         "CLI_INCIDENT_REVISION_MISMATCH" => {
             "Runtime event and local source revisions differ".to_owned()
         }
@@ -416,6 +484,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "ROUTE_PATH_BINDING_MISSING" | "ROUTE_PATH_BINDING_EXTRA" => "Route placeholders and typed `path` fields must correspond exactly one-to-one.".to_owned(),
         "ROUTE_BEHAVIOUR_CONFLICT" | "ROUTE_BEHAVIOUR_REQUIRED" => "A route must select exactly one local inline action or one named `run:` invocation.".to_owned(),
         "ROUTE_ITEM_COLON_REQUIRED" => "Every route item uses the same explicit `name: value` separator, including block-valued path and action items.".to_owned(),
+        "ROUTE_AUTH_VALUE_INVALID" => "Routes require authentication by default. The only explicit opt-out is the exact form `auth: none`, so the compiler cannot infer whether `{found}` was meant to retain authentication or disable it.".to_owned(),
         "CLI_INCIDENT_REVISION_MISMATCH" => "Local enrichment is trustworthy only when the runtime event and compiler graph identify the same checked source revision.".to_owned(),
         "CLI_PRESENTATION_ARGUMENTS" => "Diagnostic format and colour flags must select one supported presentation without changing the semantic diagnostic payload.".to_owned(),
         "RUNTIME_UNHANDLED_FAULT" => "An exception outside the declared domain-failure boundary was contained by the generated runtime.".to_owned(),
@@ -429,6 +498,22 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     if fixtures.is_empty() {
         fixtures.push("jadpo/crates/diagnostics/src/lib.rs#every_catalogue_entry_is_renderable");
     }
+    let authored_copy = matches!(
+        code,
+        "FAIL_ATTEMPT_REQUIRED"
+            | "FAIL_STALE_DECLARATION"
+            | "FAIL_CONTEXT_FIELD_OVERLAP"
+            | "ROUTE_PATH_BINDING_MISSING"
+            | "ROUTE_PATH_BINDING_EXTRA"
+            | "ROUTE_BEHAVIOUR_CONFLICT"
+            | "ROUTE_BEHAVIOUR_REQUIRED"
+            | "ROUTE_ITEM_COLON_REQUIRED"
+            | "ROUTE_AUTH_VALUE_INVALID"
+            | "CLI_INCIDENT_REVISION_MISMATCH"
+            | "CLI_PRESENTATION_ARGUMENTS"
+            | "RUNTIME_UNHANDLED_FAULT"
+            | "RUNTIME_STARTUP_FAILED"
+    );
     CatalogueDefinition {
         help_id: format!("diagnostics/{rule_id}"),
         rule_id,
@@ -441,10 +526,20 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         context_keys: match code {
             "FAIL_STALE_DECLARATION" => vec!["callable", "declared", "reachable"],
             "CLI_INCIDENT_REVISION_MISMATCH" => vec!["eventRevision", "localRevision"],
+            "ROUTE_AUTH_VALUE_INVALID" => vec!["route", "found"],
             _ => Vec::new(),
         },
         fixtures,
+        authored_copy,
     }
+}
+
+fn render_catalogue_text(template: &str, context: &[(String, String)]) -> String {
+    context
+        .iter()
+        .fold(template.to_owned(), |rendered, (key, value)| {
+            rendered.replace(&format!("{{{key}}}"), value)
+        })
 }
 
 fn sentence_case_identifier(value: &str) -> String {
@@ -462,6 +557,30 @@ fn sentence_case_identifier(value: &str) -> String {
 }
 
 fn default_alternatives(code: &str, _definition: &CatalogueDefinition) -> Vec<RepairStep> {
+    if code == "ROUTE_AUTH_VALUE_INVALID" {
+        return vec![
+            RepairStep {
+                kind: RepairKind::HumanDecision,
+                title: "Keep authentication required for this route".to_owned(),
+                reason: "Remove the invalid `auth:` item so the route keeps Jadpo's authenticated default.".to_owned(),
+                decision_owner: DecisionOwner::Human,
+                preferred: false,
+                edits: Vec::new(),
+                behavioral_effect: "The route continues to require authentication.".to_owned(),
+                public_contract_effect: "The public route remains authenticated. Target generation may still be blocked until authentication runtime support is configured.".to_owned(),
+            },
+            RepairStep {
+                kind: RepairKind::HumanDecision,
+                title: "Make this route explicitly unauthenticated".to_owned(),
+                reason: "Replace the invalid value with the exact opt-out `none` only when unauthenticated access is intentional.".to_owned(),
+                decision_owner: DecisionOwner::Human,
+                preferred: false,
+                edits: Vec::new(),
+                behavioral_effect: "Requests may reach the route without an authenticated identity.".to_owned(),
+                public_contract_effect: "The public security contract changes: this route becomes callable without authentication.".to_owned(),
+            },
+        ];
+    }
     let (title, reason) = match code {
         "FAIL_STALE_DECLARATION" => (
             "Add the missing reachable behavior intentionally",
@@ -512,7 +631,7 @@ pub fn catalogue_manifest_json() -> String {
                 .collect::<Vec<_>>()
                 .join(",");
             format!(
-                "{{\"ruleId\":{},\"category\":{},\"summary\":{},\"reason\":{},\"recommendedNextStep\":{},\"repairKind\":{},\"decisionOwner\":{},\"contextSchema\":{{\"allowedKeys\":[{allowed_keys}],\"additionalProperties\":false}},\"helpId\":{},\"fixtures\":[{fixtures}],\"legacyAliases\":[{}]}}",
+                "{{\"ruleId\":{},\"category\":{},\"summary\":{},\"reason\":{},\"recommendedNextStep\":{},\"repairKind\":{},\"decisionOwner\":{},\"copyStatus\":{},\"contextSchema\":{{\"allowedKeys\":[{allowed_keys}],\"additionalProperties\":false}},\"helpId\":{},\"fixtures\":[{fixtures}],\"legacyAliases\":[{}]}}",
                 json_string(&entry.rule_id),
                 json_string(&entry.category),
                 json_string(&entry.summary),
@@ -520,6 +639,7 @@ pub fn catalogue_manifest_json() -> String {
                 json_string(&entry.recommended_title),
                 json_string(entry.repair_kind.as_str()),
                 json_string(entry.decision_owner.as_str()),
+                json_string(if entry.authored_copy { "authored" } else { "placeholder" }),
                 json_string(&entry.help_id),
                 json_string(code),
             )
@@ -753,6 +873,8 @@ mod tests {
         OperationalLogEvent, OperationalValue, PublicFailureResponse, PublicFailureValue,
         RepairKind, SafeIdentifier, Secret, SourceSpan, CATALOGUE_CODES,
     };
+    use serde_json::Value;
+    use std::collections::BTreeSet;
 
     #[test]
     fn emits_stable_json_with_explicit_nullable_location_fields() {
@@ -872,5 +994,183 @@ mod tests {
             );
             assert!(json.contains("\"recommendedNextStep\":"), "{code}");
         }
+    }
+
+    #[test]
+    fn every_agent_diagnostic_obeys_the_complete_v2_schema() {
+        let expected_top_level = BTreeSet::from([
+            "alternatives",
+            "context",
+            "decisionOwner",
+            "diagnosticId",
+            "helpId",
+            "impact",
+            "legacyAliases",
+            "location",
+            "reason",
+            "recommendedNextStep",
+            "ruleId",
+            "schemaVersion",
+            "severity",
+            "sourceRevision",
+            "summary",
+        ]);
+        let expected_repair = BTreeSet::from([
+            "decisionOwner",
+            "edits",
+            "kind",
+            "preferred",
+            "preview",
+            "reason",
+            "title",
+        ]);
+        let expected_preview = BTreeSet::from(["behavioral", "publicContract"]);
+        let expected_impact =
+            BTreeSet::from(["affected", "behavioral", "publicContract", "queryId"]);
+
+        for code in CATALOGUE_CODES {
+            let mut diagnostic = Diagnostic::error(code).with_source_revision("src_conformance");
+            diagnostic.primary = Some(SourceSpan {
+                source: "conformance.jadpo".to_owned(),
+                start: 2,
+                end: 5,
+            });
+            let value: Value = serde_json::from_str(&diagnostic.to_json())
+                .unwrap_or_else(|error| panic!("{code}: invalid JSON: {error}"));
+            assert_eq!(value["schemaVersion"], 2, "{code}");
+            assert_eq!(object_keys(&value), expected_top_level, "{code}");
+            assert_nonempty_string(&value, "summary", code);
+            assert_nonempty_string(&value, "reason", code);
+            assert_nonempty_string(&value, "ruleId", code);
+            assert_nonempty_string(&value, "helpId", code);
+            assert_eq!(value["sourceRevision"], "src_conformance", "{code}");
+            assert_eq!(value["legacyAliases"], serde_json::json!([code]), "{code}");
+            assert_eq!(value["location"]["range"]["start"], 2, "{code}");
+            assert_eq!(value["location"]["range"]["end"], 5, "{code}");
+            assert!(value["location"]["related"].as_array().is_some(), "{code}");
+            assert!(
+                value["context"]
+                    .as_object()
+                    .is_some_and(|items| items.len() <= 16),
+                "{code}"
+            );
+            assert!(
+                value["alternatives"]
+                    .as_array()
+                    .is_some_and(|items| items.len() <= 16),
+                "{code}"
+            );
+            assert_eq!(object_keys(&value["impact"]), expected_impact, "{code}");
+            assert!(
+                value["impact"]["affected"]
+                    .as_array()
+                    .is_some_and(|items| items.len() <= 16),
+                "{code}"
+            );
+
+            let mut repairs = vec![&value["recommendedNextStep"]];
+            repairs.extend(value["alternatives"].as_array().unwrap().iter());
+            for repair in repairs {
+                assert_eq!(object_keys(repair), expected_repair, "{code}");
+                assert_eq!(object_keys(&repair["preview"]), expected_preview, "{code}");
+                assert_nonempty_string(repair, "title", code);
+                assert_nonempty_string(repair, "reason", code);
+                assert!(repair["edits"].as_array().is_some(), "{code}");
+                assert!(repair["preferred"].is_boolean(), "{code}");
+            }
+
+            let packet = diagnostic.to_json();
+            for forbidden in [
+                "\u{1b}[",
+                "credential-canary",
+                "provider-canary",
+                "stack-canary",
+                "sql-canary",
+            ] {
+                assert!(!packet.contains(forbidden), "{code}: leaked {forbidden}");
+            }
+        }
+    }
+
+    #[test]
+    fn public_copy_debt_is_explicit_and_authored_copy_is_human_readable() {
+        let mut placeholders = Vec::new();
+        for code in CATALOGUE_CODES {
+            let definition = catalogue_definition(code);
+            if definition.authored_copy {
+                for forbidden in [
+                    "compiler-enforced",
+                    "Update the source to satisfy this rule",
+                    "Unexpected token",
+                ] {
+                    assert!(
+                        !format!(
+                            "{} {} {}",
+                            definition.summary, definition.reason, definition.recommended_title
+                        )
+                        .contains(forbidden),
+                        "{code}: authored copy contains forbidden fallback `{forbidden}`"
+                    );
+                }
+            } else {
+                placeholders.push(*code);
+                assert!(
+                    definition.reason.contains("compiler-enforced")
+                        || definition.recommended_title == "Update the source to satisfy this rule",
+                    "{code}: unclassified catalogue copy"
+                );
+            }
+        }
+        assert!(
+            !placeholders.is_empty(),
+            "remove the strict ignored gate and this debt assertion when the catalogue is complete"
+        );
+    }
+
+    #[test]
+    #[ignore = "DX2 copy debt: this becomes the permanent non-ignored gate when all families are authored"]
+    fn strict_public_catalogue_has_no_placeholders_and_every_code_has_a_real_fixture() {
+        let failures = CATALOGUE_CODES
+            .iter()
+            .filter_map(|code| {
+                let definition = catalogue_definition(code);
+                let has_real_fixture = definition.fixtures.iter().any(|fixture| {
+                    *fixture
+                        != "jadpo/crates/diagnostics/src/lib.rs#every_catalogue_entry_is_renderable"
+                });
+                (!definition.authored_copy || !has_real_fixture).then_some(format!(
+                    "{code}: copy={}, fixture={}",
+                    if definition.authored_copy {
+                        "authored"
+                    } else {
+                        "placeholder"
+                    },
+                    if has_real_fixture {
+                        "present"
+                    } else {
+                        "missing"
+                    }
+                ))
+            })
+            .collect::<Vec<_>>();
+        assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+    }
+
+    fn object_keys(value: &Value) -> BTreeSet<&str> {
+        value
+            .as_object()
+            .expect("expected object")
+            .keys()
+            .map(String::as_str)
+            .collect()
+    }
+
+    fn assert_nonempty_string(value: &Value, key: &str, code: &str) {
+        assert!(
+            value[key]
+                .as_str()
+                .is_some_and(|text| !text.trim().is_empty()),
+            "{code}: `{key}` must be a non-empty string"
+        );
     }
 }

@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::{lex, TextRange, Token, TokenKind};
-use jadpo_diagnostics::{Diagnostic, SourceSpan, TextEdit};
+use jadpo_diagnostics::{Diagnostic, DiagnosticFact, SourceSpan, TextEdit};
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -1921,9 +1921,71 @@ impl<'source> Parser<'source> {
                         self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
                     }
                     auth_seen = true;
-                    self.expect(TokenKind::Colon, "expected `:` after route item `auth`")?;
-                    self.expect(TokenKind::NoneLiteral, "expected `none` after `auth:`")?;
-                    public = true;
+                    let colon =
+                        self.expect(TokenKind::Colon, "expected `:` after route item `auth`")?;
+                    if self.at(TokenKind::NoneLiteral) {
+                        self.bump();
+                        public = true;
+                    } else {
+                        let invalid = self.current();
+                        let value_is_missing = matches!(
+                            invalid.kind,
+                            TokenKind::Auth
+                                | TokenKind::Path
+                                | TokenKind::Input
+                                | TokenKind::Output
+                                | TokenKind::Run
+                                | TokenKind::Action
+                                | TokenKind::RightBrace
+                                | TokenKind::Eof
+                        );
+                        let found = if value_is_missing {
+                            "missing value".to_owned()
+                        } else if invalid.kind == TokenKind::Identifier {
+                            invalid.text(self.source).to_owned()
+                        } else {
+                            "supplied token".to_owned()
+                        };
+                        let invalid_range = if value_is_missing {
+                            TextRange::new(colon.range.end, colon.range.end)
+                        } else {
+                            invalid.range
+                        };
+                        let route = format!("{} {}", http_method_name(method), path);
+                        let (remove_start, remove_end) = route_item_removal_range(
+                            self.source,
+                            item.range.start,
+                            if value_is_missing {
+                                colon.range.end
+                            } else {
+                                invalid.range.end
+                            },
+                        );
+                        let mut diagnostic = Diagnostic::error("ROUTE_AUTH_VALUE_INVALID")
+                            .with_fact(DiagnosticFact::Route(route.clone()))
+                            .with_fact(DiagnosticFact::FoundValue(found));
+                        diagnostic.impact.affected.push(route);
+                        diagnostic.alternatives[0].edits.push(TextEdit {
+                            source: self.source_name.clone(),
+                            start: remove_start,
+                            end: remove_end,
+                            replacement: String::new(),
+                        });
+                        diagnostic.alternatives[1].edits.push(TextEdit {
+                            source: self.source_name.clone(),
+                            start: invalid_range.start,
+                            end: invalid_range.end,
+                            replacement: if value_is_missing {
+                                " none".to_owned()
+                            } else {
+                                "none".to_owned()
+                            },
+                        });
+                        self.diagnostic_at(diagnostic, invalid_range);
+                        if !value_is_missing {
+                            self.bump();
+                        }
+                    }
                 }
                 TokenKind::Path => {
                     let item = self.bump();
@@ -2270,6 +2332,35 @@ impl<'source> Parser<'source> {
     }
 }
 
+fn http_method_name(method: HttpMethod) -> &'static str {
+    match method {
+        HttpMethod::Get => "GET",
+        HttpMethod::Post => "POST",
+        HttpMethod::Put => "PUT",
+        HttpMethod::Patch => "PATCH",
+        HttpMethod::Delete => "DELETE",
+    }
+}
+
+fn route_item_removal_range(source: &str, item_start: usize, value_end: usize) -> (usize, usize) {
+    let line_start = source[..item_start]
+        .rfind('\n')
+        .map_or(0, |offset| offset + 1);
+    let line_end = source[value_end..]
+        .find('\n')
+        .map_or(source.len(), |offset| value_end + offset + 1);
+    let value_line_end = line_end.saturating_sub(usize::from(
+        line_end > 0 && source.as_bytes()[line_end - 1] == b'\n',
+    ));
+    if source[line_start..item_start].trim().is_empty()
+        && source[value_end..value_line_end].trim().is_empty()
+    {
+        (line_start, line_end)
+    } else {
+        (item_start, value_end)
+    }
+}
+
 fn declaration_name(declaration: &Declaration) -> Option<&Name> {
     match declaration {
         Declaration::Type(declaration) => Some(&declaration.name),
@@ -2393,6 +2484,53 @@ output PrivateResult { todo: Todo }
             .iter()
             .any(|diagnostic| diagnostic.code == "SYN_UNEXPECTED_TOKEN"
                 && diagnostic.message == "Unexpected token"));
+    }
+
+    #[test]
+    fn invalid_route_auth_value_is_one_human_owned_root_diagnostic() {
+        let source = r#"input RegisterCustomer { email: Text }
+output RegistrationAccepted { accepted: Bool }
+action register_customer(input: RegisterCustomer) -> RegistrationAccepted {
+    return RegistrationAccepted { accepted: true }
+}
+route POST /registrations {
+    auth: nonke
+    input: RegisterCustomer
+    output: RegistrationAccepted
+    run: register_customer(input)
+}
+"#;
+        let parsed = parse(Path::new("auth-value.jadpo"), source);
+
+        assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
+        let diagnostic = &parsed.diagnostics[0];
+        assert_eq!(diagnostic.code, "ROUTE_AUTH_VALUE_INVALID");
+        assert_eq!(
+            diagnostic.message,
+            "Route authentication value `nonke` is not valid"
+        );
+        assert_eq!(diagnostic.decision_owner.as_str(), "human");
+        assert_eq!(diagnostic.alternatives.len(), 2);
+        assert!(diagnostic
+            .alternatives
+            .iter()
+            .all(|choice| !choice.preferred && choice.edits.len() == 1));
+        let primary = diagnostic.primary.as_ref().expect("primary range");
+        assert_eq!(&source[primary.start..primary.end], "nonke");
+
+        let route = parsed
+            .file
+            .declarations
+            .iter()
+            .find_map(|declaration| match declaration {
+                Declaration::Route(route) => Some(route),
+                _ => None,
+            })
+            .expect("the route should survive parser recovery");
+        assert!(route.input.is_some());
+        assert!(route.output.is_some());
+        assert!(route.run.is_some());
+        assert!(!route.public);
     }
 
     #[test]
@@ -2756,6 +2894,9 @@ function choose(initial: Choice, replacement: Choice) -> Choice {
                     .diagnostics
                     .iter()
                     .all(|diagnostic| diagnostic.code == "ROUTE_ITEM_COLON_REQUIRED"));
+            } else if file_name == "71_invalid_route_auth_value.jadpo" {
+                assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
+                assert_eq!(parsed.diagnostics[0].code, "ROUTE_AUTH_VALUE_INVALID");
             } else {
                 assert!(
                     parsed.diagnostics.is_empty(),

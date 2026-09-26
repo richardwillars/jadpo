@@ -12,6 +12,11 @@ failure-audit, or OpenAPI artifact when a build exists.
 The `Jadpo: Check Project` command requests a fresh compiler diagnostic pass.
 The server is also available to any standard LSP client through `jadpo lsp`.
 
+Run the extension's diagnostic-presentation tests with `npm test` in this
+directory. They do not start VS Code: the Problems summary and details renderer
+are kept as pure adapters so their escaping and shared-payload fidelity can be
+verified deterministically.
+
 ## Update the local extension
 
 First rebuild the compiler from the repository root:

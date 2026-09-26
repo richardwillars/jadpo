@@ -47,7 +47,7 @@ Diagnostic codes in these fixtures are part of the compiler-facing contract.
 Renaming one requires updating the roadmap, relevant specification, and all
 affected fixture expectations together.
 
-The current eighty-four pairs comprise the original ten type/failure cases plus
+The current eighty-five pairs comprise the original ten type/failure cases plus
 coverage for optional omission, nullable widening, implicit narrowing,
 semantic-to-primitive unwrapping, incomplete records, invariant collections,
 transitive failure propagation, function/action separation, missing failure
@@ -102,6 +102,11 @@ transport or behaviour declaration.
 Block-valued route items use the same colon separator as scalar items;
 `path:` and `action:` are canonical and the compiler offers an automatic edit
 for the rejected colonless spellings.
+Fixture 71 covers an invalid route authentication value as one human-owned root
+diagnostic. It also asserts the agent-facing summary, reason, owner, kind,
+bounded context, two security choices, edit replacements, and public-contract
+impact rather than accepting a generic token error or dependent route-item
+cascades.
 
 Expectation files retain established compiler codes as migration aliases. CLI
 and LSP diagnostics expose the canonical lower-dotted `ruleId` alongside those

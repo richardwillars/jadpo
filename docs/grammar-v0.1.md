@@ -537,7 +537,12 @@ inline_action       = "action", ":", [ fails_clause ], block ;
 
 The first route item above is spelled `auth: none`; the older
 `auth: public explicitly` form is not accepted. Authentication is required when
-`auth: none` is absent.
+`auth: none` is absent. Any other authored value produces the human-owned
+`route.auth_value_invalid` diagnostic over that value. The diagnostic does not
+guess whether authentication should be retained or disabled: it offers removal
+of the item and replacement with `none` as two non-preferred choices, reports
+their distinct public-security effects, and recovers at the next route item so
+valid `input:`, `output:`, and `run:` members do not become cascade errors.
 
 The lexer reads the non-whitespace token after the method as `path_token`.
 Every `{name}` placeholder must have exactly one same-named typed field in the
