@@ -37,10 +37,11 @@ Coverage is split by responsibility:
   names and asserts the diagnostic it exercises. Generic catalogue and
   projection sweeps do not satisfy this requirement.
 
-Catalogue discovery scans diagnostic identifier tokens rather than naively
-splitting Rust source on quotation marks. Escaped JSON literals therefore
-cannot hide later compiler diagnostics from the conformance suite; the complete
-enumerated catalogue currently contains 310 codes.
+Catalogue discovery scans diagnostic identifier tokens in the compiler emitter
+crates rather than naively splitting Rust source on quotation marks or scanning
+the catalogue's own prose. Escaped JSON literals therefore cannot hide later
+compiler diagnostics, and stale catalogue text cannot masquerade as an emitted
+error. The complete enumerated catalogue currently contains 299 codes.
 
 `ROUTE_AUTH_VALUE_INVALID` is the first complete golden scenario. Its fixture
 proves one root error over `nonke`, continued parsing of subsequent route items,
@@ -149,7 +150,7 @@ unsupported change, strategy, expression, predicate, literal, and type cases
 from identity corruption, and gives SQLite rebuild failures their precise
 entity, field, constraint, index, reference, rename, or shape recovery path.
 
-All 310 enumerated public diagnostic codes now have rule-specific summary,
+All 299 enumerated public diagnostic codes now have rule-specific summary,
 reason, and recommended-next-step copy. The active zero-placeholder test is
 permanent. Completion still depends on replacing the strict gate's synthetic
 render coverage with a real trigger fixture for every code.

@@ -375,7 +375,7 @@ trusted local `jadpo incident` enrichment. `skills/jadpo-agent/SKILL.md` exposes
 the bounded grammar, diagnostic, symbol, impact, repair-preview, documentation,
 and incident workflow without duplicating compiler semantics. The exhaustive
 cross-audience suite is recorded in
-[`tests/diagnostics/README.md`](../tests/diagnostics/README.md). All 310 public
+[`tests/diagnostics/README.md`](../tests/diagnostics/README.md). All 299 public
 codes now have rule-specific authored summary, reason, and next-step copy, and
 every code is projected through the version-2 agent, terminal, LSP, and VS Code
 contracts. A catalogue-wide plain-language gate rejects compiler-internal

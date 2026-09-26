@@ -3290,7 +3290,7 @@ mod tests {
         let manifest = catalogue_manifest_json();
         for alias in [
             "SYN_UNEXPECTED_TOKEN",
-            "TYPE_UNKNOWN_NAME",
+            "TYPE_UNKNOWN_VALUE",
             "FAIL_ATTEMPT_REQUIRED",
             "ROUTE_PATH_BINDING_MISSING",
             "CLI_INCIDENT_INVALID",
@@ -3600,7 +3600,6 @@ mod tests {
             "TYPE_UNARY_OPERAND",
             "TYPE_UNKNOWN_ENUM_VARIANT",
             "TYPE_UNKNOWN_FIELD",
-            "TYPE_UNKNOWN_NAME",
             "TYPE_UNKNOWN_VALUE",
             "TYPE_UNKNOWN_VARIANT_FIELD",
         ];

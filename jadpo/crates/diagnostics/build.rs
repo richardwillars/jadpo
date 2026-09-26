@@ -8,7 +8,7 @@ fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("manifest directory"));
     let crates = manifest.parent().expect("crates directory");
     let mut codes = BTreeSet::new();
-    visit(crates, &mut codes);
+    visit_emitters(crates, &manifest, &mut codes);
     let mut values = String::new();
     for code in &codes {
         writeln!(values, "    {code:?},").expect("write generated catalogue entry");
@@ -141,7 +141,7 @@ fn visit_fixtures(repository: &Path, path: &Path, fixtures: &mut BTreeSet<(Strin
     }
 }
 
-fn visit(path: &Path, codes: &mut BTreeSet<String>) {
+fn visit_emitters(path: &Path, diagnostics_crate: &Path, codes: &mut BTreeSet<String>) {
     let mut entries = fs::read_dir(path)
         .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
         .map(|entry| entry.expect("directory entry").path())
@@ -149,10 +149,11 @@ fn visit(path: &Path, codes: &mut BTreeSet<String>) {
     entries.sort();
     for entry in entries {
         if entry.is_dir() {
-            if entry.file_name().is_some_and(|name| name == "target") {
+            if entry == diagnostics_crate || entry.file_name().is_some_and(|name| name == "target")
+            {
                 continue;
             }
-            visit(&entry, codes);
+            visit_emitters(&entry, diagnostics_crate, codes);
         } else if entry.extension().is_some_and(|extension| extension == "rs") {
             println!("cargo:rerun-if-changed={}", entry.display());
             let source = fs::read_to_string(&entry)
