@@ -1,0 +1,4 @@
+failure InvalidEscape {
+    kind InvalidValue
+    code "invalid\qescape"
+}
