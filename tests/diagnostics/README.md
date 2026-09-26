@@ -55,3 +55,8 @@ cargo test -p jadpo-diagnostics strict_public_catalogue_has_no_placeholders_and_
 It must be made non-ignored, and must pass, before DX2 can be called complete.
 This red gate is the work queue for replacing every remaining generic message
 with rule-specific copy and a real triggering fixture.
+
+The `SYN_*` catalogue family is fully authored. Its public copy now describes
+the concrete grammar rule and a usable next step; the general parser expectation
+also carries the bounded `expected` and `found` facts supplied by the parser.
+Real trigger-fixture coverage is still tracked independently by the strict gate.

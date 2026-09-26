@@ -370,6 +370,199 @@ fn repair_json(repair: &RepairStep) -> String {
     )
 }
 
+#[derive(Clone, Copy)]
+struct AuthoredCopy {
+    summary: &'static str,
+    reason: &'static str,
+    next: &'static str,
+}
+
+fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "SYN_CONSTRAINT_NON_ENTITY" => (
+            "Persistence constraints are only valid on entities",
+            "`constraint` describes a storage identity or index and therefore needs an `entity` declaration; value, input, and output records have no persistence boundary.",
+            "Move the constraint to its owning entity, or remove it from this record",
+        ),
+        "SYN_DUPLICATE_FIELD_MODIFIER" => (
+            "Field modifier is repeated",
+            "Each field modifier may be written once. Repeating a modifier makes the field's authored storage or validation contract ambiguous.",
+            "Keep one occurrence of the repeated field modifier",
+        ),
+        "SYN_EMPTY_IMPORT" => (
+            "Import selects no declarations",
+            "A selective import must name at least one declaration from the target module; an empty selection introduces no usable name.",
+            "Add at least one imported declaration name, or remove the import",
+        ),
+        "SYN_ENUM_EMPTY" => (
+            "Enum declares no variants",
+            "An enum is a closed set of named values and must contain at least one variant so construction and matching have a defined domain.",
+            "Add at least one enum variant",
+        ),
+        "SYN_EXPECTED_CONSTRAINT" => (
+            "Expected a type constraint",
+            "A type constraint block accepts only supported constraint names such as length, numeric bound, pattern, or format constraints.",
+            "Use a supported constraint name or remove the invalid item",
+        ),
+        "SYN_EXPECTED_CONSTRAINT_VALUE" => (
+            "Constraint requires a value",
+            "The preceding constraint name is incomplete without the literal or name that defines its bound, pattern, or format.",
+            "Add a value of the kind required by this constraint",
+        ),
+        "SYN_EXPECTED_DECLARATION" => (
+            "`{found}` cannot start a top-level declaration",
+            "Jadpo files accept `type`, `enum`, `entity`, `value`, `input`, `output`, `failure`, `function`, `action`, `test`, and `route` declarations at the top level. Route items such as `path:` belong inside a `route` block, so `{found}` cannot be parsed here.",
+            "Move `{found}` into its owning declaration, or replace it with a top-level declaration",
+        ),
+        "SYN_EXPECTED_DELETE_ACTION" => (
+            "Delete requires an entity target",
+            "A `delete required` expression must name the entity whose stored record will be removed before its predicate and failure bindings can be parsed.",
+            "Add the entity name after `delete required`",
+        ),
+        "SYN_EXPECTED_EXPRESSION" => (
+            "Expected an expression",
+            "This position requires a value-producing expression, such as a literal, name, invocation, constructor, match, or persistence expression.",
+            "Add the value or operation intended at this location",
+        ),
+        "SYN_EXPECTED_FAILURE_ITEM" => (
+            "Failure declaration contains an unsupported item",
+            "A failure body accepts `kind`, `code`, `message`, `public`, and `internal` items only.",
+            "Replace this item with a supported failure member or remove it",
+        ),
+        "SYN_EXPECTED_FIELD" => (
+            "Expected a field declaration",
+            "Record and field blocks contain `name: Type` declarations. The current source cannot begin a field and is not a valid block terminator.",
+            "Write a `name: Type` field or remove the stray source",
+        ),
+        "SYN_EXPECTED_FIELD_INITIALISER" => (
+            "Expected a field value",
+            "A constructor or object body assigns fields with `name: expression`; each item needs a field name before its value.",
+            "Add a named field initialiser or remove the stray item",
+        ),
+        "SYN_EXPECTED_HTTP_METHOD" => (
+            "Route requires an HTTP method",
+            "A route declaration starts with exactly one of `GET`, `POST`, `PUT`, `PATCH`, or `DELETE` before its path.",
+            "Add a supported HTTP method before the route path",
+        ),
+        "SYN_EXPECTED_INVERSE_CARDINALITY" => (
+            "Inverse relationship requires a cardinality",
+            "An inverse relationship must declare whether it resolves one optional record or many records so generated query and output shapes are deterministic.",
+            "Add the supported inverse cardinality intended for this relationship",
+        ),
+        "SYN_EXPECTED_INVOCATION" => (
+            "Route `run:` requires an action invocation",
+            "Named route behavior calls an action with parentheses. A bare name or another expression does not define the route's argument mapping.",
+            "Call the action using `name(arguments)` after `run:`",
+        ),
+        "SYN_EXPECTED_LITERAL" => (
+            "Expected a literal value",
+            "This grammar position accepts a literal of the required kind rather than a name, invocation, or compound expression.",
+            "Replace this source with the required literal value",
+        ),
+        "SYN_EXPECTED_NAME" => (
+            "Expected a name",
+            "This position identifies a declaration, field, binding, or qualified path and therefore requires a valid Jadpo name.",
+            "Add a valid name beginning with a letter or underscore",
+        ),
+        "SYN_EXPECTED_ORDER_DIRECTION" => (
+            "Query ordering requires `asc` or `desc`",
+            "Every `order_by` field needs an explicit direction so result ordering is deterministic across storage adapters.",
+            "Add `asc` or `desc` after the ordering field",
+        ),
+        "SYN_EXPECTED_PATCH_INPUT" => (
+            "Patch update requires an input value",
+            "The `patch:` item must name the input record whose present fields will be applied to the entity.",
+            "Add the patch input name after `patch:`",
+        ),
+        "SYN_EXPECTED_ROUTE_ITEM" => (
+            "Unsupported item inside route",
+            "A route body accepts `auth:`, `path:`, `input:`, `output:`, `run:`, and `action:` items only.",
+            "Use a supported route item or move this source outside the route",
+        ),
+        "SYN_EXPECTED_STATEMENT" => (
+            "Expected a statement",
+            "Callable and test blocks contain supported statements such as variable declarations, return, reject, conditionals, matches, assertions, and persistence operations.",
+            "Add a supported statement or remove the stray source",
+        ),
+        "SYN_EXPECTED_SUPPLIED" => (
+            "Patch condition requires `supplied`",
+            "A conditional patch assignment must explicitly test whether an optional input field was supplied before using its value.",
+            "Add `supplied` with the optional patch field",
+        ),
+        "SYN_EXPECTED_SUPPLIED_FIELD" => (
+            "`supplied` requires an input field",
+            "The `supplied` condition must name the optional input field whose presence controls the conditional patch assignment.",
+            "Add the optional input field after `supplied`",
+        ),
+        "SYN_EXPECTED_UPDATE_BODY" => (
+            "Update requires `set:` or `patch:`",
+            "After its target and predicate, an update must choose either fixed authored changes with `set:` or omission-aware input changes with `patch:`.",
+            "Add the intended `set:` or `patch:` update body",
+        ),
+        "SYN_FAILURE_CODE_REQUIRED" => (
+            "Failure requires a stable public code",
+            "Every failure declaration needs one string `code` so generated transports can identify the failure without exposing internal details.",
+            "Add a unique string `code` to the failure declaration",
+        ),
+        "SYN_FAILURE_KIND_REQUIRED" => (
+            "Failure requires a standard kind",
+            "Every failure declaration must select a standard kind so route status mapping and failure handling are deterministic.",
+            "Add a supported `kind` to the failure declaration",
+        ),
+        "SYN_IMPORT_REQUIRES_MODULE" => (
+            "Imports require a module declaration",
+            "A file that imports names must declare its own logical module first; otherwise visibility and dependency identity are undefined.",
+            "Add a `module` header before the imports",
+        ),
+        "SYN_INVERSE_NON_ENTITY" => (
+            "Inverse relationships are only valid on entities",
+            "An inverse relationship is derived from stored owning references and cannot be declared on value, input, or output records.",
+            "Move the inverse relationship to its entity, or remove it",
+        ),
+        "SYN_MATCH_PATTERN" => (
+            "Invalid match pattern",
+            "A match arm must use a pattern supported by the matched value, such as a variant, Boolean, nullable pattern, or wildcard.",
+            "Replace this source with a supported match pattern",
+        ),
+        "SYN_MUTATION_CONFLICT_REQUIRED" => (
+            "Mutation requires a conflict failure binding",
+            "Required create, update, and delete operations must map storage conflicts into an authored domain failure rather than exposing adapter errors.",
+            "Add at least one `conflict:` failure binding",
+        ),
+        "SYN_ROUTE_EXPORT_INVALID" => (
+            "Routes cannot be exported with `public`",
+            "Routes already define an external transport boundary. Module `public` exports apply to named declarations and cannot export an unnamed route.",
+            "Remove `public` from the route declaration",
+        ),
+        "SYN_TYPE_PARENT_REQUIRED" => (
+            "Refined type requires a parent type",
+            "A named type declaration refines an existing semantic type and must name that parent before its optional constraint block.",
+            "Add the parent type after `=`",
+        ),
+        "SYN_UNEXPECTED_TOKEN" => (
+            "Expected {expected}",
+            "Found `{found}` while parsing this construct. Jadpo requires {expected} at this location, so parsing stops rather than guessing the authored structure.",
+            "Provide {expected}",
+        ),
+        "SYN_UNSUPPORTED_THROW" => (
+            "Arbitrary `throw` is not supported",
+            "Jadpo failures are declared, typed, and propagated through `reject` and `attempt`; arbitrary exceptions would escape that checked boundary.",
+            "Replace `throw` with a declared failure and `reject`",
+        ),
+        "SYN_UNTERMINATED_STRING" => (
+            "String literal is not closed",
+            "The lexer reached the line or file boundary before finding the quote that ends this string literal.",
+            "Add the closing quote, or remove the opening quote",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let (category, remainder) = code.split_once('_').unwrap_or(("diagnostic", code));
     let category = match category {
@@ -393,6 +586,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     }
     .to_ascii_lowercase();
     let rule_id = format!("{category}.{}", remainder.to_ascii_lowercase());
+    let syntax_copy = syntax_catalogue_copy(code);
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
@@ -456,7 +650,9 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
                     "Move `{found}` into its owning declaration, or replace it with a top-level declaration"
                 }
                 "SYN_UNEXPECTED_TOKEN" => "Provide {expected}",
-                _ => "Update the source to satisfy this rule",
+                _ => syntax_copy
+                    .map(|copy| copy.next)
+                    .unwrap_or("Update the source to satisfy this rule"),
             }
             .to_owned(),
         )
@@ -483,7 +679,9 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "RUNTIME_STARTUP_FAILED" => "Generated runtime failed during startup".to_owned(),
         "SYN_EXPECTED_DECLARATION" => "`{found}` cannot start a top-level declaration".to_owned(),
         "SYN_UNEXPECTED_TOKEN" => "Expected {expected}".to_owned(),
-        _ => sentence_case_identifier(remainder),
+        _ => syntax_copy
+            .map(|copy| copy.summary.to_owned())
+            .unwrap_or_else(|| sentence_case_identifier(remainder)),
     };
     let reason = match code {
         "FAIL_ATTEMPT_REQUIRED" => "Every expression with a recoverable problem set must make propagation visible with `attempt`.".to_owned(),
@@ -499,7 +697,10 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "RUNTIME_STARTUP_FAILED" => "The generated runtime could not establish its startup contract and did not report readiness.".to_owned(),
         "SYN_EXPECTED_DECLARATION" => "Jadpo files accept `type`, `enum`, `entity`, `value`, `input`, `output`, `failure`, `function`, `action`, `test`, and `route` declarations at the top level. Route items such as `path:` belong inside a `route` block, so `{found}` cannot be parsed here.".to_owned(),
         "SYN_UNEXPECTED_TOKEN" => "Found `{found}` while parsing this construct. Jadpo requires {expected} at this location, so parsing stops rather than guessing the authored structure.".to_owned(),
-        _ => format!("The compiler-enforced `{code}` invariant is not satisfied at this location."),
+        _ => syntax_copy.map_or_else(
+            || format!("The compiler-enforced `{code}` invariant is not satisfied at this location."),
+            |copy| copy.reason.to_owned(),
+        ),
     };
     let mut fixtures = CATALOGUE_FIXTURES
         .iter()
@@ -508,24 +709,25 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     if fixtures.is_empty() {
         fixtures.push("jadpo/crates/diagnostics/src/lib.rs#every_catalogue_entry_is_renderable");
     }
-    let authored_copy = matches!(
-        code,
-        "FAIL_ATTEMPT_REQUIRED"
-            | "FAIL_STALE_DECLARATION"
-            | "FAIL_CONTEXT_FIELD_OVERLAP"
-            | "ROUTE_PATH_BINDING_MISSING"
-            | "ROUTE_PATH_BINDING_EXTRA"
-            | "ROUTE_BEHAVIOUR_CONFLICT"
-            | "ROUTE_BEHAVIOUR_REQUIRED"
-            | "ROUTE_ITEM_COLON_REQUIRED"
-            | "ROUTE_AUTH_VALUE_INVALID"
-            | "CLI_INCIDENT_REVISION_MISMATCH"
-            | "CLI_PRESENTATION_ARGUMENTS"
-            | "RUNTIME_UNHANDLED_FAULT"
-            | "RUNTIME_STARTUP_FAILED"
-            | "SYN_EXPECTED_DECLARATION"
-            | "SYN_UNEXPECTED_TOKEN"
-    );
+    let authored_copy = syntax_copy.is_some()
+        || matches!(
+            code,
+            "FAIL_ATTEMPT_REQUIRED"
+                | "FAIL_STALE_DECLARATION"
+                | "FAIL_CONTEXT_FIELD_OVERLAP"
+                | "ROUTE_PATH_BINDING_MISSING"
+                | "ROUTE_PATH_BINDING_EXTRA"
+                | "ROUTE_BEHAVIOUR_CONFLICT"
+                | "ROUTE_BEHAVIOUR_REQUIRED"
+                | "ROUTE_ITEM_COLON_REQUIRED"
+                | "ROUTE_AUTH_VALUE_INVALID"
+                | "CLI_INCIDENT_REVISION_MISMATCH"
+                | "CLI_PRESENTATION_ARGUMENTS"
+                | "RUNTIME_UNHANDLED_FAULT"
+                | "RUNTIME_STARTUP_FAILED"
+                | "SYN_EXPECTED_DECLARATION"
+                | "SYN_UNEXPECTED_TOKEN"
+        );
     CatalogueDefinition {
         help_id: format!("diagnostics/{rule_id}"),
         rule_id,
@@ -1151,6 +1353,23 @@ mod tests {
             !placeholders.is_empty(),
             "remove the strict ignored gate and this debt assertion when the catalogue is complete"
         );
+    }
+
+    #[test]
+    fn every_syntax_diagnostic_has_rule_specific_public_copy() {
+        for code in CATALOGUE_CODES
+            .iter()
+            .filter(|code| code.starts_with("SYN_"))
+        {
+            let definition = catalogue_definition(code);
+            assert!(definition.authored_copy, "{code}");
+            assert!(!definition.summary.contains("invariant"), "{code}");
+            assert!(!definition.reason.contains(code), "{code}");
+            assert_ne!(
+                definition.recommended_title, "Update the source to satisfy this rule",
+                "{code}"
+            );
+        }
     }
 
     #[test]
