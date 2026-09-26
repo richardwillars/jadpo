@@ -1579,6 +1579,172 @@ fn toolchain_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     })
 }
 
+fn cli_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "CLI_CHECK_ARGUMENTS" => (
+            "Check command has invalid arguments",
+            "`check` accepts one project path plus the optional supported diagnostic presentation flags.",
+            "Use `jadpo check <project>` with any presentation flags",
+        ),
+        "CLI_DEV_ARGUMENTS" => (
+            "Dev command has invalid arguments",
+            "`dev` accepts one project path and an optional JSON diagnostic format; other positional arguments are not defined.",
+            "Use `jadpo dev <project> [--diagnostic-format=json]`",
+        ),
+        "CLI_DEV_BUN_START_FAILED" => (
+            "Bun could not start the generated runtime",
+            "The dev command built the target but could not launch `bun --no-install`, so no runtime process is available.",
+            "Confirm Bun is installed and executable, then run dev again",
+        ),
+        "CLI_DEV_PORT_INVALID" => (
+            "Development port is invalid",
+            "The `PORT` environment value must be an integer from 1 through 65535 before the generated runtime can bind it.",
+            "Set `PORT` to an available non-zero TCP port",
+        ),
+        "CLI_DEV_READINESS_TIMEOUT" => (
+            "Generated runtime did not become ready",
+            "The runtime process stayed alive but its local `/health` endpoint did not report readiness within the bounded startup window.",
+            "Inspect the runtime startup output and verify the configured port is available",
+        ),
+        "CLI_DEV_RUNTIME_EXITED" => (
+            "Generated runtime exited unexpectedly",
+            "The dev supervisor observed the Bun process terminate before or after readiness, so it can no longer serve the checked build.",
+            "Inspect the runtime output, correct the reported fault, and let dev rebuild",
+        ),
+        "CLI_DEV_RUNTIME_STATUS_FAILED" => (
+            "Generated runtime status could not be read",
+            "The dev supervisor could not determine whether the child runtime was still running, so it cannot safely report readiness.",
+            "Stop the dev session and start a fresh runtime process",
+        ),
+        "CLI_DEV_TARGET_MISSING" => (
+            "Generated runtime entrypoint is missing",
+            "The dev command could not resolve `build/target/app.ts`, so there is no checked artifact to execute.",
+            "Run a successful build for the project and start dev again",
+        ),
+        "CLI_FMT_ARGUMENTS" => (
+            "Format command has invalid arguments",
+            "`fmt` accepts one project path and only the optional `--check` mode.",
+            "Use `jadpo fmt <project> [--check]`",
+        ),
+        "CLI_INCIDENT_ARGUMENTS" => (
+            "Incident command has invalid arguments",
+            "Local enrichment requires exactly the checked project and one secret-safe runtime event JSON file.",
+            "Use `jadpo incident <project> <event-json-file>`",
+        ),
+        "CLI_INCIDENT_INVALID" => (
+            "Runtime event is not a valid enrichment input",
+            "The file must be a bounded `operational_log_event` with a supported runtime classification, semantic operation identifier, and generated request identifier.",
+            "Provide an unchanged secret-safe event emitted by the generated runtime",
+        ),
+        "CLI_INCIDENT_MANIFEST_INVALID" => (
+            "Local build manifest is not valid JSON",
+            "Incident enrichment cannot safely map an operation to source when `build/app.meta.json` is malformed.",
+            "Rebuild the exact project revision to regenerate the manifest",
+        ),
+        "CLI_INCIDENT_MANIFEST_MISSING" => (
+            "Local build manifest is missing",
+            "Incident enrichment needs the checked operation-to-source map from `build/app.meta.json` and never infers source locations from event payloads.",
+            "Run `jadpo build` for the exact source revision before enrichment",
+        ),
+        "CLI_INCIDENT_MANIFEST_STALE" => (
+            "Local build manifest does not match current sources",
+            "The manifest's checked source revision differs from the project now on disk, so its operation locations are not trustworthy.",
+            "Build the current sources or restore the source revision that produced the event",
+        ),
+        "CLI_INCIDENT_OPERATION_UNKNOWN" => (
+            "Runtime operation is absent from the local manifest",
+            "The event names a semantic operation that the matching local build metadata does not contain.",
+            "Use the manifest and sources from the build that emitted this event",
+        ),
+        "CLI_INCIDENT_READ_FAILED" => (
+            "Runtime event file could not be read",
+            "The incident command could not load the selected local event JSON file.",
+            "Restore read access and pass the correct event file path",
+        ),
+        "CLI_LSP_ARGUMENTS" => (
+            "Language-server command has invalid arguments",
+            "`jadpo lsp` runs over standard input and output and does not accept a project path or positional options.",
+            "Run `jadpo lsp` without additional arguments",
+        ),
+        "CLI_PROJECT_REQUIRED" => (
+            "Command requires a project path",
+            "This command needs a Jadpo file or project directory before it can discover, check, or generate sources.",
+            "Provide the project path after the command",
+        ),
+        "CLI_SCHEMA_COMMAND_REQUIRED" => (
+            "Schema command requires a subcommand",
+            "`schema` groups explicit identity, decision, plan, SQL-review, and index operations; it does not perform a default mutation.",
+            "Choose a supported `jadpo schema` subcommand and project",
+        ),
+        "CLI_SCHEMA_DECISION_ARGUMENTS" => (
+            "Schema decision command has invalid arguments",
+            "Decision templates and validation require the current project, an `--against` snapshot, and the appropriate output or decisions file.",
+            "Use the documented `schema decision-template` or `schema decision-check` form",
+        ),
+        "CLI_SCHEMA_DIFF_ARGUMENTS" => (
+            "Schema diff command has invalid arguments",
+            "A schema diff compares the current project against one explicit immutable snapshot.",
+            "Use `jadpo schema diff <project> --against <snapshot>`",
+        ),
+        "CLI_SCHEMA_INDEX_ACCEPT_ARGUMENTS" => (
+            "Index acceptance requires a recommendation path",
+            "The checked edit must identify one current recommendation by its `Entity.field` path.",
+            "Use `jadpo schema index-accept <project> <Entity.field>`",
+        ),
+        "CLI_SCHEMA_PLAN_ARGUMENTS" => (
+            "Schema plan command has invalid arguments",
+            "A migration plan requires an earlier snapshot, reviewed decisions, an explicit adapter, and an output file.",
+            "Use `jadpo schema plan <project> --against <snapshot> --decisions <file> --adapter <adapter> <output>`",
+        ),
+        "CLI_SCHEMA_RENAME_ARGUMENTS" => (
+            "Schema rename command has invalid arguments",
+            "Identity-preserving rename requires a kind plus exact old and new semantic paths.",
+            "Use `jadpo schema rename <project> <entity|field> <old> <new>`",
+        ),
+        "CLI_SCHEMA_SNAPSHOT_ARGUMENTS" => (
+            "Schema snapshot command requires an output path",
+            "The immutable identity snapshot is written only to an explicit destination and never overwrites the registry implicitly.",
+            "Use `jadpo schema snapshot <project> <output>`",
+        ),
+        "CLI_SCHEMA_SQL_ARGUMENTS" => (
+            "Schema SQL command has invalid arguments",
+            "A SQL review requires an earlier snapshot, reviewed decisions, an explicit adapter, and an output file.",
+            "Use `jadpo schema sql <project> --against <snapshot> --decisions <file> --adapter <adapter> <output>`",
+        ),
+        "CLI_UNKNOWN_COMMAND" => (
+            "Unknown Jadpo command",
+            "The first argument does not name a supported top-level Jadpo operation.",
+            "Run `jadpo help` and choose a listed command",
+        ),
+        "CLI_UNKNOWN_SCHEMA_COMMAND" => (
+            "Unknown schema subcommand",
+            "The selected name is not one of the explicit schema identity, decision, planning, SQL-review, or index operations.",
+            "Run `jadpo help` and choose a supported schema subcommand",
+        ),
+        "CLI_WATCH_ARGUMENTS" => (
+            "Watch command has invalid arguments",
+            "`watch` accepts one project path and an optional JSON diagnostic format; other positional arguments are not defined.",
+            "Use `jadpo watch <project> [--diagnostic-format=json]`",
+        ),
+        "CLI_WATCH_INPUT_READ_FAILED" => (
+            "Watched project inputs could not be read",
+            "The watcher could not enumerate the project or read a tracked source while creating a stable change snapshot.",
+            "Restore project read access; watching will retry on the next change",
+        ),
+        "CLI_WATCH_OUTPUT_FAILED" => (
+            "Watch lifecycle event could not be written",
+            "The watcher could not send its human or JSON event to the output stream, so consumers may have an incomplete revision sequence.",
+            "Restart the watch process with a writable output stream",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let (category, remainder) = code.split_once('_').unwrap_or(("diagnostic", code));
     let category = match category {
@@ -1613,7 +1779,8 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         .or_else(|| module_catalogue_copy(code))
         .or_else(|| tooling_catalogue_copy(code))
         .or_else(|| index_catalogue_copy(code))
-        .or_else(|| toolchain_catalogue_copy(code));
+        .or_else(|| toolchain_catalogue_copy(code))
+        .or_else(|| cli_catalogue_copy(code));
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
@@ -2571,6 +2738,22 @@ mod tests {
         for code in CATALOGUE_CODES
             .iter()
             .filter(|code| code.starts_with("INDEX_") || code.starts_with("JADPO_"))
+        {
+            let definition = catalogue_definition(code);
+            assert!(definition.authored_copy, "{code}");
+            assert!(!definition.reason.contains(code), "{code}");
+            assert_ne!(
+                definition.recommended_title, "Update the source to satisfy this rule",
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_cli_diagnostic_has_rule_specific_public_copy() {
+        for code in CATALOGUE_CODES
+            .iter()
+            .filter(|code| code.starts_with("CLI_"))
         {
             let definition = catalogue_definition(code);
             assert!(definition.authored_copy, "{code}");

@@ -106,3 +106,8 @@ distinguishes stale evidence, checked-edit failures, registry identity, and
 rollback recovery. Project, scaffold, artifact, and target-generation failures
 describe the preserved state and a safe next action; protected-route generation
 remains an explicit human-owned authentication-boundary decision.
+
+The `CLI_*` family is fully authored. Command-shape errors now give the exact
+usable form, while watch/dev and incident-enrichment failures explain process,
+revision, manifest, and output-stream recovery without copying event payloads
+or secrets into diagnostics.
