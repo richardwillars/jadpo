@@ -734,7 +734,7 @@ mod tests {
         let diagnostic = Diagnostic::error("FAIL_ATTEMPT_REQUIRED");
         let output = render_diagnostic(&diagnostic, RenderStyle::plain());
 
-        assert!(output.starts_with("error: Fallible expression requires `attempt`\n"));
+        assert!(output.starts_with("error: This operation can fail and requires `attempt`\n"));
         assert!(!output.contains('\u{1b}'));
         assert!(!output.contains('╭'));
     }
@@ -760,7 +760,7 @@ mod tests {
 
         let output = render_diagnostic(&diagnostic, RenderStyle::rich_for_test(false, true, 88));
 
-        assert!(output.contains("× error  Fallible expression requires `attempt`"));
+        assert!(output.contains("× error  This operation can fail and requires `attempt`"));
         assert!(output.contains("╭─"));
         assert!(output.contains("return child()"));
         assert!(output.contains("^^^^^"));

@@ -496,8 +496,8 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "SYN_EXPECTED_EXPRESSION" => (
             "Expected an expression",
-            "This position requires a value-producing expression, such as a literal, name, invocation, constructor, match, or persistence expression.",
-            "Add the value or operation intended at this location",
+            "Jadpo needs a value here, such as a literal, name, function call, constructed value, match, or persistence operation.",
+            "Add the value or operation you intended",
         ),
         "SYN_EXPECTED_FAILURE_ITEM" => (
             "Failure declaration contains an unsupported item",
@@ -520,9 +520,9 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Add a supported HTTP method before the route path",
         ),
         "SYN_EXPECTED_INVERSE_CARDINALITY" => (
-            "Inverse relationship requires a cardinality",
-            "An inverse relationship must declare whether it resolves one optional record or many records so generated query and output shapes are deterministic.",
-            "Add the supported inverse cardinality intended for this relationship",
+            "Inverse relationship requires `optional` or `many`",
+            "Jadpo needs to know whether this relationship can return at most one record or a list of records.",
+            "Add `optional` or `many` to the inverse relationship",
         ),
         "SYN_EXPECTED_INVOCATION" => (
             "Route `run:` requires an action invocation",
@@ -531,12 +531,12 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "SYN_EXPECTED_LITERAL" => (
             "Expected a literal value",
-            "This grammar position accepts a literal of the required kind rather than a name, invocation, or compound expression.",
-            "Replace this source with the required literal value",
+            "Jadpo needs a value written directly here, such as text, a number, `true`, `false`, or `none`.",
+            "Replace this with the required literal value",
         ),
         "SYN_EXPECTED_NAME" => (
             "Expected a name",
-            "This position identifies a declaration, field, binding, or qualified path and therefore requires a valid Jadpo name.",
+            "Jadpo needs the name of a declaration, field, local value, or qualified path here.",
             "Add a valid name beginning with a letter or underscore",
         ),
         "SYN_EXPECTED_ORDER_DIRECTION" => (
@@ -580,9 +580,9 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Add a unique string `code` to the failure declaration",
         ),
         "SYN_FAILURE_KIND_REQUIRED" => (
-            "Failure requires a standard kind",
-            "Every failure declaration must select a standard kind so route status mapping and failure handling are deterministic.",
-            "Add a supported `kind` to the failure declaration",
+            "Failure requires a predefined category",
+            "Every failure needs a `kind`, such as `InvalidValue`, `NotFound`, `Conflict`, or `Unavailable`, so Jadpo knows how to present it at a route boundary.",
+            "Add a predefined category with `kind <Category>`",
         ),
         "SYN_IMPORT_REQUIRES_MODULE" => (
             "Imports require a module declaration",
@@ -616,8 +616,8 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "SYN_TYPE_PARENT_REQUIRED" => (
             "Refined type requires a parent type",
-            "A named type declaration refines an existing semantic type and must name that parent before its optional constraint block.",
-            "Add the parent type after `=`",
+            "A type definition builds on an existing type, such as `Text`, `Uuid`, or another named type.",
+            "Add the type it builds on after `=`",
         ),
         "SYN_UNEXPECTED_TOKEN" => (
             "Expected {expected}",
@@ -626,7 +626,7 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "SYN_UNEXPECTED_CHARACTER" => (
             "Character is not valid Jadpo syntax",
-            "This character cannot begin or continue any Jadpo token, so the lexer skipped it rather than guessing the intended source.",
+            "This character is not part of any Jadpo name, value, keyword, or punctuation.",
             "Remove the character or replace it with valid Jadpo syntax",
         ),
         "SYN_UNSUPPORTED_THROW" => (
@@ -651,29 +651,29 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
 fn semantic_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     let (summary, reason, next) = match code {
         "SEM_DUPLICATE_DECLARATION" => (
-            "Declaration name is already in use",
-            "Two declarations in the same visible namespace cannot share a name because every reference must resolve to exactly one semantic definition.",
-            "Rename one declaration or remove the duplicate",
+            "A name is defined more than once",
+            "Every visible name must identify one thing. Two declarations with the same name would make later references ambiguous.",
+            "Rename one of the declarations or remove the duplicate",
         ),
         "SEM_UNKNOWN_NAME" => (
-            "Name does not resolve in this scope",
-            "The name is not a local binding, visible declaration, selected import, or supported built-in at this source location.",
-            "Correct the name, declare it, or import it from its module",
+            "This name isn't defined",
+            "Jadpo could not find this name among local values, declarations, imports, or built-in types.",
+            "Correct the name, define it, or import it",
         ),
         "SEM_WRONG_NAME_KIND" => (
-            "Name resolves to the wrong kind of declaration",
-            "This grammar position requires a specific semantic declaration kind, but the resolved name identifies a different kind and cannot be substituted safely.",
-            "Use a declaration of the required kind at this location",
+            "This name can't be used here",
+            "The name exists, but this part of the source needs something different, such as a type, failure, function, or predefined category.",
+            "Use a name that is valid here",
         ),
         "SEM_UNKNOWN_CALLEE" => (
-            "Called function or action cannot be found",
-            "An invocation must resolve to one visible `function` or `action`; no callable with this name is available in the current module and imports.",
-            "Correct, declare, or import the function or action being called",
+            "Called function or action isn't defined",
+            "Jadpo could not find a visible function or action with this name.",
+            "Correct the name, define the function or action, or import it",
         ),
         "SEM_NOT_CALLABLE" => (
-            "Resolved name cannot be called",
-            "The name exists, but it identifies a type, record, field, value, or other non-callable declaration rather than a `function` or `action`.",
-            "Use a function or action name, or remove the invocation parentheses",
+            "This name can't be called",
+            "Only a function or action can be followed by parentheses and called.",
+            "Call a function or action instead, or remove the parentheses",
         ),
         _ => return None,
     };
@@ -689,7 +689,7 @@ fn failure_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         "EFFECT_FUNCTION_CALLS_ACTION" => (
             "Function cannot call an action",
             "Functions are deterministic and effect-free. Calling an action would allow persistence or other effects to escape through a function boundary.",
-            "Move the call into an action, or change the callee to a pure function",
+            "Move the call into an action, or call a function instead",
         ),
         "EFFECT_FUNCTION_PERSISTENCE" => (
             "Function cannot perform persistence",
@@ -697,18 +697,18 @@ fn failure_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Move the persistence expression into an action",
         ),
         "FAIL_ATTEMPT_REQUIRED" => (
-            "Fallible expression requires `attempt`",
-            "Every expression with a recoverable problem set must make propagation visible with `attempt`.",
-            "Prefix the fallible expression with `attempt`",
+            "This operation can fail and requires `attempt`",
+            "`attempt` makes it clear that a declared failure may leave the current function or action.",
+            "Add `attempt` before this operation",
         ),
         "FAIL_CONTEXT_FIELD_OVERLAP" => (
-            "Failure context field has conflicting disclosure",
-            "A flat failure value cannot be assigned safely when the declaration gives the same field both public and internal disclosure.",
-            "Choose one disclosure class for the failure context field",
+            "Failure field is both public and internal",
+            "The same field cannot be returned to callers and hidden from them at the same time.",
+            "Keep the field in either `public` or `internal`, not both",
         ),
         "FAIL_DUPLICATE_CODE" => (
             "Failure code is already in use",
-            "Public failure codes identify domain failures across generated transports and must be unique even when declaration names differ.",
+            "Callers use this code to identify a failure, so every public failure code must be unique.",
             "Give one failure a distinct stable public code",
         ),
         "FAIL_DUPLICATE_CONTEXT_FIELD" => (
@@ -717,9 +717,9 @@ fn failure_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Keep one value for the repeated context field",
         ),
         "FAIL_DUPLICATE_DECLARATION" => (
-            "Problem is repeated in the `fails` set",
-            "A callable's authored `fails` list is a mathematical set. Repeating a problem does not add behavior and obscures exact failure review.",
-            "Remove the repeated problem from the `fails` list",
+            "Failure is repeated after `fails`",
+            "Listing the same failure twice does not change what can happen and makes the declaration harder to review.",
+            "Remove the repeated failure from the `fails` list",
         ),
         "FAIL_MISSING_CONTEXT_FIELD" => (
             "Rejected failure is missing required context",
@@ -727,34 +727,34 @@ fn failure_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Add the missing field to the `reject` value",
         ),
         "FAIL_MUTATION_CONFLICT_NOT_CONFLICT" => (
-            "Mutation conflict binding uses the wrong failure kind",
-            "A storage uniqueness or write conflict must map to a declared failure whose standard kind is `Conflict`; another kind would produce the wrong transport behavior.",
+            "`conflict:` must use a `Conflict` failure",
+            "A uniqueness or write conflict needs a failure declared with the predefined `Conflict` category.",
             "Bind the conflict to a failure declared with `kind Conflict`",
         ),
         "FAIL_PATCH_EMPTY_NOT_INVALID_VALUE" => (
-            "Empty patch binding uses the wrong failure kind",
-            "A patch with no supplied changes is invalid input and must map to a failure whose standard kind is `InvalidValue`.",
+            "`empty:` must use an `InvalidValue` failure",
+            "A patch with no supplied changes is invalid input, so its failure must use the predefined `InvalidValue` category.",
             "Bind `empty:` to a failure declared with `kind InvalidValue`",
         ),
         "FAIL_REQUIRED_MUTATION_NOT_NOT_FOUND" => (
-            "Required mutation missing binding uses the wrong failure kind",
-            "When a required update or delete finds no entity, its `missing:` binding must identify a failure with standard kind `NotFound`.",
+            "`missing:` must use a `NotFound` failure",
+            "When a required update or delete finds no entity, its failure must use the predefined `NotFound` category.",
             "Bind `missing:` to a failure declared with `kind NotFound`",
         ),
         "FAIL_REQUIRED_QUERY_NOT_NOT_FOUND" => (
-            "Required query missing binding uses the wrong failure kind",
-            "When a required query finds no entity, its `missing:` binding must identify a failure with standard kind `NotFound`.",
+            "`missing:` must use a `NotFound` failure",
+            "When a required query finds no entity, its failure must use the predefined `NotFound` category.",
             "Bind `missing:` to a failure declared with `kind NotFound`",
         ),
         "FAIL_STALE_DECLARATION" => (
-            "Declared problem is not reachable",
-            "A callable's authored `fails` set must exactly equal its reachable unhandled problem set.",
+            "A listed failure can never happen",
+            "Every failure after `fails` must be able to leave the function or action through a call or `reject`.",
             "Remove the stale `fails` entry",
         ),
         "FAIL_UNDECLARED_PROPAGATION" => (
-            "Reachable problem is missing from the `fails` set",
-            "A callable must declare every problem that can escape its body after local handling; otherwise callers cannot reason about the complete failure surface.",
-            "Add the reachable problem to `fails`, or handle it before it escapes",
+            "A possible failure is missing after `fails`",
+            "A function or action must list every failure that can leave its body so callers know what to handle.",
+            "Add the failure to `fails`, or handle it before it leaves",
         ),
         "FAIL_UNKNOWN_CONTEXT_FIELD" => (
             "Rejected failure contains an unknown context field",
@@ -814,8 +814,8 @@ fn route_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "ROUTE_PATH_FIELD_MODIFIER_INVALID" => (
             "Route path field has an unsupported modifier",
-            "Path fields are required transport inputs and contain only a semantic type. Nullable, optional, constraint, reference, and persistence modifiers would give URL decoding storage semantics it does not have.",
-            "Remove the modifier and keep only the required path-field type",
+            "A value inside the URL path is always required and can declare only its type. It cannot be nullable, optional, stored, indexed, or a relationship.",
+            "Remove the modifier and keep only `name: Type`",
         ),
         "ROUTE_PATH_PLACEHOLDER_DUPLICATE" => (
             "Route path placeholder is repeated",
@@ -840,12 +840,12 @@ fn data_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     let (summary, reason, next) = match code {
         "DATA_COMPOUND_CONSTRAINT_FIELDS" => (
             "Compound constraint needs at least two fields",
-            "A named compound identity, uniqueness rule, or index describes a multi-field storage shape; a single field uses its ordinary field modifier instead.",
+            "A compound identity, uniqueness rule, or index joins multiple fields. A rule for one field belongs directly on that field.",
             "Add the other participating fields, or use a field-level modifier",
         ),
         "DATA_CONSTRAINT_DUPLICATE_FIELD" => (
             "Compound constraint repeats a field",
-            "Each field may participate once in a compound constraint. Repetition does not add a column and makes the intended key shape unclear.",
+            "Each field can appear once in a compound constraint. Repeating it does not add anything and makes the intended key unclear.",
             "Remove the repeated field from the constraint",
         ),
         "DATA_CONSTRAINT_NULLABLE_FIELD" => (
@@ -860,7 +860,7 @@ fn data_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "DATA_DUPLICATE_CONSTRAINT_SHAPE" => (
             "Entity repeats the same constraint field set",
-            "Two persistence constraints over the same ordered fields describe the same storage shape and would generate redundant or conflicting database objects.",
+            "Two persistence constraints over the same fields would create duplicate or conflicting database rules.",
             "Keep one constraint for this field set",
         ),
         "DATA_IDENTITY_NULLABLE" => (
@@ -895,7 +895,7 @@ fn data_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "DATA_MULTIPLE_IDENTITIES" => (
             "Entity declares more than one identity",
-            "An entity has exactly one canonical identity used by references, generated persistence, and stable semantic IDs.",
+            "An entity has one identity used by references, stored records, and generated identifiers.",
             "Keep one identity field or one named identity constraint",
         ),
         "DATA_RELATIONSHIP_CYCLE" => (
@@ -910,7 +910,7 @@ fn data_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "DATA_RELATIONSHIP_TARGET_FIELD" => (
             "Reference target field does not exist",
-            "A stored reference must name a real field on its target entity so generated foreign keys and nominal types share one identity.",
+            "A stored reference must name a field that is actually declared on the target entity.",
             "Correct the referenced target field",
         ),
         "DATA_RELATIONSHIP_TARGET_NOT_KEY" => (
@@ -920,8 +920,8 @@ fn data_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "DATA_RELATIONSHIP_TYPE_MISMATCH" => (
             "Reference field type does not match its target",
-            "The stored reference and referenced target field must have the same nominal semantic type so values cannot cross identifier domains.",
-            "Use the referenced field's semantic type for this reference",
+            "The reference and its target must use the same named type. For example, an `OrderId` cannot point to a `CustomerId` field.",
+            "Use the referenced field's named type for this reference",
         ),
         _ => return None,
     };
@@ -937,12 +937,12 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         "TYPE_ARGUMENT_COUNT" => (
             "Call has the wrong number of arguments",
             "A function or action invocation must supply exactly one value for each declared parameter in declaration order.",
-            "Add or remove arguments to match the callable signature",
+            "Add or remove arguments to match the function or action parameters",
         ),
         "TYPE_ARITHMETIC_OPERAND" => (
-            "Arithmetic operator has a non-numeric operand",
-            "Arithmetic operators accept compatible numeric values only; text, Boolean, records, and unrelated semantic types do not define arithmetic.",
-            "Use numeric operands or choose an operation defined for these values",
+            "Arithmetic requires numbers",
+            "Operators such as `+`, `-`, `*`, and `/` accept compatible numeric values, not text, Boolean values, records, or unrelated named types.",
+            "Use numbers on both sides, or choose an operation supported by these values",
         ),
         "TYPE_ASSIGN_IMMUTABLE" => (
             "Binding cannot be reassigned",
@@ -955,14 +955,14 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Correct the local name or declare it before assigning",
         ),
         "TYPE_CONSTRUCTOR_ARGUMENT_COUNT" => (
-            "Semantic type constructor has the wrong number of arguments",
-            "A scalar semantic type constructor wraps exactly one compatible underlying value before applying its declared constraints.",
-            "Pass exactly one value to the semantic type constructor",
+            "Type constructor needs exactly one value",
+            "A named scalar type, such as `CustomerId(...)`, wraps one compatible value and then checks its constraints.",
+            "Pass exactly one value between the parentheses",
         ),
         "TYPE_CONSTRUCTOR_INPUT" => (
-            "Semantic type constructor received an incompatible value",
-            "The constructor input must be compatible with the semantic type's immediate parent; unrelated primitives or nominal siblings cannot be wrapped implicitly.",
-            "Pass a value compatible with the type's parent",
+            "Type constructor received the wrong type of value",
+            "The value between the parentheses must match the type after `=` in this type's definition.",
+            "Pass a value that matches the type definition",
         ),
         "TYPE_DUPLICATE_VARIANT_FIELD" => (
             "Enum variant payload field is repeated",
@@ -970,19 +970,19 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Keep one declaration of the variant payload field",
         ),
         "TYPE_FIELD_ON_NON_RECORD" => (
-            "Field selection is applied to a non-record value",
-            "Dot selection requires a value with a known record shape. Scalars, lists, and other non-record values do not expose named fields.",
-            "Select from a record value or remove the field access",
+            "This value has no fields",
+            "Only a value, input, output, entity, failure, or enum payload has named fields that can be selected with `.`.",
+            "Use a record value before `.`, or remove the field access",
         ),
         "TYPE_INCOMPARABLE" => (
             "Values cannot be compared for equality",
-            "Equality requires compatible values from the same semantic domain or an explicitly permitted widening; unrelated nominal siblings are not comparable.",
-            "Compare values from the same semantic type domain",
+            "Both sides of `==` or `!=` must have compatible types. Separately named types are not interchangeable just because they share the same base type.",
+            "Compare values with the same type",
         ),
         "TYPE_INVALID_LITERAL" => (
-            "Literal does not satisfy its semantic type",
-            "The literal fails one or more constraints declared by the target semantic type, so constructing that value would violate its contract.",
-            "Change the literal to satisfy the declared constraints",
+            "Value does not meet this type's rules",
+            "The written value breaks a constraint on the named type, such as length, range, pattern, or format.",
+            "Change the value so it meets the type's constraints",
         ),
         "TYPE_LOGICAL_OPERAND" => (
             "Logical operator requires Boolean operands",
@@ -990,49 +990,49 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Use Boolean expressions on both sides of the logical operator",
         ),
         "TYPE_MISMATCH" => (
-            "Value is not compatible with the required type",
-            "Jadpo preserves nominal semantic types and allows only defined widening conversions; it does not implicitly narrow primitives or cross sibling domains.",
-            "Provide a value of the required semantic type or construct it explicitly",
+            "Value has the wrong type",
+            "Jadpo keeps separately named types distinct and converts them only where the type definitions explicitly allow it.",
+            "Use a value of the required type, or construct that type explicitly",
         ),
         "TYPE_MISSING_FIELD" => (
             "Record construction is missing a required field",
-            "A record constructor must provide every required field exactly once so the resulting value has the declaration's complete shape.",
+            "A constructed record must provide every required field from its declaration exactly once.",
             "Add the missing required field to the constructor",
         ),
         "TYPE_MISSING_VARIANT_FIELD" => (
             "Enum variant construction is missing a payload field",
-            "A data-carrying variant constructor must provide every required field from that variant's exact payload shape.",
+            "This enum variant carries data and must provide every required field declared for that variant.",
             "Add the missing field to the variant payload",
         ),
         "TYPE_NOT_RECORD" => (
-            "Constructor target is not a record type",
-            "Brace construction creates value, input, output, entity, failure, or variant record shapes; scalar semantic types use parenthesized construction.",
-            "Use a record declaration with braces or a scalar constructor with parentheses",
+            "This type cannot be constructed with `{ ... }`",
+            "Braces construct a value, input, output, entity, failure, or enum variant. A scalar named type uses parentheses instead.",
+            "Use a record with braces, or construct a scalar type with parentheses",
         ),
         "TYPE_NULLABLE_SELECTION" => (
-            "Nullable value must be narrowed before field selection",
-            "A nullable record may be `none`, so selecting a field directly would read from a value whose record shape is not guaranteed to exist.",
-            "Narrow the value with a nullable match before selecting its field",
+            "Value may be `none`, so its field cannot be read yet",
+            "A nullable record may contain no value. Jadpo needs the `some(...)` case before it can safely read a field.",
+            "Use a nullable match and select the field inside the `some(...)` arm",
         ),
         "TYPE_ORDERING_OPERAND" => (
-            "Ordering operator has an unsupported operand",
-            "Ordering is defined only for compatible ordered scalar values; records, Booleans, lists, and unrelated semantic domains have no stable ordering.",
-            "Compare compatible ordered scalar values",
+            "These values cannot be ordered",
+            "`<`, `<=`, `>`, and `>=` require compatible ordered values. Records, Boolean values, lists, and unrelated named types have no defined order.",
+            "Compare values of the same ordered type",
         ),
         "TYPE_PRIMITIVE_SIGNATURE" => (
-            "Public callable signature uses a primitive type",
-            "Callable parameters and results form semantic application contracts and must use named Jadpo types rather than unconstrained storage primitives.",
-            "Introduce and use a named semantic type for this value",
+            "Function or action signature uses a built-in type directly",
+            "Parameters and return values must use a named Jadpo type so their meaning and validation rules are explicit.",
+            "Define a named type and use it in this signature",
         ),
         "TYPE_SIBLING_MISMATCH" => (
-            "Value belongs to a different semantic type domain",
-            "Types that share the same primitive parent remain nominal siblings. A value from one domain cannot stand in for another without explicit construction.",
-            "Use the required sibling type or construct it from an allowed parent value",
+            "Value has a different named type",
+            "Two named types remain separate even when both build on the same base type. For example, an `OrderId` is not a `CustomerId`.",
+            "Use the required named type, or construct it explicitly from an allowed value",
         ),
         "TYPE_UNARY_OPERAND" => (
-            "Unary operator has an incompatible operand",
-            "Unary `not` requires Boolean and numeric negation requires a supported numeric value; other operand shapes do not define that operator.",
-            "Use an operand supported by this unary operator",
+            "Operator cannot be used with this value",
+            "`not` requires a Boolean value, while numeric negation requires a supported number.",
+            "Use a Boolean after `not`, or a number after `-`",
         ),
         "TYPE_UNKNOWN_ENUM_VARIANT" => (
             "Enum variant does not exist",
@@ -1041,7 +1041,7 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_UNKNOWN_FIELD" => (
             "Record field does not exist",
-            "The record's exact declared shape has no field with this name; Jadpo does not add dynamic fields at runtime.",
+            "This field is not declared on the record. Jadpo does not add fields dynamically at runtime.",
             "Correct the field name or add it to the record declaration",
         ),
         "TYPE_UNKNOWN_NAME" => (
@@ -1056,7 +1056,7 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_UNKNOWN_VARIANT_FIELD" => (
             "Enum variant payload field does not exist",
-            "The data-carrying variant's exact payload shape has no field with this name.",
+            "This field is not declared on the selected enum variant.",
             "Correct the payload field name or declare it on the variant",
         ),
         _ => return None,
@@ -1071,9 +1071,9 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
 fn match_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     let (summary, reason, next) = match code {
         "TYPE_MATCH_DUPLICATE_BINDING" => (
-            "Pattern binds the same payload field more than once",
-            "Each enum payload field introduces one local binding in its match arm; repeating a name would create two bindings for the same value.",
-            "Keep one binding for each payload field",
+            "Match pattern names the same field more than once",
+            "Each enum payload field creates one local value inside its match arm. Repeating it would create two local values for the same field.",
+            "Keep one local name for each payload field",
         ),
         "TYPE_MATCH_DUPLICATE_PATTERN" => (
             "Match pattern is already covered",
@@ -1082,22 +1082,22 @@ fn match_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_MATCH_NON_EXHAUSTIVE" => (
             "Match does not cover every possible value",
-            "Closed enums, Boolean values, and nullable cases must be handled exhaustively so execution always selects an arm when the match is reached.",
+            "Every enum variant, Boolean value, or nullable case must select a match arm.",
             "Add arms for every missing case",
         ),
         "TYPE_MATCH_PATTERN_TYPE" => (
-            "Pattern cannot match the subject type",
-            "This pattern belongs to a different enum or primitive value space than the expression being matched.",
-            "Use a pattern from the subject's type",
+            "Pattern cannot match this value",
+            "This pattern belongs to a different enum or built-in type than the value being matched.",
+            "Use a pattern from the value's type",
         ),
         "TYPE_MATCH_SOME_NON_OPTIONAL" => (
             "`some` pattern requires a nullable value",
-            "The `some(name)` pattern narrows a nullable value and binds its present case; a non-nullable subject is already known to be present.",
-            "Match the value directly or make the subject nullable",
+            "`some(name)` handles the present case of a nullable value, but this value is already guaranteed to be present.",
+            "Match the value directly, or make it nullable if absence is intended",
         ),
         "TYPE_MATCH_UNKNOWN_BINDING" => (
-            "Pattern names an unknown variant payload field",
-            "The selected enum variant has an exact payload shape, and this binding name is not one of its declared fields.",
+            "Pattern names a field this enum variant does not have",
+            "The local name in this pattern must match a field declared on the selected enum variant.",
             "Use a field declared by the selected variant",
         ),
         "TYPE_MATCH_UNKNOWN_VARIANT" => (
@@ -1111,13 +1111,13 @@ fn match_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Move the wildcard to the final arm or remove the unreachable arm",
         ),
         "TYPE_MATCH_VARIANT_BINDINGS_REQUIRED" => (
-            "Variant pattern must bind its payload",
-            "This enum variant carries fields. Matching only its name would discard the declared payload instead of introducing typed bindings for the arm.",
-            "Add a binding list for the variant payload fields",
+            "Enum variant pattern must name its fields",
+            "This enum variant carries fields. The pattern must name them so the match arm can use their values.",
+            "Add the variant's field names in parentheses",
         ),
         "TYPE_MATCH_WILDCARD_REQUIRED" => (
             "Open value space requires a wildcard arm",
-            "This subject is not a closed enum or Boolean space, so individual literal arms cannot prove that every possible value is covered.",
+            "This value can have more values than the listed literal patterns cover.",
             "Add a final `_` arm for all remaining values",
         ),
         _ => return None,
@@ -1143,7 +1143,7 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_CREATE_NOT_ENTITY" => (
             "Create target is not an entity",
-            "`create` persists a declared entity shape; values, inputs, outputs, failures, and scalar types have no entity storage contract.",
+            "`create` stores an entity. Values, inputs, outputs, failures, and scalar types are not stored as entity records.",
             "Create a declared entity or use ordinary value construction",
         ),
         "TYPE_DELETE_NOT_ENTITY" => (
@@ -1173,12 +1173,12 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_INCLUDE_REQUIRED_PARENT" => (
             "Optional parent query cannot include children",
-            "The to-many include result shape contains a concrete parent value; an optional parent query could produce no parent to place in that shape.",
+            "This output requires a parent value, but an optional query may find no parent.",
             "Use a required or many-parent query for this include",
         ),
         "TYPE_INCLUDE_RESULT_MISMATCH" => (
             "Includes use different result output types",
-            "All relationships loaded by one query are assembled into one exact output shape and therefore must name the same `into` output type.",
+            "All relationships loaded by one query are returned together, so every include must name the same `into` output type.",
             "Use the same result output type for every include",
         ),
         "TYPE_INCLUDE_RESULT_NOT_OUTPUT" => (
@@ -1187,7 +1187,7 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Declare and use an output type for the include result",
         ),
         "TYPE_INCLUDE_RESULT_SHAPE" => (
-            "To-many include output has the wrong shape",
+            "Output fields do not match the included relationships",
             "The result output must contain exactly `parent` with the queried entity type and one non-nullable `List<Child>` field for each included inverse relationship.",
             "Make the output fields exactly match the parent and included child lists",
         ),
@@ -1207,7 +1207,7 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Use `query required` for this inverse-one include",
         ),
         "TYPE_INVERSE_ONE_RESULT_SHAPE" => (
-            "Inverse-one include output has the wrong shape",
+            "Output fields do not match the optional inverse relationship",
             "The result output must contain exactly `parent` with the queried entity type and a nullable child field named for the optional inverse relationship.",
             "Make the output contain the exact parent and nullable inverse child fields",
         ),
@@ -1223,7 +1223,7 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_MUTATION_UNKNOWN_PREDICATE_FIELD" => (
             "Mutation predicate field does not exist",
-            "The `where` field must be part of the target entity's declared record shape so its nominal type and storage column are known.",
+            "The field after `where:` must be declared on the entity being updated or deleted.",
             "Use a declared field from the target entity",
         ),
         "TYPE_NESTED_INCLUDE_CARDINALITY" => (
@@ -1247,7 +1247,7 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Use `query required` for this nested include",
         ),
         "TYPE_NESTED_INCLUDE_RESULT_SHAPE" => (
-            "Nested include output has the wrong shape",
+            "Output fields do not match the nested relationship",
             "The outer output must contain exactly the queried `parent` and the named first-hop field whose output, in turn, contains its parent and nullable second-hop child.",
             "Make both output layers match the exact two-hop result shape",
         ),
@@ -1272,7 +1272,7 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Use `query required` for this owning-parent include",
         ),
         "TYPE_PARENT_INCLUDE_RESULT_SHAPE" => (
-            "Owning-parent include output has the wrong shape",
+            "Output fields do not match the parent relationship",
             "The result output must contain exactly `parent` with the queried child type and a relationship field whose nullability matches the include cardinality.",
             "Make the output contain the exact child and related-parent fields",
         ),
@@ -1293,7 +1293,7 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_PATCH_CONDITION_UNKNOWN_FIELD" => (
             "Patch supplied-condition names an unknown field",
-            "The supplied flag exists only for fields declared by the patch input shape.",
+            "A `supplied` check can name only a field declared on the patch input.",
             "Use a field declared on the patch input",
         ),
         "TYPE_PATCH_DERIVED_OVERLAP" => (
@@ -1308,7 +1308,7 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_PATCH_FIELD_REQUIRED" => (
             "Patch input has no fields",
-            "A patch shape must declare at least one possible entity field; an empty input can never describe a write.",
+            "A patch input must declare at least one entity field; an empty input can never describe a change.",
             "Add at least one optional entity field to the patch input",
         ),
         "TYPE_PATCH_INPUT_BINDING" => (
@@ -1353,7 +1353,7 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_QUERY_UNKNOWN_FIELD" => (
             "Query predicate field does not exist",
-            "The `where` field must be part of the target entity's declared record shape so its nominal type and storage column are known.",
+            "The field after `where:` must be declared on the entity being queried.",
             "Use a declared field from the target entity",
         ),
         "TYPE_QUERY_UNKNOWN_ORDER_FIELD" => (
@@ -1378,7 +1378,7 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "TYPE_UPDATE_UNKNOWN_FIELD" => (
             "Updated field does not exist on the entity",
-            "Every fixed or conditional `set` entry must name a declared target-entity field so its nominal type and storage column are known.",
+            "Every field after `set:` must be declared on the entity being updated.",
             "Use a declared field from the target entity",
         ),
         _ => return None,
@@ -1854,7 +1854,7 @@ fn migration_workflow_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "MIG_DECISION_CHANGE_SET_STALE" => (
             "Migration decisions refer to a different change set",
-            "The decision artifact is cryptographically bound to the exact canonical schema diff and cannot be reused after that diff changes.",
+            "The decision file contains a fingerprint of the exact schema changes it approved. It cannot be reused after those changes differ.",
             "Regenerate the template and review every decision for the current change set",
         ),
         "MIG_DECISION_DUPLICATE" => (
@@ -1989,7 +1989,7 @@ fn migration_workflow_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "MIG_IDENTITY_SNAPSHOT_INVALID" => (
             "Schema snapshot is invalid",
-            "The snapshot JSON does not match the versioned schema required for a deterministic identity and shape comparison.",
+            "The snapshot JSON does not match the versioned format Jadpo needs to compare stored schema definitions.",
             "Create a new snapshot with `jadpo schema snapshot`",
         ),
         "MIG_IDENTITY_SNAPSHOT_MISSING" => (
@@ -2003,8 +2003,8 @@ fn migration_workflow_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Recreate the snapshot using `jadpo schema snapshot`",
         ),
         "MIG_IDENTITY_SNAPSHOT_SHAPE_MISSING" => (
-            "Snapshot entry is missing its schema shape",
-            "A persistent identity snapshot must include the prior structural shape needed to classify changes and generate reviewed migration operations.",
+            "Snapshot entry is missing its saved definition",
+            "Each snapshot entry must include its previous fields and storage rules so Jadpo can identify what changed and plan a review.",
             "Regenerate the snapshot from a valid identity registry",
         ),
         "MIG_IDENTITY_SNAPSHOT_WRITE_FAILED" => (
@@ -2020,7 +2020,7 @@ fn migration_workflow_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         "MIG_PLAN_DECISION_REJECTS_CHANGE" => (
             "Reviewed decision rejects this schema change",
             "The human-selected `reject` strategy intentionally denies this change, so the compiler will not turn it into a migration plan.",
-            "Restore the rejected schema shape or obtain a new reviewed decision for a different allowed strategy",
+            "Restore the previous schema definition or obtain a new reviewed decision for another allowed strategy",
         ),
         "MIG_PLAN_EXISTS" => (
             "Migration plan output already exists",
@@ -2059,8 +2059,8 @@ fn migration_sql_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Restore and validate the schema identity registry before regenerating SQL",
         ),
         "MIG_SQL_FIELD_SHAPE_INVALID" => (
-            "Migration field shape cannot be interpreted",
-            "The canonical snapshot does not contain the field type shape required to choose an adapter SQL type and nullability operation.",
+            "Saved field definition is incomplete",
+            "The snapshot does not contain the field type and nullability Jadpo needs to choose the correct SQL operation.",
             "Regenerate valid schema identities and snapshots before planning this change",
         ),
         "MIG_SQL_LITERAL_INVALID" => (
@@ -2069,8 +2069,8 @@ fn migration_sql_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Provide a valid typed literal for the target field",
         ),
         "MIG_SQL_PREDICATE_UNSUPPORTED" => (
-            "Validation predicate cannot be compiled to SQL",
-            "Nullability narrowing currently requires the exact compiler-owned `not_null` predicate; arbitrary predicates are not treated as proof.",
+            "Validation check cannot be compiled to SQL",
+            "Making a nullable field required needs the exact `not_null` check. Jadpo cannot treat another check as proof that existing rows are safe.",
             "Use `not_null` evidence or keep the narrowing outside generated SQL",
         ),
         "MIG_SQL_REVIEW_EXISTS" => (
@@ -2090,7 +2090,7 @@ fn migration_sql_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "MIG_SQL_SQLITE_ENTITY_MISSING" => (
             "SQLite rebuild cannot find the current entity",
-            "The registered table identity does not resolve to a checked entity declaration whose complete shape can recreate the table.",
+            "The registered table does not match a checked entity declaration with all fields needed to recreate it.",
             "Restore consistency between source and the identity registry",
         ),
         "MIG_SQL_SQLITE_FIELD_IDENTITY_MISSING" => (
@@ -2114,8 +2114,8 @@ fn migration_sql_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Generate this change as a supported isolated SQLite rebuild set",
         ),
         "MIG_SQL_SQLITE_REBUILD_UNSUPPORTED" => (
-            "SQLite table rebuild shape is not supported",
-            "The reviewed change set combines an ownership, modifier, constraint, or field-shape case that the bounded rebuild generator cannot reproduce safely.",
+            "This combination of SQLite table changes is not supported",
+            "The reviewed changes combine fields, ownership, modifiers, or constraints that Jadpo cannot yet reproduce safely in one table rebuild.",
             "Split the change into supported steps or author and review the rebuild manually",
         ),
         "MIG_SQL_SQLITE_REFERENCE_MISSING" => (
@@ -2135,7 +2135,7 @@ fn migration_sql_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "MIG_SQL_TYPE_UNSUPPORTED" => (
             "Field type has no migration SQL mapping",
-            "The selected adapter has no compiler-owned storage type for this field's semantic representation, so emitting a column would be guesswork.",
+            "Jadpo does not know which database column type safely represents this named field type for the selected database.",
             "Use a supported storage representation or author and review the type migration manually",
         ),
         _ => return None,
@@ -2259,8 +2259,8 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         )
     };
     let summary = match code {
-        "FAIL_ATTEMPT_REQUIRED" => "Fallible expression requires `attempt`".to_owned(),
-        "FAIL_STALE_DECLARATION" => "Declared problem is not reachable".to_owned(),
+        "FAIL_ATTEMPT_REQUIRED" => "This operation can fail and requires `attempt`".to_owned(),
+        "FAIL_STALE_DECLARATION" => "A listed failure can never happen".to_owned(),
         "FAIL_CONTEXT_FIELD_OVERLAP" => {
             "Failure context field has conflicting disclosure".to_owned()
         }
@@ -2285,9 +2285,9 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             .unwrap_or_else(|| sentence_case_identifier(remainder)),
     };
     let reason = match code {
-        "FAIL_ATTEMPT_REQUIRED" => "Every expression with a recoverable problem set must make propagation visible with `attempt`.".to_owned(),
-        "FAIL_STALE_DECLARATION" => "A callable's authored `fails` set must exactly equal its reachable unhandled problem set.".to_owned(),
-        "FAIL_CONTEXT_FIELD_OVERLAP" => "A flat failure value cannot be assigned safely when the declaration gives the same field both public and internal disclosure.".to_owned(),
+        "FAIL_ATTEMPT_REQUIRED" => "`attempt` makes it clear that a declared failure may leave the current function or action.".to_owned(),
+        "FAIL_STALE_DECLARATION" => "Every failure after `fails` must be able to leave the function or action through a call or `reject`.".to_owned(),
+        "FAIL_CONTEXT_FIELD_OVERLAP" => "The same field cannot be returned to callers and hidden from them at the same time.".to_owned(),
         "ROUTE_PATH_BINDING_MISSING" | "ROUTE_PATH_BINDING_EXTRA" => "Route placeholders and typed `path` fields must correspond exactly one-to-one.".to_owned(),
         "ROUTE_BEHAVIOUR_CONFLICT" | "ROUTE_BEHAVIOUR_REQUIRED" => "A route must select exactly one local inline action or one named `run:` invocation.".to_owned(),
         "ROUTE_ITEM_COLON_REQUIRED" => "Every route item uses the same explicit `name: value` separator, including block-valued path and action items.".to_owned(),
@@ -3037,6 +3037,42 @@ mod tests {
             "placeholder catalogue copy remains: {}",
             placeholders.join(", ")
         );
+    }
+
+    #[test]
+    fn every_public_diagnostic_uses_source_level_plain_language() {
+        let forbidden = [
+            "This position",
+            "grammar position",
+            "semantic declaration kind",
+            "wrong failure kind",
+            "recoverable problem set",
+            "non-callable declaration",
+            "semantic representation",
+            "operand shapes",
+            "wrong shape",
+            "Declared problem",
+            "Reachable problem",
+            "mathematical set",
+            "callee",
+            "nominal siblings",
+            "nominal type",
+            "semantic type domain",
+        ];
+
+        for code in CATALOGUE_CODES {
+            let definition = catalogue_definition(code);
+            let copy = format!(
+                "{} {} {}",
+                definition.summary, definition.reason, definition.recommended_title
+            );
+            for phrase in forbidden {
+                assert!(
+                    !copy.contains(phrase),
+                    "{code}: public copy contains compiler-oriented phrase `{phrase}`"
+                );
+            }
+        }
     }
 
     #[test]

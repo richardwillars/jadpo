@@ -378,7 +378,11 @@ cross-audience suite is recorded in
 [`tests/diagnostics/README.md`](../tests/diagnostics/README.md). All 310 public
 codes now have rule-specific authored summary, reason, and next-step copy, and
 every code is projected through the version-2 agent, terminal, LSP, and VS Code
-contracts. The strict catalogue-and-fixture test remains an explicit red
+contracts. A catalogue-wide plain-language gate rejects compiler-internal
+phrases, while contextual semantic-name fixtures prove concrete source roles,
+compatible name suggestions, and usable advice such as defining a missing
+name as a type. Terminal and IDE views render each stable help identifier as a
+full guidance URL. The strict catalogue-and-fixture test remains an explicit red
 completion gate for codes that still lack a real triggering fixture.
 Fresh-agent and first-user repair-cycle trials follow only after that gate
 passes.

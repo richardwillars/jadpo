@@ -25,6 +25,26 @@ the source to satisfy this rule” are not acceptable final explanations. They
 may identify an internal failure while developing the compiler, but they cannot
 pass the public catalogue conformance suite.
 
+Public copy is written in the author's vocabulary, not the compiler's internal
+classification vocabulary:
+
+- quote the exact authored name or value when it is safe to display;
+- say what the concrete source role needs — for example, “This field needs a
+  type” or “`missing:` needs a `NotFound` failure”;
+- when the valid set is bounded, name representative valid values or the exact
+  accepted syntax;
+- suggest the nearest compatible visible name when one exists;
+- make the recommended step usable on its own, such as “Define `CustomerID` as
+  a type,” rather than “use the required declaration kind”; and
+- reserve terms such as type, field, function, action, failure, input, output,
+  route, and migration for concepts visible to the author. Internal terms such
+  as callee, nominal sibling, operand shape, semantic declaration kind, and
+  reachable problem set do not appear in public copy.
+
+The plain-language conformance test applies these rules to every catalogue
+entry. Scenario fixtures additionally assert exact contextual wording for
+names, expected roles, received roles, examples, and compatible suggestions.
+
 One authored mistake produces one root diagnostic. Parser recovery must
 continue at the next valid boundary and must not publish dependent token, type,
 or pipeline failures as separate user problems.
@@ -50,7 +70,8 @@ The interactive terminal leads with the complete summary, shows an exact source
 frame, then presents `Why`, the recommended next step, bounded alternatives,
 impact, and decision ownership. The stable rule and legacy alias are visually
 secondary. Rich colour and Unicode are presentation only; plain output carries
-the same meaning without ANSI.
+the same meaning without ANSI. The stable relative help identifier is rendered
+as a full `https://jadpo.dev/docs/diagnostics/...` URL.
 
 ### 2.3 IDE
 
@@ -59,7 +80,8 @@ smallest responsible range. Hover contains summary, reason, recommended step,
 alternatives, owner, and bounded impact. Quick Fix lists a verified preferred
 edit first only when the compiler can justify it; protected choices are shown
 without an automatic preference. Details contain the complete impact and help
-link. Raw JSON is available for tools, not used as the normal IDE explanation.
+link as a clickable full URL. Raw JSON is available for tools, not used as the
+normal IDE explanation.
 
 ## 3. Authentication-value golden scenario
 
