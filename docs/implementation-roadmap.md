@@ -149,7 +149,7 @@ which semantic risks remain.
 | P10R  | Assurance and validation reset            | deferred    | Candidate packages exist; outside review and five first-user sessions are deferred until feature-complete implementation, not passed                                                    |
 | P10.5 | Pre-P11 language completion               | complete    | Exploratory under P10R deferral; patches, bounded relationships, migration review, index acceptance, bounded modules/imports, and immutable-value/scoped-local-rebinding semantics are implemented; advanced extensions remain deferred |
 | DX0.5 | Checked local development loop             | in progress | JSON plus source-rendered diagnostics, coalesced atomic watch, compiler-owned HTTP health, structured runtime faults, and initial Bun restart with invalid-edit continuity implemented; startup rollback and structured shutdown remain |
-| P10.6 | Problems, routes, and entity boundary      | in progress | Explicit failure kinds and flat context, exact callable failures with `attempt`, typed path bindings, `auth: none`, and local/named route behaviour are executable; operational boundary mapping, handler arms, optional-persistence grammar, and policy authority remain recorded decisions rather than invented syntax |
+| P10.6 | Problems, routes, and type/persistence boundary | in progress | Explicit failure kinds and flat context, exact callable failures with `attempt`, typed path bindings, `auth: none`, and local/named route behaviour are executable. The accepted consistency revision now unifies authored data under `type`, separates `persist`, moves `fails` before the result arrow, and requires nested object/list support; implementation is in progress. Operational boundary mapping, handler arms, and policy authority remain unresolved. |
 | DX1   | Compiler-backed language service            | complete    | Standard `jadpo lsp`, live unsaved diagnostics, symbols, cross-file definitions/references, hover, contextual completion, signature help, semantic tokens, rename, formatting, generated-artifact links, and a persistent VS Code client pass protocol tests |
 | DX2   | Guided diagnostics and agent context        | internal implementation complete; external trials pending | All 298 compiler-emitted public codes have central authored copy, exhaustive agent, terminal, LSP, and VS Code projection tests, and explicit conformance evidence. One hundred and seven compile pairs plus focused Rust scenarios cover every language diagnostic; operational and I/O faults have explicit emitter-contract tests. The permanent catalogue-and-evidence gate is active and green. Fresh-agent and first-user repair-cycle trials remain external evidence. |
 | P11   | Authentication, policy, and golden todo   | not started | May proceed as exploratory implementation after P10.6 and DX0.5; Milestone C and assurance claims still require the deferred P10R evidence                                               |
@@ -1109,6 +1109,10 @@ action load_customer(id: Customer.id) -> Customer
 
 #### Entity, persistence, and policy decisions
 
+**Superseded by the accepted consistency revision below:** the earlier
+`entity`-with-optional-embedded-`persistence` direction remains here as decision
+history, not current grammar authority.
+
 - Redefine `entity` as identity-bearing domain data rather than data that is
   necessarily stored in a database. Keep `value` for structured data without
   entity identity.
@@ -1151,6 +1155,59 @@ entity Customer {
 
 An entity without `persistence` remains constructible domain data but has no
 generated storage operations.
+
+#### Accepted type and persistence consistency revision
+
+- Use `type` for every authored scalar, object, and enum shape. Remove
+  declaration-role duplication across `value`, `input`, `output`, `entity`, and
+  `enum`.
+- Spell structured types as `type Name = Object { ... }` and closed alternatives
+  as `type Name = Enum { ... }`.
+- Make boundary `input:` and `output:` members reference any type. Boundary use,
+  not the declaration keyword, derives decoding, validation, and serialization.
+- Support nested closed `Object` fields and `List<Object { ... }>` recursively.
+- Move storage to a separate `persist Name { ... }` declaration. The absence of
+  `persist` is the complete and canonical way to keep a type out of the
+  database.
+- Use colon-delimited constraints and persistence settings. Eliminate postfix
+  field storage modifiers and call-shaped compound persistence metadata.
+- Put callable failures before the success arrow:
+  `action name(parameters) fails A, B -> Result`.
+- Add `Email`, `Url`, and `IpAddress` as compiler-owned validated semantic
+  types, and complete the prelude with the accepted representation, time, and
+  container types recorded in the decision register.
+- Remove automatic source document links. Generated-artifact navigation belongs
+  in CodeLens or an explicit command so only actual diagnostics produce source
+  underlines.
+
+Canonical examples are:
+
+```text
+type SupportContact = Object {
+    email: Email
+    alternatives: List<Object {
+        label: Text
+        email: Email
+    }>
+}
+
+type Customer = Object {
+    id: Uuid
+    email: Email
+}
+
+persist Customer {
+    identity: id
+    unique: email
+}
+
+action register_customer(input: RegisterCustomer)
+    fails InviteCodeRejected
+    -> RegistrationAccepted
+{
+    // ...
+}
+```
 
 #### Route, action, and locality decisions
 

@@ -60,6 +60,33 @@ item should update the charter, affected specifications, and examples.
 ### Types and boundaries
 
 - Types are executable contracts rather than annotations.
+- Every authored data shape is declared with `type`. Scalar refinements use
+  `type Name = Parent { ... }`, structured records use
+  `type Name = Object { ... }`, and closed alternatives use
+  `type Name = Enum { ... }`. The former top-level `value`, `input`, `output`,
+  `entity`, and `enum` declaration forms are superseded rather than retained as
+  equivalent canonical spellings.
+- `input:` and `output:` are boundary roles that reference any declared type;
+  they are not type categories. Input use derives recursive closed decoding and
+  validation, while output use derives recursive closed validation and
+  serialization. Reusing a type at both boundaries never bypasses either
+  boundary check.
+- `Object` supports recursively nested closed object fields. `List<T>` supports
+  recursively validated arrays, including `List<Object { ... }>`; compiler-
+  synthesized nested identities remain anchored to the containing field rather
+  than introducing structural compatibility between unrelated objects.
+- Persistence is a separate opt-in declaration, `persist Type { ... }`. A
+  normal object type is never stored merely because it has an `id` field.
+  `persist` owns identity, uniqueness, indexes, references, inverse
+  relationships, and migration consequences. Omitting it leaves a fully usable
+  non-persistent application type.
+- The initial prelude contains representation/time types `Bool`, `Int`,
+  `Decimal`, `Text`, `Bytes`, `Uuid`, `Date`, `Time`, `DateTime`, `Duration`, and
+  `Unit`; containers `Object`, `List<T>`, `Set<T>`, and `Map<K, V>`; and the
+  compiler-owned validated semantic types `Email`, `Url`, and `IpAddress`.
+  Policy-dependent concepts such as username, slug, phone number, postcode,
+  money, and country code remain authored domain types rather than vague
+  built-ins.
 - Semantic and field types are nominal. Matching primitive representations or
   structures do not create implicit compatibility.
 - `Type(value)` constructs a semantic or field value by validation; it is never
@@ -185,6 +212,16 @@ item should update the charter, affected specifications, and examples.
   values through `path.name`. Template placeholders and declarations must
   correspond exactly one-to-one; missing, extra, or duplicate names are
   invalid.
+- Callable signatures place their closed recoverable surface before their
+  success type: `action name(parameters) fails A, B -> Result`. This ordering
+  applies consistently to actions and fallible functions; failure-free
+  callables remain `name(parameters) -> Result`.
+- `:` associates a named member with a type, value, or setting. Constraint and
+  persistence settings therefore use `min_length: 6`, `identity: id`, and
+  corresponding colon forms. `=` is reserved for defining a named type or
+  binding/assigning a value. Parentheses are limited to callable interfaces,
+  calls and scalar constructors, explicit expression grouping, and constructor-
+  shaped patterns; persistence metadata does not masquerade as a function call.
 - Policy is human-owned; audit is compiler-derived.
 - CI blocks policy/implementation disagreement.
 - Generated target code is not normal developer-facing source.
@@ -214,6 +251,9 @@ item should update the charter, affected specifications, and examples.
 - IDE semantics should come from one compiler-backed LSP. TextMate and renderer
   grammars are presentation adapters and cannot become a second parser or type
   system.
+- Editor navigation must not underline ordinary Jadpo source. Generated-
+  artifact navigation is exposed through CodeLens or explicit commands, not
+  document links whose decoration competes with diagnostic squiggles.
 
 ### Diagnostics and observability
 

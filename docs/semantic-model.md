@@ -84,10 +84,10 @@ add enum methods or presentation behaviour. Boundary tagging, payload
 validation, persistence, database constraints, compatibility, and migration
 semantics must be specified before such enums become implementable.
 
-### 2.3 `input`
+### 2.3 Boundary input role
 
-An input is untrusted data crossing into application code. Its declaration
-distinguishes:
+An input is an ordinary type used for untrusted data crossing into application
+code. Its object shape distinguishes:
 
 - required versus omitted fields;
 - values versus explicit `none`;
@@ -97,29 +97,32 @@ distinguishes:
 Successful validation produces a trusted typed value. Business code should not
 repeat the same validation.
 
-### 2.4 `output`
+### 2.4 Boundary input and output roles
 
-An output is the declared public shape leaving a boundary. The runtime validates
-and serialises against that exact type.
+Input and output are uses of ordinary declared types rather than separate kinds
+of declaration. Input use derives recursive closed decoding and validation;
+output use derives recursive closed validation and serialization against that
+exact type.
 
 Returning a richer internal value where a narrower public output is declared
 must not accidentally expose extra fields. Either the compiler proves a safe
 projection or the serializer rejects the mismatch.
 
-### 2.5 `value`
+### 2.5 Object types
 
-A value is structured domain data without persistent entity identity. Examples
-may include addresses, money breakdowns, date ranges, or provider contracts.
+`type Name = Object { ... }` declares structured domain data. Examples may
+include addresses, money breakdowns, date ranges, provider contracts, request
+shapes, response shapes, and objects later selected for persistence.
 
 Its equality, copying, and serialisation semantics are open, but a concrete
 value is complete: declared fields are never mysteriously missing.
 
-### 2.6 `entity`
+### 2.6 Persistence
 
-An entity is persistent, identified domain data. Initially it maps to Postgres.
-Its declaration supplies:
+`persist Type { ... }` opts an object type into persistent, identified storage.
+Initially it maps to Postgres. The persistence declaration supplies:
 
-- fields, nullability, defaults, and constraints;
+- identity, defaults, and storage constraints for fields declared by the type;
 - relationships and ownership-relevant references;
 - indexes and uniqueness;
 - migration implications;
@@ -131,7 +134,7 @@ Fields are non-nullable by default. A nullable database column has language type
 A fetched entity is complete. Partial field selection produces a projection,
 not a partially populated entity pretending to be complete.
 
-Every field on a named record-like declaration introduces a semantic field type
+Every field on a named object declaration introduces a semantic field type
 referenced as `Type.field`, for example `Customer.id` or `Customer.email`. A
 field value retains this identity rather than collapsing to its representation
 primitive. This lets inputs, values, functions, actions, events, and other

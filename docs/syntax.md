@@ -508,6 +508,12 @@ one canonical default.
 
 ## 7. Structured values, inputs, and outputs
 
+**Superseded spelling:** the separate `input`, `output`, and `value`
+declarations below record the earlier design. The accepted canonical spelling
+uses `type Name = Object { ... }` for all three. `input:` and `output:` remain
+route roles and may reference any declared type. Boundary use derives the
+closed decoder or serializer; it does not change type identity.
+
 ### 7.1 Input types
 
 `input` declares data entering a trust boundary. It produces both a static type
@@ -573,6 +579,12 @@ var address = Address {
 removes the earlier inconsistency between `field = value` and `field: value`.
 
 ## 8. Entities and persistence
+
+**Superseded spelling:** the embedded-storage `entity` examples below record the
+earlier design. Canonical source declares `type Name = Object { ... }` and opts
+into storage separately with `persist Name { ... }`. A type without `persist`
+is ordinary constructible application data and has no generated database
+operations.
 
 ### 8.1 Entity declaration
 
@@ -1161,6 +1173,21 @@ action place_order(input: CreateOrder) -> Order
 
 The compiler understands the action's database mutations, external effects,
 possible domain failures, and transaction needs.
+
+**Accepted signature order:** a fallible callable places `fails` before its
+successful result arrow:
+
+```text
+action place_order(input: CreateOrder)
+    fails EmptyBasket, CreditLimitExceeded
+    -> Order
+{
+    // ...
+}
+```
+
+This replaces `-> Order fails ...`, which reads as though the successful value
+itself fails.
 
 ### 9.3 Effect rules
 

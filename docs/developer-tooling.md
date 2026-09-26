@@ -196,6 +196,12 @@ The portable rendering deliverables are:
 - a plain-text fallback that preserves code exactly when a host does not know
   the language identifier.
 
+Generated-artifact navigation must not use source document links: VS Code
+decorates those ranges with underlines that are visually indistinguishable from
+or compete with diagnostics, and a route-sized link can underline an entire
+declaration. Use CodeLens above the declaration or an explicit navigation
+command instead. Ordinary source underlines are reserved for diagnostics.
+
 Inline backtick spans are normally rendered as undifferentiated code. Rich
 syntax colouring should be expected only for fenced blocks or file views whose
 host has installed the grammar. An existing third-party or hosted chat client
