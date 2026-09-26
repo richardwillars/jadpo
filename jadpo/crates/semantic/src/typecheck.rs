@@ -2473,7 +2473,11 @@ mod tests {
 
     fn check(source: &str) -> super::TypeCheckResult {
         let parsed = parse(Path::new("test.jadpo"), source);
-        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        assert!(
+            parsed.diagnostics.is_empty(),
+            "{source}\n{:#?}",
+            parsed.diagnostics
+        );
         let graph = build_semantic_graph(std::slice::from_ref(&parsed));
         assert!(graph.diagnostics.is_empty(), "{:#?}", graph.diagnostics);
         check_types(&[parsed], &graph)
@@ -2634,6 +2638,450 @@ function replace_with_wrong_type(initial: Choice, replacement: OtherChoice) -> C
                 "TYPE_MISMATCH"
             ]
         );
+    }
+
+    #[test]
+    fn reports_specific_assignment_construction_match_and_query_failures() {
+        let cases = [
+            (
+                r#"type Choice = Text {}
+function choose(value: Choice) -> Choice {
+    unknown_local = value
+    return value
+}"#,
+                "TYPE_ASSIGN_UNKNOWN",
+            ),
+            (
+                r#"type Name = Text {}
+function name() -> Name { return Name("one", "two") }"#,
+                "TYPE_CONSTRUCTOR_ARGUMENT_COUNT",
+            ),
+            (
+                r#"input Draft { name: Text }
+action create_draft(name: Text) -> Draft {
+    return create Draft { name: name }
+}"#,
+                "TYPE_CREATE_NOT_ENTITY",
+            ),
+            (
+                r#"input Draft { id: Uuid }
+failure DraftAbsent { kind NotFound code "draft_absent" }
+failure Clash { kind Conflict code "clash" }
+action delete_draft(id: Uuid) -> Draft fails DraftAbsent, Clash {
+    return delete required Draft {
+        where: id == id
+        missing: DraftAbsent
+        conflict: Clash
+    }
+}"#,
+                "TYPE_DELETE_NOT_ENTITY",
+            ),
+            (
+                r#"enum Outcome { accepted { note: Text } }
+function outcome() -> Outcome {
+    return Outcome.accepted { note: "one" note: "two" }
+}"#,
+                "TYPE_DUPLICATE_VARIANT_FIELD",
+            ),
+            (
+                r#"type CustomerId = Uuid {}
+type OrderId = Uuid {}
+function same(customer: CustomerId, order: OrderId) -> Bool {
+    return customer == order
+}"#,
+                "TYPE_INCOMPARABLE",
+            ),
+            (
+                r#"type Name = Text {}
+function bad(candidate: Name) -> Name {
+    return candidate { field: "value" }
+}"#,
+                "TYPE_NOT_RECORD",
+            ),
+            (
+                r#"input Filter { value: Text }
+action find(value: Text) -> Filter? {
+    return query optional Filter { where: value == value }
+}"#,
+                "TYPE_QUERY_NOT_ENTITY",
+            ),
+            (
+                r#"entity Item { id: Uuid identity name: Text }
+action find(value: Text) -> Item? {
+    return query optional Item { where: unknown_field == value }
+}"#,
+                "TYPE_QUERY_UNKNOWN_FIELD",
+            ),
+            (
+                r#"entity Item { id: Uuid identity name: Text }
+action list(value: Text) -> List<Item> {
+    return query many Item { where: name == value order_by: unknown_order asc }
+}"#,
+                "TYPE_QUERY_UNKNOWN_ORDER_FIELD",
+            ),
+            (
+                r#"entity Item { id: Uuid identity name: Text }
+action list(value: Text, page_size: Int) -> List<Item> {
+    return query many Item { where: name == value order_by: id asc limit: page_size offset: 0 }
+}"#,
+                "TYPE_QUERY_PAGINATION_CONSTANT_REQUIRED",
+            ),
+            (
+                r#"entity Item { id: Uuid identity group: Text }
+action list(group: Text) -> List<Item> {
+    return query many Item { where: group == group order_by: group asc }
+}"#,
+                "TYPE_QUERY_ORDER_NOT_DETERMINISTIC",
+            ),
+            (
+                r#"enum Outcome { accepted { note: Text detail: Text } }
+function describe(value: Outcome) -> Bool {
+    match value { Outcome.accepted { item, item } => {} }
+    return true
+}"#,
+                "TYPE_MATCH_DUPLICATE_BINDING",
+            ),
+            (
+                r#"function describe(value: Bool) -> Bool {
+    match value { "yes" => {} _ => {} }
+    return true
+}"#,
+                "TYPE_MATCH_PATTERN_TYPE",
+            ),
+            (
+                r#"type Name = Text {}
+function describe(value: Name) -> Bool {
+    match value { some(item) => {} _ => {} }
+    return true
+}"#,
+                "TYPE_MATCH_SOME_NON_OPTIONAL",
+            ),
+            (
+                r#"enum Outcome { accepted { note: Text } rejected }
+function describe(value: Outcome) -> Bool {
+    match value { Outcome.accepted => {} Outcome.rejected => {} }
+    return true
+}"#,
+                "TYPE_MATCH_VARIANT_BINDINGS_REQUIRED",
+            ),
+            (
+                r#"type Name = Text {}
+function describe(value: Name) -> Bool {
+    match value { "known" => {} }
+    return true
+}"#,
+                "TYPE_MATCH_WILDCARD_REQUIRED",
+            ),
+            (
+                r#"entity Item { id: Uuid identity }
+failure ItemAbsent { kind NotFound code "item_absent" }
+failure ItemConflict { kind Conflict code "item_conflict" }
+action change(id: Item.id) -> Item fails ItemAbsent, ItemConflict {
+    return update required Item {
+        where: id == id
+        set: {}
+        missing: ItemAbsent
+        conflict: ItemConflict
+    }
+}"#,
+                "TYPE_UPDATE_FIELD_REQUIRED",
+            ),
+            (
+                r#"input Draft { id: Uuid }
+failure DraftAbsent { kind NotFound code "draft_absent" }
+failure DraftConflict { kind Conflict code "draft_conflict" }
+action change(id: Uuid) -> Draft fails DraftAbsent, DraftConflict {
+    return update required Draft {
+        where: id == id
+        set: { id: id }
+        missing: DraftAbsent
+        conflict: DraftConflict
+    }
+}"#,
+                "TYPE_UPDATE_NOT_ENTITY",
+            ),
+            (
+                r#"entity Item { id: Uuid identity }
+failure ItemAbsent { kind NotFound code "item_absent" }
+failure ItemConflict { kind Conflict code "item_conflict" }
+action change(id: Item.id) -> Item fails ItemAbsent, ItemConflict {
+    return update required Item {
+        where: id == id
+        set: { unknown_field: id }
+        missing: ItemAbsent
+        conflict: ItemConflict
+    }
+}"#,
+                "TYPE_UPDATE_UNKNOWN_FIELD",
+            ),
+            (
+                r#"entity Item { id: Uuid identity nickname: Text? }
+failure ItemAbsent { kind NotFound code "item_absent" }
+failure ItemConflict { kind Conflict code "item_conflict" }
+action change(nickname: Text) -> Item fails ItemAbsent, ItemConflict {
+    return update required Item {
+        where: nickname == nickname
+        set: { nickname: nickname }
+        missing: ItemAbsent
+        conflict: ItemConflict
+    }
+}"#,
+                "TYPE_MUTATION_NULLABLE_FIELD_UNSUPPORTED",
+            ),
+            (
+                r#"entity Item { id: Uuid identity }
+failure ItemAbsent { kind NotFound code "item_absent" }
+failure ItemConflict { kind Conflict code "item_conflict" }
+action change(id: Item.id) -> Item fails ItemAbsent, ItemConflict {
+    return update required Item {
+        where: unknown_field == id
+        set: { id: id }
+        missing: ItemAbsent
+        conflict: ItemConflict
+    }
+}"#,
+                "TYPE_MUTATION_UNKNOWN_PREDICATE_FIELD",
+            ),
+            (
+                r#"entity Item { id: Uuid identity }
+failure FirstConflict { kind Conflict code "first_conflict" }
+failure SecondConflict { kind Conflict code "second_conflict" }
+action create_item(id: Item.id) -> Item fails FirstConflict, SecondConflict {
+    return create Item { id: id }
+        conflict: FirstConflict
+        conflict: SecondConflict
+}"#,
+                "TYPE_CONFLICT_DUPLICATE_BINDING",
+            ),
+            (
+                r#"entity Item { id: Uuid identity name: Text }
+input PatchItem { name: Text optional }
+failure EmptyPatch { kind InvalidValue code "empty_patch" }
+failure ItemAbsent { kind NotFound code "item_absent" }
+failure ItemConflict { kind Conflict code "item_conflict" }
+action patch_item(id: Item.id, input: PatchItem) -> Item fails EmptyPatch, ItemAbsent, ItemConflict {
+    return update required Item {
+        where: id == id
+        patch: input.name
+        empty: EmptyPatch
+        missing: ItemAbsent
+        conflict: ItemConflict
+    }
+}"#,
+                "TYPE_PATCH_INPUT_BINDING",
+            ),
+            (
+                r#"entity Item { id: Uuid identity name: Text }
+failure EmptyPatch { kind InvalidValue code "empty_patch" }
+failure ItemAbsent { kind NotFound code "item_absent" }
+failure ItemConflict { kind Conflict code "item_conflict" }
+action patch_item(id: Item.id, item: Item) -> Item fails EmptyPatch, ItemAbsent, ItemConflict {
+    return update required Item {
+        where: id == id
+        patch: item
+        empty: EmptyPatch
+        missing: ItemAbsent
+        conflict: ItemConflict
+    }
+}"#,
+                "TYPE_PATCH_NOT_INPUT",
+            ),
+            (
+                r#"entity Item { id: Uuid identity name: Text }
+input EmptyPatch {}
+failure EmptyChange { kind InvalidValue code "empty_change" }
+failure ItemAbsent { kind NotFound code "item_absent" }
+failure ItemConflict { kind Conflict code "item_conflict" }
+action patch_item(id: Item.id, input: EmptyPatch) -> Item fails EmptyChange, ItemAbsent, ItemConflict {
+    return update required Item {
+        where: id == id
+        patch: input
+        empty: EmptyChange
+        missing: ItemAbsent
+        conflict: ItemConflict
+    }
+}"#,
+                "TYPE_PATCH_FIELD_REQUIRED",
+            ),
+            (
+                r#"entity Item { id: Uuid identity name: Text }
+input PatchItem { name: Text optional }
+failure EmptyChange { kind InvalidValue code "empty_change" }
+failure ItemAbsent { kind NotFound code "item_absent" }
+failure ItemConflict { kind Conflict code "item_conflict" }
+action patch_item(id: Item.id, input: PatchItem, other: PatchItem) -> Item fails EmptyChange, ItemAbsent, ItemConflict {
+    return update required Item {
+        where: id == id
+        patch: input
+        empty: EmptyChange
+        set: { name: input.name when other.name supplied }
+        missing: ItemAbsent
+        conflict: ItemConflict
+    }
+}"#,
+                "TYPE_PATCH_CONDITION_BINDING",
+            ),
+            (
+                r#"entity Item { id: Uuid identity name: Text }
+input PatchItem { name: Text optional }
+failure EmptyChange { kind InvalidValue code "empty_change" }
+failure ItemAbsent { kind NotFound code "item_absent" }
+failure ItemConflict { kind Conflict code "item_conflict" }
+action patch_item(id: Item.id, input: PatchItem) -> Item fails EmptyChange, ItemAbsent, ItemConflict {
+    return update required Item {
+        where: id == id
+        patch: input
+        empty: EmptyChange
+        set: { name: input.name when input.unknown_field supplied }
+        missing: ItemAbsent
+        conflict: ItemConflict
+    }
+}"#,
+                "TYPE_PATCH_CONDITION_UNKNOWN_FIELD",
+            ),
+        ];
+
+        for (source, expected) in cases {
+            let result = check(source);
+            let codes = result
+                .diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.code)
+                .collect::<Vec<_>>();
+            assert!(
+                codes.contains(&expected),
+                "{expected}: {codes:#?}\n{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn reports_each_invalid_relationship_include_contract() {
+        let result = check(
+            r#"
+entity User {
+    id: Uuid identity
+    inverse todos: many Todo via Todo.owner_id
+    inverse profile: optional Profile via Profile.user_id
+}
+entity Todo {
+    id: Uuid identity
+    sort_key: Text
+    owner_id: User.id? references User.id as owner on_delete set_null
+}
+entity Profile {
+    id: Uuid identity
+    user_id: User.id unique references User.id on_delete cascade
+}
+input BadResult { parent: User todos: List<Todo> }
+output DifferentResult { parent: User todos: List<Todo> }
+input BadProfileResult { parent: User profile: Profile }
+input BadOwnerResult { parent: Todo owner: User? }
+input BadNestedResult { parent: Todo owner: BadProfileResult }
+failure UserAbsent { kind NotFound code "user_absent" }
+failure TodoAbsent { kind NotFound code "todo_absent" }
+
+action bad_many() -> BadResult {
+    return query optional User {
+        where: id == User.id("00000000-0000-0000-0000-000000000000")
+        include: todos into: BadResult order_by: sort_key asc limit: 10 offset: 0
+        include: todos into: DifferentResult order_by: id asc limit: 10 offset: 0
+        include: profile optional into: BadResult
+        include: ghosts into: BadResult order_by: id asc limit: 10 offset: 0
+    }
+}
+
+action bad_many_parent_page() -> List<BadResult> {
+    return query many User {
+        where: id == User.id("00000000-0000-0000-0000-000000000000")
+        order_by: id asc
+        include: todos into: BadResult order_by: id asc limit: 10 offset: 0
+    }
+}
+
+action bad_inverse_one() -> BadProfileResult {
+    return query optional User {
+        where: id == User.id("00000000-0000-0000-0000-000000000000")
+        include: profile into: BadProfileResult order_by: id asc limit: 1 offset: 0
+        include: todos into: BadProfileResult order_by: id asc limit: 1 offset: 0
+    }
+}
+
+action bad_parent() -> BadOwnerResult {
+    return query optional Todo {
+        where: id == Todo.id("00000000-0000-0000-0000-000000000000")
+        include: owner required into: BadOwnerResult
+        include: owner optional into: BadOwnerResult
+    }
+}
+
+action unknown_parent() -> BadOwnerResult fails TodoAbsent {
+    return query required Todo {
+        where: id == Todo.id("00000000-0000-0000-0000-000000000000")
+        include: unknown_parent required into: BadOwnerResult
+        missing: TodoAbsent
+    }
+}
+
+action bad_nested() -> BadNestedResult {
+    return query optional Todo {
+        where: id == Todo.id("00000000-0000-0000-0000-000000000000")
+        include: owner.profile required into: BadNestedResult
+        include: owner.profile optional into: BadNestedResult
+    }
+}
+
+action unknown_nested_parent() -> BadNestedResult fails TodoAbsent {
+    return query required Todo {
+        where: id == Todo.id("00000000-0000-0000-0000-000000000000")
+        include: unknown_parent.profile optional into: BadNestedResult
+        missing: TodoAbsent
+    }
+}
+
+action unknown_nested_child() -> BadNestedResult fails TodoAbsent {
+    return query required Todo {
+        where: id == Todo.id("00000000-0000-0000-0000-000000000000")
+        include: owner.unknown_child optional into: BadNestedResult
+        missing: TodoAbsent
+    }
+}
+"#,
+        );
+        let codes = result
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>();
+
+        for expected in [
+            "TYPE_INCLUDE_DUPLICATE_RELATIONSHIP",
+            "TYPE_INCLUDE_MIXED_CARDINALITY",
+            "TYPE_INCLUDE_ORDER_NOT_DETERMINISTIC",
+            "TYPE_INCLUDE_PARENT_PAGINATION_REQUIRED",
+            "TYPE_INCLUDE_REQUIRED_PARENT",
+            "TYPE_INCLUDE_RESULT_MISMATCH",
+            "TYPE_INCLUDE_RESULT_NOT_OUTPUT",
+            "TYPE_INCLUDE_RESULT_SHAPE",
+            "TYPE_INCLUDE_UNKNOWN_RELATIONSHIP",
+            "TYPE_INVERSE_ONE_CARDINALITY",
+            "TYPE_INVERSE_ONE_REQUIRED_QUERY",
+            "TYPE_INVERSE_ONE_RESULT_SHAPE",
+            "TYPE_INVERSE_ONE_SINGLE",
+            "TYPE_NESTED_INCLUDE_CARDINALITY",
+            "TYPE_NESTED_INCLUDE_FIRST_HOP",
+            "TYPE_NESTED_INCLUDE_NULLABLE_FIRST_HOP",
+            "TYPE_NESTED_INCLUDE_REQUIRED_QUERY",
+            "TYPE_NESTED_INCLUDE_RESULT_SHAPE",
+            "TYPE_NESTED_INCLUDE_SECOND_HOP",
+            "TYPE_NESTED_INCLUDE_SINGLE",
+            "TYPE_PARENT_INCLUDE_REQUIRED_QUERY",
+            "TYPE_PARENT_INCLUDE_RESULT_SHAPE",
+            "TYPE_PARENT_INCLUDE_SINGLE",
+            "TYPE_PARENT_INCLUDE_UNKNOWN_REFERENCE",
+        ] {
+            assert!(codes.contains(&expected), "{expected}: {codes:#?}");
+        }
     }
 
     #[test]
