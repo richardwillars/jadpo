@@ -122,3 +122,13 @@ preserve immutable artifact and stable-identity guarantees, distinguish stale
 change sets from malformed files, and keep unresolved, missing-evidence,
 rejected-change, and strategy selection outcomes visibly human-owned. SQL
 review-generation diagnostics remain separately tracked.
+
+The complete `MIG_*` family is now fully authored. SQL-review copy distinguishes
+unsupported change, strategy, expression, predicate, literal, and type cases
+from identity corruption, and gives SQLite rebuild failures their precise
+entity, field, constraint, index, reference, rename, or shape recovery path.
+
+All 310 enumerated public diagnostic codes now have rule-specific summary,
+reason, and recommended-next-step copy. The active zero-placeholder test is
+permanent. Completion still depends on replacing the strict gate's synthetic
+render coverage with a real trigger fixture for every code.

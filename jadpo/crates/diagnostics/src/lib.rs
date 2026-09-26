@@ -1966,6 +1966,112 @@ fn migration_workflow_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     })
 }
 
+fn migration_sql_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "MIG_SQL_CHANGE_UNSUPPORTED" => (
+            "Schema change has no SQL review generator",
+            "The non-executable migration plan can describe this reviewed change, but the selected adapter cannot yet derive safe forward and rollback SQL for it.",
+            "Review the migration plan and author the unsupported operation outside generated SQL",
+        ),
+        "MIG_SQL_EXPRESSION_UNSUPPORTED" => (
+            "Backfill expression cannot be compiled to SQL",
+            "Generated migration SQL currently accepts only the explicit `literal(...)` evidence form; arbitrary application expressions are not executed during migration.",
+            "Use a typed `literal(...)` backfill value or keep the step manual",
+        ),
+        "MIG_SQL_FIELD_OWNER_MISSING" => (
+            "Migration field has no resolvable owning table",
+            "The field snapshot or identity registry does not link this persistent field to a registered entity table, so SQL cannot address it safely.",
+            "Restore and validate the schema identity registry before regenerating SQL",
+        ),
+        "MIG_SQL_FIELD_SHAPE_INVALID" => (
+            "Migration field shape cannot be interpreted",
+            "The canonical snapshot does not contain the field type shape required to choose an adapter SQL type and nullability operation.",
+            "Regenerate valid schema identities and snapshots before planning this change",
+        ),
+        "MIG_SQL_LITERAL_INVALID" => (
+            "Backfill literal is invalid for the field type",
+            "The reviewed literal cannot be parsed as the target Text, UUID, DateTime, Int, Decimal, or Boolean value without changing its meaning.",
+            "Provide a valid typed literal for the target field",
+        ),
+        "MIG_SQL_PREDICATE_UNSUPPORTED" => (
+            "Validation predicate cannot be compiled to SQL",
+            "Nullability narrowing currently requires the exact compiler-owned `not_null` predicate; arbitrary predicates are not treated as proof.",
+            "Use `not_null` evidence or keep the narrowing outside generated SQL",
+        ),
+        "MIG_SQL_REVIEW_EXISTS" => (
+            "Migration SQL review output already exists",
+            "SQL reviews are immutable, non-executable approval artifacts and are never overwritten after generation.",
+            "Choose a new output path or review the existing SQL artifact",
+        ),
+        "MIG_SQL_REVIEW_WRITE_FAILED" => (
+            "Migration SQL review could not be written",
+            "The compiler derived forward and rollback statements but could not create the immutable review output.",
+            "Choose a writable output path and generate the SQL review again",
+        ),
+        "MIG_SQL_SQLITE_CONSTRAINT_MISSING" => (
+            "SQLite rebuild cannot resolve a constraint identity",
+            "Recreating the table requires the stable physical name of each primary, unique, or compound-unique constraint, and one is absent from the registry.",
+            "Restore and validate the identity registry before regenerating the SQLite review",
+        ),
+        "MIG_SQL_SQLITE_ENTITY_MISSING" => (
+            "SQLite rebuild cannot find the current entity",
+            "The registered table identity does not resolve to a checked entity declaration whose complete shape can recreate the table.",
+            "Restore consistency between source and the identity registry",
+        ),
+        "MIG_SQL_SQLITE_FIELD_IDENTITY_MISSING" => (
+            "SQLite rebuild cannot resolve a field identity",
+            "Copying rows into a rebuilt table requires each retained field's stable physical column name, and one is absent from the registry.",
+            "Restore and validate the field identities before regenerating SQL",
+        ),
+        "MIG_SQL_SQLITE_FIELD_MISSING" => (
+            "SQLite rebuild cannot find the current field",
+            "A changed snapshot field does not resolve to a checked field on the entity being rebuilt, so its source and destination columns cannot be proven.",
+            "Restore consistency between the snapshot, source, and identity registry",
+        ),
+        "MIG_SQL_SQLITE_INDEX_MISSING" => (
+            "SQLite rebuild cannot resolve an index identity",
+            "Recreating the table requires the stable physical name of every retained index, and one is absent from the registry.",
+            "Restore and validate the index identities before regenerating SQL",
+        ),
+        "MIG_SQL_SQLITE_REBUILD_REQUIRED" => (
+            "SQLite change requires a table rebuild",
+            "SQLite cannot express this field alteration as the direct `ALTER TABLE` operation used by the general path; it must be grouped into a checked rebuild.",
+            "Generate this change as a supported isolated SQLite rebuild set",
+        ),
+        "MIG_SQL_SQLITE_REBUILD_UNSUPPORTED" => (
+            "SQLite table rebuild shape is not supported",
+            "The reviewed change set combines an ownership, modifier, constraint, or field-shape case that the bounded rebuild generator cannot reproduce safely.",
+            "Split the change into supported steps or author and review the rebuild manually",
+        ),
+        "MIG_SQL_SQLITE_REFERENCE_MISSING" => (
+            "SQLite rebuild cannot resolve a reference target",
+            "Recreating a foreign key requires registered physical identities for its target table and column, and that mapping is incomplete.",
+            "Restore and validate relationship identities before regenerating SQL",
+        ),
+        "MIG_SQL_SQLITE_RENAMED_TABLE_UNSUPPORTED" => (
+            "SQLite rebuild cannot target a logically renamed table",
+            "The bounded rebuild generator does not combine table-history resolution with a physical table recreation in one reviewed step.",
+            "Separate the rename lifecycle from the rebuild or author the reviewed SQL manually",
+        ),
+        "MIG_SQL_STRATEGY_UNSUPPORTED" => (
+            "Reviewed migration strategy has no SQL implementation",
+            "The selected strategy is valid for planning but does not match the bounded adapter operation required for this SQL review.",
+            "Choose a SQL-supported strategy through a new review or keep the step manual",
+        ),
+        "MIG_SQL_TYPE_UNSUPPORTED" => (
+            "Field type has no migration SQL mapping",
+            "The selected adapter has no compiler-owned storage type for this field's semantic representation, so emitting a column would be guesswork.",
+            "Use a supported storage representation or author and review the type migration manually",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let (category, remainder) = code.split_once('_').unwrap_or(("diagnostic", code));
     let category = match category {
@@ -2002,7 +2108,8 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         .or_else(|| index_catalogue_copy(code))
         .or_else(|| toolchain_catalogue_copy(code))
         .or_else(|| cli_catalogue_copy(code))
-        .or_else(|| migration_workflow_catalogue_copy(code));
+        .or_else(|| migration_workflow_catalogue_copy(code))
+        .or_else(|| migration_sql_catalogue_copy(code));
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
@@ -2740,7 +2847,7 @@ mod tests {
     }
 
     #[test]
-    fn public_copy_debt_is_explicit_and_authored_copy_is_human_readable() {
+    fn every_public_diagnostic_has_authored_human_readable_copy() {
         let mut placeholders = Vec::new();
         for code in CATALOGUE_CODES {
             let definition = catalogue_definition(code);
@@ -2769,8 +2876,9 @@ mod tests {
             }
         }
         assert!(
-            !placeholders.is_empty(),
-            "remove the strict ignored gate and this debt assertion when the catalogue is complete"
+            placeholders.is_empty(),
+            "placeholder catalogue copy remains: {}",
+            placeholders.join(", ")
         );
     }
 
@@ -2993,6 +3101,22 @@ mod tests {
             code.strip_prefix("MIG_")
                 .is_some_and(|remainder| !remainder.starts_with("SQL_"))
         }) {
+            let definition = catalogue_definition(code);
+            assert!(definition.authored_copy, "{code}");
+            assert!(!definition.reason.contains(code), "{code}");
+            assert_ne!(
+                definition.recommended_title, "Update the source to satisfy this rule",
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_migration_diagnostic_has_rule_specific_public_copy() {
+        for code in CATALOGUE_CODES
+            .iter()
+            .filter(|code| code.starts_with("MIG_"))
+        {
             let definition = catalogue_definition(code);
             assert!(definition.authored_copy, "{code}");
             assert!(!definition.reason.contains(code), "{code}");
