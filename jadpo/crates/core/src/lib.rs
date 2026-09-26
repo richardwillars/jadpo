@@ -60,7 +60,7 @@ impl ParsedProject {
     pub fn declaration_count(&self) -> usize {
         self.sources
             .iter()
-            .map(|source| source.file.declarations.len())
+            .map(|source| source.file.declarations.len() + source.file.persistence.len())
             .sum()
     }
 }
@@ -454,7 +454,7 @@ mod tests {
         let project = parse_project(&seed).expect("seed should be readable");
 
         assert_eq!(project.sources.len(), 1);
-        assert_eq!(project.declaration_count(), 8);
+        assert_eq!(project.declaration_count(), 9);
         assert_eq!(project.diagnostics().count(), 0);
     }
 

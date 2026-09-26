@@ -1822,6 +1822,32 @@ mod tests {
     }
 
     #[test]
+    fn check_summary_counts_persistence_declarations() {
+        let root = std::env::temp_dir().join(format!(
+            "jadpo-cli-persistence-declaration-count-{}",
+            std::process::id()
+        ));
+        if root.exists() {
+            fs::remove_dir_all(&root).expect("stale fixture should be removable");
+        }
+        fs::create_dir_all(&root).expect("fixture should be created");
+        fs::write(
+            root.join("app.jadpo"),
+            "type Customer = Object { id: Uuid }\npersist Customer { identity: id }\n",
+        )
+        .expect("source should be written");
+
+        let report = check_project(&root);
+
+        assert!(report.passed, "{:#?}", report.diagnostics);
+        assert_eq!(
+            report.summary.expect("summary should exist").declarations,
+            2
+        );
+        fs::remove_dir_all(root).expect("fixture should be removable");
+    }
+
+    #[test]
     fn human_diagnostics_show_source_line_column_and_caret() {
         let root =
             std::env::temp_dir().join(format!("jadpo-cli-human-diagnostic-{}", std::process::id()));
