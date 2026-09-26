@@ -1422,6 +1422,163 @@ fn tooling_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     })
 }
 
+fn index_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "INDEX_ACCEPT_CHECK_FAILED" => (
+            "Index edit did not pass project checks",
+            "After inserting the recommended `index` modifier, the compiler found diagnostics and refused to retain an unchecked source change.",
+            "Review the project diagnostics before accepting the recommendation again",
+        ),
+        "INDEX_ACCEPT_IDENTITY_COUNT" => (
+            "Index acceptance changed an unexpected number of schema identities",
+            "Accepting one recommendation must register exactly one new index identity; any other count means the source and identity registry are not changing atomically as expected.",
+            "Restore schema identity consistency and retry the single recommendation",
+        ),
+        "INDEX_ACCEPT_RANGE_INVALID" => (
+            "Recommended index insertion point is no longer valid",
+            "The recorded field range does not match the current source text, so inserting `index` could edit the wrong bytes.",
+            "Re-run the index recommendation command against the current sources",
+        ),
+        "INDEX_ACCEPT_REGISTRY_MISSING" => (
+            "Schema identity registry is required before accepting an index",
+            "The accepted index becomes durable schema identity and cannot be written safely until the project registry has been initialized.",
+            "Run `jadpo schema init` for this project, then accept the index again",
+        ),
+        "INDEX_ACCEPT_ROLLBACK_FAILED" => (
+            "Failed index edit could not be rolled back",
+            "The compiler rejected the edited project but could not restore the original source file, so manual recovery is required before another attempt.",
+            "Restore the source from version control and inspect filesystem permissions",
+        ),
+        "INDEX_ACCEPT_SOURCE_READ_FAILED" => (
+            "Source file for the recommended index could not be read",
+            "The recommendation resolved to a source file that became unavailable before the compiler could prepare its checked edit.",
+            "Restore read access to the source and re-run the recommendation",
+        ),
+        "INDEX_ACCEPT_SOURCE_WRITE_FAILED" => (
+            "Recommended index could not be written to source",
+            "The compiler prepared the checked `index` insertion but the source file could not be updated.",
+            "Make the source writable and accept the recommendation again",
+        ),
+        "INDEX_RECOMMENDATION_AVAILABLE" => (
+            "A query field could benefit from an index",
+            "Static query analysis found a predicate or ordering field without a matching persistence index; this is advice and does not change source automatically.",
+            "Inspect the recommendation and explicitly accept it if the storage trade-off is appropriate",
+        ),
+        "INDEX_RECOMMENDATION_FIELD_MISSING" => (
+            "Recommended field no longer exists",
+            "The selected recommendation refers to an entity field that is absent from the currently analysed sources.",
+            "Re-run index recommendation and choose an item from the current results",
+        ),
+        "INDEX_RECOMMENDATION_UNKNOWN" => (
+            "Index recommendation is not current",
+            "The requested entity-field recommendation is not present in the latest static query evidence for this project.",
+            "List current index recommendations and choose one of their identifiers",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
+fn toolchain_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "JADPO_ARTIFACT_CLEANUP_FAILED" => (
+            "Previous build backup could not be removed",
+            "The new artifact set was promoted successfully, but cleanup of the temporary backup directory failed.",
+            "Inspect permissions on the project build directories and remove the stale backup safely",
+        ),
+        "JADPO_ARTIFACT_PROMOTE_FAILED" => (
+            "Staged build artifacts could not be promoted",
+            "The compiler generated a complete staging directory but could not atomically replace the project build output; the previous complete output was preserved when possible.",
+            "Restore write and rename access to the project directory, then build again",
+        ),
+        "JADPO_ARTIFACT_STAGE_FAILED" => (
+            "Build staging directory could not be created",
+            "Artifact generation writes to a project-local staging directory before promotion so an incomplete build never replaces the last complete output.",
+            "Make the project directory writable and build again",
+        ),
+        "JADPO_ARTIFACT_WRITE_FAILED" => (
+            "Generated artifact could not be written",
+            "The compiler could not create a directory or file inside its isolated build staging area, so the staged output was discarded.",
+            "Check available space and project-directory permissions, then build again",
+        ),
+        "JADPO_EMPTY_PROJECT" => (
+            "Project contains no declarations",
+            "Jadpo source files were found and parsed without syntax errors, but none declares a type, enum, record, failure, callable, test, or route to compile.",
+            "Add at least one top-level Jadpo declaration",
+        ),
+        "JADPO_NO_SOURCES" => (
+            "Project contains no Jadpo source files",
+            "Source discovery found no files ending in `.jadpo` beneath the requested project path, excluding generated build output.",
+            "Add a `.jadpo` source file or select the correct project path",
+        ),
+        "JADPO_PROJECT_NOT_FOUND" => (
+            "Project path does not exist",
+            "The requested file or directory was not present when Jadpo began source discovery.",
+            "Correct the project path or create the project first",
+        ),
+        "JADPO_PROJECT_READ_FAILED" => (
+            "Project directory could not be read",
+            "Source discovery could not enumerate part of the project tree, so it cannot know which Jadpo files belong to the build.",
+            "Restore directory read access and try again",
+        ),
+        "JADPO_SCAFFOLD_DESTINATION_EXISTS" => (
+            "Scaffold destination is an existing file",
+            "A new Jadpo project needs a directory destination; the selected path already belongs to a non-directory filesystem entry.",
+            "Choose a new directory path for the project",
+        ),
+        "JADPO_SCAFFOLD_DESTINATION_NOT_EMPTY" => (
+            "Scaffold destination directory is not empty",
+            "Project creation refuses to overwrite or mix generated starter files with existing directory contents.",
+            "Choose an empty directory or a new destination",
+        ),
+        "JADPO_SCAFFOLD_NAME_INVALID" => (
+            "Project destination has no valid name",
+            "The scaffold manifest derives its project name from the final destination path component, which is missing or not valid text.",
+            "Choose a destination path with a valid final directory name",
+        ),
+        "JADPO_SCAFFOLD_READ_FAILED" => (
+            "Scaffold destination could not be inspected",
+            "The project creator could not read the destination directory to prove that writing starter files would not overwrite existing content.",
+            "Restore read access or choose another destination",
+        ),
+        "JADPO_SCAFFOLD_WRITE_FAILED" => (
+            "Project scaffold file could not be written",
+            "The project creator could not create one of the required starter directories or files.",
+            "Restore write access and available space, then create the project again",
+        ),
+        "JADPO_SOURCE_READ_FAILED" => (
+            "Jadpo source file could not be read",
+            "Source discovery found the file, but its text became unavailable before parsing and checking could begin.",
+            "Restore read access to the source file and retry",
+        ),
+        "JADPO_TARGET_AUTH_NOT_IMPLEMENTED" => (
+            "Protected route cannot be generated yet",
+            "The current target runtime can generate explicitly public `auth: none` routes, but no accepted authentication provider boundary exists for protected routes, so generation stops rather than weakening access control.",
+            "Choose and implement the authentication boundary before generating this protected route",
+        ),
+        "JADPO_TARGET_DEPENDENCY_MANIFEST" => (
+            "Generated target attempted to add a dependency manifest",
+            "Jadpo's generated runtime must remain self-contained and may not emit package manifests, lockfiles, or vendored dependency directories.",
+            "Remove the generated dependency artifact from the target generator",
+        ),
+        "JADPO_TARGET_EXTERNAL_MODULE" => (
+            "Generated target imports an external module",
+            "Generated TypeScript may use the Bun runtime and compiler-emitted relative modules only; undeclared external packages would make the output non-hermetic.",
+            "Replace the import with supported runtime functionality or a generated relative module",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let (category, remainder) = code.split_once('_').unwrap_or(("diagnostic", code));
     let category = match category {
@@ -1454,7 +1611,9 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         .or_else(|| match_type_catalogue_copy(code))
         .or_else(|| persistence_type_catalogue_copy(code))
         .or_else(|| module_catalogue_copy(code))
-        .or_else(|| tooling_catalogue_copy(code));
+        .or_else(|| tooling_catalogue_copy(code))
+        .or_else(|| index_catalogue_copy(code))
+        .or_else(|| toolchain_catalogue_copy(code));
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
@@ -1474,6 +1633,9 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             DecisionOwner::Human,
             match code {
                 "ROUTE_AUTH_VALUE_INVALID" => "Choose the authentication boundary for `{route}`",
+                "JADPO_TARGET_AUTH_NOT_IMPLEMENTED" => {
+                    "Choose and implement the authentication boundary"
+                }
                 _ => "Request the named human-owned decision",
             }
             .to_owned(),
@@ -2394,6 +2556,22 @@ mod tests {
         for code in CATALOGUE_CODES.iter().filter(|code| {
             code.starts_with("MOD_") || code.starts_with("FMT_") || code.starts_with("LSP_")
         }) {
+            let definition = catalogue_definition(code);
+            assert!(definition.authored_copy, "{code}");
+            assert!(!definition.reason.contains(code), "{code}");
+            assert_ne!(
+                definition.recommended_title, "Update the source to satisfy this rule",
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_index_and_toolchain_diagnostic_has_rule_specific_public_copy() {
+        for code in CATALOGUE_CODES
+            .iter()
+            .filter(|code| code.starts_with("INDEX_") || code.starts_with("JADPO_"))
+        {
             let definition = catalogue_definition(code);
             assert!(definition.authored_copy, "{code}");
             assert!(!definition.reason.contains(code), "{code}");

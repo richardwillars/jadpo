@@ -100,3 +100,9 @@ The `MOD_*`, `FMT_*`, and `LSP_*` families are fully authored. Module copy
 explains explicit visibility and acyclic imports; formatter copy distinguishes
 check drift from write failure; and language-server transport failures provide
 editor-specific recovery without exposing message bodies.
+
+The `INDEX_*` and `JADPO_*` families are fully authored. Index advice now
+distinguishes stale evidence, checked-edit failures, registry identity, and
+rollback recovery. Project, scaffold, artifact, and target-generation failures
+describe the preserved state and a safe next action; protected-route generation
+remains an explicit human-owned authentication-boundary decision.
