@@ -1,0 +1,9 @@
+failure KnownFailure {
+    kind InvalidValue
+    code "known_failure"
+}
+
+action invalid_calls() -> Unit {
+    var first = missing_callable()
+    var second = KnownFailure()
+}

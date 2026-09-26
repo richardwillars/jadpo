@@ -47,7 +47,7 @@ Diagnostic codes in these fixtures are part of the compiler-facing contract.
 Renaming one requires updating the roadmap, relevant specification, and all
 affected fixture expectations together.
 
-The current ninety-five pairs comprise the original ten type/failure cases plus
+The current ninety-nine pairs comprise the original ten type/failure cases plus
 coverage for optional omission, nullable widening, implicit narrowing,
 semantic-to-primitive unwrapping, incomplete records, invariant collections,
 transitive failure propagation, function/action separation, missing failure
@@ -126,6 +126,9 @@ copy rather than a dependent parser cascade.
 Fixture 81 completes the failure-family trigger set with duplicate and unknown
 flat context values at a rejection site. It also fixes the duplicate-field copy
 to describe a value supplied twice rather than a declaration repeated twice.
+Fixtures 82–85 complete semantic-name trigger coverage: duplicate declaration,
+unknown reference, wrong declaration kind, unknown callable, and a resolved but
+non-callable failure name.
 
 Expectation files retain established compiler codes as migration aliases. CLI
 and LSP diagnostics expose the canonical lower-dotted `ruleId` alongside those

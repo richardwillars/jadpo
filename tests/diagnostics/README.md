@@ -137,3 +137,5 @@ The `ROUTE_*` family now has real compile-trigger coverage for every code in
 addition to its all-audience projection coverage.
 
 The `FAIL_*` family now also has real compile-trigger coverage for every code.
+
+The `SEM_*` family now also has real compile-trigger coverage for every code.
