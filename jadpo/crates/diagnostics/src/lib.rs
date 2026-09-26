@@ -847,6 +847,142 @@ fn data_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     })
 }
 
+fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "TYPE_ARGUMENT_COUNT" => (
+            "Call has the wrong number of arguments",
+            "A function or action invocation must supply exactly one value for each declared parameter in declaration order.",
+            "Add or remove arguments to match the callable signature",
+        ),
+        "TYPE_ARITHMETIC_OPERAND" => (
+            "Arithmetic operator has a non-numeric operand",
+            "Arithmetic operators accept compatible numeric values only; text, Boolean, records, and unrelated semantic types do not define arithmetic.",
+            "Use numeric operands or choose an operation defined for these values",
+        ),
+        "TYPE_ASSIGN_IMMUTABLE" => (
+            "Binding cannot be reassigned",
+            "Parameters and ordinary `var` bindings are immutable. Only a local explicitly declared with `var mut` may receive a new value.",
+            "Declare a mutable local when rebinding is intended, or create a new value",
+        ),
+        "TYPE_ASSIGN_UNKNOWN" => (
+            "Assignment target does not exist",
+            "Reassignment must target a visible local binding; declarations, fields, and unknown names cannot be assigned as locals.",
+            "Correct the local name or declare it before assigning",
+        ),
+        "TYPE_CONSTRUCTOR_ARGUMENT_COUNT" => (
+            "Semantic type constructor has the wrong number of arguments",
+            "A scalar semantic type constructor wraps exactly one compatible underlying value before applying its declared constraints.",
+            "Pass exactly one value to the semantic type constructor",
+        ),
+        "TYPE_CONSTRUCTOR_INPUT" => (
+            "Semantic type constructor received an incompatible value",
+            "The constructor input must be compatible with the semantic type's immediate parent; unrelated primitives or nominal siblings cannot be wrapped implicitly.",
+            "Pass a value compatible with the type's parent",
+        ),
+        "TYPE_DUPLICATE_VARIANT_FIELD" => (
+            "Enum variant payload field is repeated",
+            "A data-carrying enum variant has one exact payload record; duplicate field names would make construction and pattern binding ambiguous.",
+            "Keep one declaration of the variant payload field",
+        ),
+        "TYPE_FIELD_ON_NON_RECORD" => (
+            "Field selection is applied to a non-record value",
+            "Dot selection requires a value with a known record shape. Scalars, lists, and other non-record values do not expose named fields.",
+            "Select from a record value or remove the field access",
+        ),
+        "TYPE_INCOMPARABLE" => (
+            "Values cannot be compared for equality",
+            "Equality requires compatible values from the same semantic domain or an explicitly permitted widening; unrelated nominal siblings are not comparable.",
+            "Compare values from the same semantic type domain",
+        ),
+        "TYPE_INVALID_LITERAL" => (
+            "Literal does not satisfy its semantic type",
+            "The literal fails one or more constraints declared by the target semantic type, so constructing that value would violate its contract.",
+            "Change the literal to satisfy the declared constraints",
+        ),
+        "TYPE_LOGICAL_OPERAND" => (
+            "Logical operator requires Boolean operands",
+            "`and` and `or` combine Boolean conditions only; Jadpo does not coerce numbers, text, records, or optional values to truthiness.",
+            "Use Boolean expressions on both sides of the logical operator",
+        ),
+        "TYPE_MISMATCH" => (
+            "Value is not compatible with the required type",
+            "Jadpo preserves nominal semantic types and allows only defined widening conversions; it does not implicitly narrow primitives or cross sibling domains.",
+            "Provide a value of the required semantic type or construct it explicitly",
+        ),
+        "TYPE_MISSING_FIELD" => (
+            "Record construction is missing a required field",
+            "A record constructor must provide every required field exactly once so the resulting value has the declaration's complete shape.",
+            "Add the missing required field to the constructor",
+        ),
+        "TYPE_MISSING_VARIANT_FIELD" => (
+            "Enum variant construction is missing a payload field",
+            "A data-carrying variant constructor must provide every required field from that variant's exact payload shape.",
+            "Add the missing field to the variant payload",
+        ),
+        "TYPE_NOT_RECORD" => (
+            "Constructor target is not a record type",
+            "Brace construction creates value, input, output, entity, failure, or variant record shapes; scalar semantic types use parenthesized construction.",
+            "Use a record declaration with braces or a scalar constructor with parentheses",
+        ),
+        "TYPE_NULLABLE_SELECTION" => (
+            "Nullable value must be narrowed before field selection",
+            "A nullable record may be `none`, so selecting a field directly would read from a value whose record shape is not guaranteed to exist.",
+            "Narrow the value with a nullable match before selecting its field",
+        ),
+        "TYPE_ORDERING_OPERAND" => (
+            "Ordering operator has an unsupported operand",
+            "Ordering is defined only for compatible ordered scalar values; records, Booleans, lists, and unrelated semantic domains have no stable ordering.",
+            "Compare compatible ordered scalar values",
+        ),
+        "TYPE_PRIMITIVE_SIGNATURE" => (
+            "Public callable signature uses a primitive type",
+            "Callable parameters and results form semantic application contracts and must use named Jadpo types rather than unconstrained storage primitives.",
+            "Introduce and use a named semantic type for this value",
+        ),
+        "TYPE_SIBLING_MISMATCH" => (
+            "Value belongs to a different semantic type domain",
+            "Types that share the same primitive parent remain nominal siblings. A value from one domain cannot stand in for another without explicit construction.",
+            "Use the required sibling type or construct it from an allowed parent value",
+        ),
+        "TYPE_UNARY_OPERAND" => (
+            "Unary operator has an incompatible operand",
+            "Unary `not` requires Boolean and numeric negation requires a supported numeric value; other operand shapes do not define that operator.",
+            "Use an operand supported by this unary operator",
+        ),
+        "TYPE_UNKNOWN_ENUM_VARIANT" => (
+            "Enum variant does not exist",
+            "The selected variant is not declared by this closed enum, so it cannot be constructed or matched.",
+            "Use one of the enum's declared variants",
+        ),
+        "TYPE_UNKNOWN_FIELD" => (
+            "Record field does not exist",
+            "The record's exact declared shape has no field with this name; Jadpo does not add dynamic fields at runtime.",
+            "Correct the field name or add it to the record declaration",
+        ),
+        "TYPE_UNKNOWN_NAME" => (
+            "Type name does not exist",
+            "The type reference does not resolve to a visible built-in, local declaration, or selected module import.",
+            "Correct, declare, or import the referenced type",
+        ),
+        "TYPE_UNKNOWN_VALUE" => (
+            "Value name does not exist in this scope",
+            "The expression does not resolve to a local binding, parameter, supported literal, or visible value declaration.",
+            "Correct the value name or declare it in the current scope",
+        ),
+        "TYPE_UNKNOWN_VARIANT_FIELD" => (
+            "Enum variant payload field does not exist",
+            "The data-carrying variant's exact payload shape has no field with this name.",
+            "Correct the payload field name or declare it on the variant",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let (category, remainder) = code.split_once('_').unwrap_or(("diagnostic", code));
     let category = match category {
@@ -874,7 +1010,8 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         .or_else(|| semantic_catalogue_copy(code))
         .or_else(|| failure_catalogue_copy(code))
         .or_else(|| route_catalogue_copy(code))
-        .or_else(|| data_catalogue_copy(code));
+        .or_else(|| data_catalogue_copy(code))
+        .or_else(|| core_type_catalogue_copy(code));
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
@@ -1714,6 +1851,48 @@ mod tests {
             .iter()
             .filter(|code| code.starts_with("DATA_"))
         {
+            let definition = catalogue_definition(code);
+            assert!(definition.authored_copy, "{code}");
+            assert!(!definition.reason.contains(code), "{code}");
+            assert_ne!(
+                definition.recommended_title, "Update the source to satisfy this rule",
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_core_type_diagnostic_has_rule_specific_public_copy() {
+        const CORE_TYPE_CODES: &[&str] = &[
+            "TYPE_ARGUMENT_COUNT",
+            "TYPE_ARITHMETIC_OPERAND",
+            "TYPE_ASSIGN_IMMUTABLE",
+            "TYPE_ASSIGN_UNKNOWN",
+            "TYPE_CONSTRUCTOR_ARGUMENT_COUNT",
+            "TYPE_CONSTRUCTOR_INPUT",
+            "TYPE_DUPLICATE_VARIANT_FIELD",
+            "TYPE_FIELD_ON_NON_RECORD",
+            "TYPE_INCOMPARABLE",
+            "TYPE_INVALID_LITERAL",
+            "TYPE_LOGICAL_OPERAND",
+            "TYPE_MISMATCH",
+            "TYPE_MISSING_FIELD",
+            "TYPE_MISSING_VARIANT_FIELD",
+            "TYPE_NOT_RECORD",
+            "TYPE_NULLABLE_SELECTION",
+            "TYPE_ORDERING_OPERAND",
+            "TYPE_PRIMITIVE_SIGNATURE",
+            "TYPE_SIBLING_MISMATCH",
+            "TYPE_UNARY_OPERAND",
+            "TYPE_UNKNOWN_ENUM_VARIANT",
+            "TYPE_UNKNOWN_FIELD",
+            "TYPE_UNKNOWN_NAME",
+            "TYPE_UNKNOWN_VALUE",
+            "TYPE_UNKNOWN_VARIANT_FIELD",
+        ];
+
+        for code in CORE_TYPE_CODES {
+            assert!(CATALOGUE_CODES.contains(code), "{code}");
             let definition = catalogue_definition(code);
             assert!(definition.authored_copy, "{code}");
             assert!(!definition.reason.contains(code), "{code}");

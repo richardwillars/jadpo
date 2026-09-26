@@ -78,3 +78,9 @@ The `DATA_*` family is fully authored. It explains compound storage
 constraints, canonical identity, owning/inverse relationship shape, nominal
 reference compatibility, delete behavior, and cycles without leaking adapter
 implementation details.
+
+The core `TYPE_*` subfamily is fully authored. It covers calls, constructors,
+assignment, operators, record and enum construction, field selection, primitive
+signature boundaries, and nominal compatibility. Match and persistence/query
+type rules remain separately tracked so partial progress cannot masquerade as a
+complete type-checker catalogue.
