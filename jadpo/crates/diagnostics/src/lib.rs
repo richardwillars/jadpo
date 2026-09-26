@@ -983,6 +983,67 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     })
 }
 
+fn match_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "TYPE_MATCH_DUPLICATE_BINDING" => (
+            "Pattern binds the same payload field more than once",
+            "Each enum payload field introduces one local binding in its match arm; repeating a name would create two bindings for the same value.",
+            "Keep one binding for each payload field",
+        ),
+        "TYPE_MATCH_DUPLICATE_PATTERN" => (
+            "Match pattern is already covered",
+            "An earlier arm already handles this literal, enum variant, optional case, or wildcard, so this arm cannot select a new case.",
+            "Remove the duplicate arm or change it to an uncovered case",
+        ),
+        "TYPE_MATCH_NON_EXHAUSTIVE" => (
+            "Match does not cover every possible value",
+            "Closed enums, Boolean values, and nullable cases must be handled exhaustively so execution always selects an arm when the match is reached.",
+            "Add arms for every missing case",
+        ),
+        "TYPE_MATCH_PATTERN_TYPE" => (
+            "Pattern cannot match the subject type",
+            "This pattern belongs to a different enum or primitive value space than the expression being matched.",
+            "Use a pattern from the subject's type",
+        ),
+        "TYPE_MATCH_SOME_NON_OPTIONAL" => (
+            "`some` pattern requires a nullable value",
+            "The `some(name)` pattern narrows a nullable value and binds its present case; a non-nullable subject is already known to be present.",
+            "Match the value directly or make the subject nullable",
+        ),
+        "TYPE_MATCH_UNKNOWN_BINDING" => (
+            "Pattern names an unknown variant payload field",
+            "The selected enum variant has an exact payload shape, and this binding name is not one of its declared fields.",
+            "Use a field declared by the selected variant",
+        ),
+        "TYPE_MATCH_UNKNOWN_VARIANT" => (
+            "Pattern names an unknown enum variant",
+            "The variant is not part of the matched enum's closed set, so no value of the subject type can select this arm.",
+            "Use one of the matched enum's declared variants",
+        ),
+        "TYPE_MATCH_UNREACHABLE_PATTERN" => (
+            "Match arm is unreachable after the wildcard",
+            "A wildcard arm accepts every value not selected earlier, so no later pattern can ever run.",
+            "Move the wildcard to the final arm or remove the unreachable arm",
+        ),
+        "TYPE_MATCH_VARIANT_BINDINGS_REQUIRED" => (
+            "Variant pattern must bind its payload",
+            "This enum variant carries fields. Matching only its name would discard the declared payload instead of introducing typed bindings for the arm.",
+            "Add a binding list for the variant payload fields",
+        ),
+        "TYPE_MATCH_WILDCARD_REQUIRED" => (
+            "Open value space requires a wildcard arm",
+            "This subject is not a closed enum or Boolean space, so individual literal arms cannot prove that every possible value is covered.",
+            "Add a final `_` arm for all remaining values",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let (category, remainder) = code.split_once('_').unwrap_or(("diagnostic", code));
     let category = match category {
@@ -1011,7 +1072,8 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         .or_else(|| failure_catalogue_copy(code))
         .or_else(|| route_catalogue_copy(code))
         .or_else(|| data_catalogue_copy(code))
-        .or_else(|| core_type_catalogue_copy(code));
+        .or_else(|| core_type_catalogue_copy(code))
+        .or_else(|| match_type_catalogue_copy(code));
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
@@ -1892,6 +1954,33 @@ mod tests {
         ];
 
         for code in CORE_TYPE_CODES {
+            assert!(CATALOGUE_CODES.contains(code), "{code}");
+            let definition = catalogue_definition(code);
+            assert!(definition.authored_copy, "{code}");
+            assert!(!definition.reason.contains(code), "{code}");
+            assert_ne!(
+                definition.recommended_title, "Update the source to satisfy this rule",
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_match_type_diagnostic_has_rule_specific_public_copy() {
+        const MATCH_TYPE_CODES: &[&str] = &[
+            "TYPE_MATCH_DUPLICATE_BINDING",
+            "TYPE_MATCH_DUPLICATE_PATTERN",
+            "TYPE_MATCH_NON_EXHAUSTIVE",
+            "TYPE_MATCH_PATTERN_TYPE",
+            "TYPE_MATCH_SOME_NON_OPTIONAL",
+            "TYPE_MATCH_UNKNOWN_BINDING",
+            "TYPE_MATCH_UNKNOWN_VARIANT",
+            "TYPE_MATCH_UNREACHABLE_PATTERN",
+            "TYPE_MATCH_VARIANT_BINDINGS_REQUIRED",
+            "TYPE_MATCH_WILDCARD_REQUIRED",
+        ];
+
+        for code in MATCH_TYPE_CODES {
             assert!(CATALOGUE_CODES.contains(code), "{code}");
             let definition = catalogue_definition(code);
             assert!(definition.authored_copy, "{code}");

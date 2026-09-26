@@ -84,3 +84,8 @@ assignment, operators, record and enum construction, field selection, primitive
 signature boundaries, and nominal compatibility. Match and persistence/query
 type rules remain separately tracked so partial progress cannot masquerade as a
 complete type-checker catalogue.
+
+The `TYPE_MATCH_*` subfamily is fully authored. Its copy distinguishes
+exhaustiveness, unreachable and duplicate arms, subject-pattern compatibility,
+nullable narrowing, closed-enum variants, and payload bindings. Persistence and
+query type rules remain separately tracked.
