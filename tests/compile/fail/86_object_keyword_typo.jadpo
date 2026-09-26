@@ -1,0 +1,5 @@
+type foo = Okbject {
+    foo: Text {
+        max_length 100
+    }
+}

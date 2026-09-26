@@ -427,6 +427,32 @@ impl<'source> Parser<'source> {
             return None;
         }
         let parent = self.parse_type_reference()?;
+        if self.is_object_keyword_typo(&parent) {
+            let misspelled = &parent.path[0];
+            let mut diagnostic = Diagnostic::error("SEM_UNKNOWN_NAME")
+                .with_fact(DiagnosticFact::Name(misspelled.text.clone()))
+                .with_fact(DiagnosticFact::Expected("type".to_owned()))
+                .with_fact(DiagnosticFact::SuggestedName("Object".to_owned()))
+                .with_fact(DiagnosticFact::Usage("type definition".to_owned()))
+                .with_edit(TextEdit {
+                    source: self.source_name.clone(),
+                    start: misspelled.range.start,
+                    end: misspelled.range.end,
+                    replacement: "Object".to_owned(),
+                });
+            diagnostic.recommended_next_step.title =
+                format!("Replace `{}` with `Object`", misspelled.text);
+            self.diagnostic_at(diagnostic, misspelled.range);
+            let body = self.parse_record_body(RecordKind::Value, &name.text)?;
+            return Some(Declaration::Record(RecordDeclaration {
+                kind: RecordKind::Value,
+                name,
+                fields: body.fields,
+                inverses: body.inverses,
+                persistence_constraints: body.persistence_constraints,
+                range: TextRange::new(start, body.end),
+            }));
+        }
         let (constraints, end) = self.parse_constraint_block()?;
 
         Some(Declaration::Type(TypeDeclaration {
@@ -2510,6 +2536,28 @@ impl<'source> Parser<'source> {
             .map(|token| token.kind)
     }
 
+    fn is_object_keyword_typo(&self, parent: &TypeReference) -> bool {
+        if parent.path.len() != 1
+            || !parent.arguments.is_empty()
+            || parent.nullable
+            || !self.at(TokenKind::LeftBrace)
+            || edit_distance(&parent.path[0].text.to_ascii_lowercase(), "object") > 2
+        {
+            return false;
+        }
+
+        let mut body_tokens = self.tokens[self.cursor + 1..]
+            .iter()
+            .filter(|token| !token.kind.is_trivia());
+        match body_tokens.next().map(|token| token.kind) {
+            Some(TokenKind::RightBrace) => true,
+            Some(_) => body_tokens
+                .next()
+                .is_some_and(|token| token.kind == TokenKind::Colon),
+            None => false,
+        }
+    }
+
     fn bump(&mut self) -> Token {
         let token = self.current();
         if token.kind != TokenKind::Eof {
@@ -2619,6 +2667,24 @@ fn http_method_name(method: HttpMethod) -> &'static str {
         HttpMethod::Patch => "PATCH",
         HttpMethod::Delete => "DELETE",
     }
+}
+
+fn edit_distance(left: &str, right: &str) -> usize {
+    let mut previous = (0..=right.chars().count()).collect::<Vec<_>>();
+    for (left_index, left_character) in left.chars().enumerate() {
+        let mut current = vec![left_index + 1];
+        for (right_index, right_character) in right.chars().enumerate() {
+            current.push(
+                (previous[right_index + 1] + 1).min(
+                    (current[right_index] + 1).min(
+                        previous[right_index] + usize::from(left_character != right_character),
+                    ),
+                ),
+            );
+        }
+        previous = current;
+    }
+    previous.last().copied().unwrap_or_default()
 }
 
 fn diagnostic_token_label(token: Token, source: &str) -> String {
@@ -3323,6 +3389,33 @@ value Result {
                 "{expected}: {codes:#?}\n{source}"
             );
         }
+    }
+
+    #[test]
+    fn recovers_an_object_keyword_typo_without_cascading() {
+        let source = r#"type foo = Okbject {
+    foo: Text {
+        max_length 100
+    }
+}"#;
+        let parsed = parse(Path::new("object-keyword-typo.jadpo"), source);
+
+        assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
+        assert_eq!(parsed.diagnostics[0].code, "SEM_UNKNOWN_NAME");
+        assert_eq!(
+            parsed.diagnostics[0].recommended_next_step.title,
+            "Replace `Okbject` with `Object`"
+        );
+        assert_eq!(
+            parsed.diagnostics[0].recommended_next_step.edits[0].replacement,
+            "Object"
+        );
+        assert_eq!(parsed.file.declarations.len(), 1);
+        let Declaration::Record(declaration) = &parsed.file.declarations[0] else {
+            panic!("object-shaped recovery should preserve the record body");
+        };
+        assert_eq!(declaration.fields.len(), 1);
+        assert_eq!(declaration.fields[0].name.text, "foo");
     }
 
     #[test]
