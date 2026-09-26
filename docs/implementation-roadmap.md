@@ -964,7 +964,8 @@ conduct the five structured first-user reviews, and record the freeze decision.
 
 **Status:** unblocked syntax, failure-flow, route, artifact, and target work is
 implemented; the explicitly unresolved operational mapping, handler-arm,
-optional-persistence, and protected policy-authority choices remain open.
+compound-persistence spelling, and protected policy-authority choices remain
+open.
 
 **Why this phase exists:** first-user review of the implemented P7 and P10
 surfaces found two related abstraction leaks before P11. The failure model
