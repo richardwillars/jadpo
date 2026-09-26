@@ -153,14 +153,21 @@ item should update the charter, affected specifications, and examples.
   problem types.
 - Defects and impossible runtime states are not catchable failures. They are
   contained and reported at the runtime boundary.
-- `attempt` is the single explicit mechanism for unwrapping, handling, mapping,
-  or visibly propagating recoverable problems. Exhaustiveness is checked after
-  declared propagation.
-- Every fallible expression must be acknowledged with `attempt`. After local
-  handling and mapping, the enclosing callable's authored `fails` clause must
-  exactly equal its reachable unhandled problem set; a missing or stale extra
-  entry is a compile error. The compiler may explain the inferred difference,
-  but it never silently adds to or repairs the source contract.
+- A fallible expression has exactly two acknowledgement forms. `attempt`
+  unwraps the successful value and visibly propagates every failure. An
+  exhaustive `match` over the call's outcome handles, maps, recovers from, or
+  explicitly propagates each success and failure case. A bare fallible call is
+  invalid, and ordinary source never stores an exposed `Result` wrapper.
+- Outcome matches use `success(value)` and exact `failure FailureName` arms.
+  A failure arm may produce a compatible replacement success value, `reject`
+  another declared failure, or `propagate` the matched failure. Failure
+  wildcards are invalid, and adding a possible failure to the callee makes an
+  existing outcome match non-exhaustive until the author decides its meaning.
+- After outcome matching and declared propagation, the enclosing callable's
+  authored `fails` clause must exactly equal its reachable unhandled problem
+  set. A missing or stale extra entry is a compile error. The compiler derives
+  and explains the exact set and may offer the corresponding guided edit, but
+  never silently changes the source contract or public failure surface.
 - Every application domain failure derives from exactly one standard failure
   kind; the kind supplies default transport and runtime behaviour.
 - An application failure declares its standard kind with an explicit `kind`
@@ -187,9 +194,22 @@ item should update the charter, affected specifications, and examples.
   user data, permissions/capabilities, and authentication strength rather than
   provider SDKs, tokens, or strategy names. Multiple configured strategies must
   resolve deterministically and must not merge privileges implicitly.
-- A route is the HTTP boundary, an action is effectful domain behaviour, and a
-  function is computation. The three remain distinct even when behaviour is
-  colocated.
+- A route is the HTTP boundary, an action is a runtime-managed application
+  operation that may perform effects, and a function is pure, non-suspending
+  computation from its arguments. The three remain distinct even when
+  behaviour is colocated. A function may itself be fallible without becoming
+  an action, but it cannot read persistence, call services, emit events, read
+  ambient runtime state, or invoke an action.
+- Authored Jadpo has no `async`, `await`, promise, or detached-call surface.
+  Every ordinary action invocation completes before its caller continues;
+  generated targets may suspend internally. Actions may call functions and
+  actions, while functions may call only functions. Changing an adapter or
+  generated implementation between synchronous and asynchronous execution is
+  not a source-contract change.
+- Ordinary action execution is sequential. Parallel or background work must
+  eventually use an explicit structured-concurrency, event, or durable-job
+  boundary with defined cancellation, failure, retry, idempotency, transaction,
+  and lifetime semantics; unstructured fire-and-forget execution is invalid.
 - A small, one-off endpoint keeps an inline `action` inside its route. A named
   action is extracted only for reuse, a stable domain command, or a boundary
   that deserves independent testing, policy, or transaction reasoning.
@@ -216,6 +236,9 @@ item should update the charter, affected specifications, and examples.
   success type: `action name(parameters) fails A, B -> Result`. This ordering
   applies consistently to actions and fallible functions; failure-free
   callables remain `name(parameters) -> Result`.
+- Routes remain action boundaries. A small route uses an inline action, and
+  `run:` invokes a named action only; it does not invoke a function directly.
+  Pure reusable computation remains available from either action form.
 - `:` associates a named member with a type, value, or setting. Constraint and
   persistence settings therefore use `min_length: 6`, `identity: id`, and
   corresponding colon forms. `=` is reserved for defining a named type or
@@ -283,6 +306,13 @@ item should update the charter, affected specifications, and examples.
   hover and an expandable details view. Quick Fix lists the recommended verified
   edit first and cleanly separates other valid choices; multi-file edits receive
   a diff preview.
+- Hovering a function or action declaration, reference, or call shows its
+  complete typed outcome contract: callable kind, parameters, successful result
+  type, every declared application failure and built-in operational problem,
+  and whether each failure is propagated or handled at that call when known.
+  Action hover also explains that the operation may suspend internally but
+  completes before the caller continues. IDE presentation must not expose a
+  generated `Promise` or `Result` wrapper as authored source semantics.
 - Parser cascades and dependent consequences are grouped beneath one root cause.
   Pipeline summaries such as "type checking failed" are report status, not
   additional user problems.
@@ -350,10 +380,6 @@ These are recommended but must survive the golden applications:
   derivation merely as part of adding enum support; named functions and
   exhaustive `match` remain the initial behaviour model;
 - `for item in items` as the initial iteration form;
-- pure functions separated from effectful actions;
-- `fails` for the exhaustive recoverable-problem surface and `reject` for
-  producing application failures;
-- the exact arm and replacement-value grammar inside `attempt`;
 - declarative `create`, `query`, `update`, and `delete` syntax;
 - the exact field syntax for typed query, header, and body bindings inside the
   accepted route boundary;
@@ -447,14 +473,14 @@ These are recommended but must survive the golden applications:
 - lambda/closure support;
 - necessity and limits of `while` and recursion;
 - resource and termination bounds;
-- function effects and whether functions may query persistence;
 - query cardinality and exact not-found syntax;
 - pagination, aggregation, joins, and complex-query capabilities;
 - isolation selection, savepoints, deliberate boundary splitting, and the
   interaction between database transactions and external effects;
 - relationship, index, uniqueness, and lifecycle syntax;
 - partial-update mechanics;
-- exact cause-wrapping and `attempt` arm/recovery grammar;
+- exact policy for exposing declared failure context through an optional
+  `failure FailureName(problem)` outcome-pattern binding;
 - final built-in operational-problem boundary table and non-HTTP adapter
   mappings;
 - whether application authors can explicitly `panic`;

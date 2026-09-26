@@ -149,10 +149,11 @@ which semantic risks remain.
 | P10R  | Assurance and validation reset            | deferred    | Candidate packages exist; outside review and five first-user sessions are deferred until feature-complete implementation, not passed                                                    |
 | P10.5 | Pre-P11 language completion               | complete    | Exploratory under P10R deferral; patches, bounded relationships, migration review, index acceptance, bounded modules/imports, and immutable-value/scoped-local-rebinding semantics are implemented; advanced extensions remain deferred |
 | DX0.5 | Checked local development loop             | in progress | JSON plus source-rendered diagnostics, coalesced atomic watch, compiler-owned HTTP health, structured runtime faults, and initial Bun restart with invalid-edit continuity implemented; startup rollback and structured shutdown remain |
-| P10.6 | Problems, routes, and type/persistence boundary | in progress | All unblocked work is executable: explicit failure kinds and flat context, exact callable failures with `attempt`, typed path bindings, `auth: none`, local/named route behaviour, unified authored `type` declarations, separate `persist`, pre-arrow `fails`, nested objects/lists, and the complete accepted prelude. Operational boundary mapping, handler arms, compound persistence spelling, and policy authority remain unresolved design choices. |
+| P10.6 | Problems, routes, and type/persistence boundary | in progress | All unblocked work is executable: explicit failure kinds and flat context, exact callable failures with `attempt`, typed path bindings, `auth: none`, local/named route behaviour, unified authored `type` declarations, separate `persist`, pre-arrow `fails`, nested objects/lists, and the complete accepted prelude. Operational boundary mapping, compound persistence spelling, and policy authority remain unresolved design choices; local outcome handling is now specified by P10.7. |
+| P10.7 | Callable execution and outcome matching       | not started | Accepted source model: pure non-suspending functions, runtime-managed completion-guaranteed actions, propagation with `attempt`, exhaustive local handling with outcome `match`, exact inferred `fails`, action-only routes, internal target suspension, and full IDE outcome hover. Canonical fixtures precede implementation. |
 | DX1   | Compiler-backed language service            | complete    | Standard `jadpo lsp`, live unsaved diagnostics, symbols, cross-file definitions/references, hover, contextual completion, signature help, semantic tokens, rename, formatting, explicit generated-artifact commands, and a persistent VS Code client pass protocol tests |
 | DX2   | Guided diagnostics and agent context        | internal implementation complete; external trials pending | All 298 compiler-emitted public codes have central authored copy, exhaustive agent, terminal, LSP, and VS Code projection tests, and explicit conformance evidence. One hundred and ten compile pairs plus focused Rust scenarios cover every language diagnostic; operational and I/O faults have explicit emitter-contract tests. The permanent catalogue-and-evidence gate is active and green. Fresh-agent and first-user repair-cycle trials remain external evidence. |
-| P11   | Authentication, policy, and golden todo   | not started | May proceed as exploratory implementation after P10.6 and DX0.5; Milestone C and assurance claims still require the deferred P10R evidence                                               |
+| P11   | Authentication, policy, and golden todo   | not started | May proceed as exploratory implementation after P10.6, P10.7, and DX0.5; Milestone C and assurance claims still require the deferred P10R evidence                                        |
 | P12   | Order/payment application and TS baseline | not started | Reference implementations may proceed; external sessions and protocol freeze precede final comparative trials and the continuation decision                                             |
 
 The bounded module core now parses explicit logical module headers and selective
@@ -963,9 +964,11 @@ conduct the five structured first-user reviews, and record the freeze decision.
 ### P10.6 — Recoverable problems, routes, and entity boundary revision
 
 **Status:** unblocked syntax, failure-flow, route, artifact, and target work is
-implemented; the explicitly unresolved operational mapping, handler-arm,
+implemented; the explicitly unresolved operational mapping,
 compound-persistence spelling, and protected policy-authority choices remain
-open.
+open. The former handler-arm question is resolved as outcome matching and moves
+to P10.7 so the completed `attempt` propagation slice is not rewritten without
+its own fixtures and exit gate.
 
 **Why this phase exists:** first-user review of the implemented P7 and P10
 surfaces found two related abstraction leaks before P11. The failure model
@@ -1038,22 +1041,22 @@ missing: CustomerNotFound {
 - Apply this rule to functions, actions, jobs, handlers, and generated boundary
   operations. Purity remains separate: a function may handle a failure from a
   fallible pure call but still may not perform persistence or other effects.
-- Add one explicit `attempt` mechanism. Without a handler block it unwraps the
-  success value and visibly propagates the recoverable problem set. With a
-  handler block it handles or translates named problems; any residual problem
-  must still appear in the enclosing `fails` set.
-- Require `attempt` at every fallible expression, even when the only decision
-  is propagation. Require the authored `fails` clause to equal the exact
-  reachable unhandled set: missing and stale extra entries both fail
-  compilation, and compiler inference is diagnostic help rather than an
-  implicit source edit.
+- Use exactly two explicit acknowledgement forms. `attempt` unwraps the success
+  value and visibly propagates the complete recoverable problem set. An
+  exhaustive outcome `match` handles, maps, recovers from, or explicitly
+  propagates each success and failure case; it replaces the earlier candidate
+  `attempt` handler block.
+- Require `attempt` or outcome `match` at every fallible expression. Require the
+  authored `fails` clause to equal the exact reachable unhandled set: missing
+  and stale extra entries both fail compilation, and compiler inference is
+  diagnostic help rather than an implicit source edit.
 - Make handling exhaustive after accounting for declared propagation. No
   failure or operational problem may disappear through a wildcard, implicit
   catch, or unchecked target exception.
-- Reuse the language's existing exhaustive-match analysis where possible, but
-  do not require authored `Result<T, E>` plumbing through ordinary source.
-- Finalize how an `attempt` arm supplies a replacement success value. A
-  `recover` spelling is a candidate, not yet accepted grammar.
+- Reuse the language's existing exhaustive-match analysis and do not expose
+  authored `Result<T, E>` plumbing through ordinary source. Exact success and
+  failure arms supply ordinary compatible expressions, `reject`, or explicit
+  `propagate`; no separate `recover` keyword is required.
 
 The intended propagation shape is:
 
@@ -1213,8 +1216,9 @@ action register_customer(input: RegisterCustomer)
 #### Route, action, and locality decisions
 
 - Preserve `route`, `action`, and `function` as distinct semantic declarations:
-  a route is an HTTP boundary, an action is reusable effectful domain
-  behaviour, and a function is reusable pure computation.
+  a route is an HTTP boundary, an action is a reusable runtime-managed operation
+  that may perform effects, and a function is reusable pure, non-suspending
+  computation.
 - Do not require every route to delegate to a one-to-one named action. The
   canonical starting point for small endpoint-specific behaviour is a local
   inline action inside the route.
@@ -1310,8 +1314,8 @@ route POST /orders {
   `kind`, flat context construction, and exact context checking;
 - direct, transitive, handled, mapped, and propagated operational-problem
   fixtures across functions and actions;
-- exhaustive `attempt` fixtures, including fallback operations that introduce
-  new problems;
+- exhaustive `attempt` propagation fixtures; local recovery, mapping, and
+  fallback operations move to the P10.7 outcome-match evidence;
 - runtime cases for unavailable reads, definitely-not-executed writes, unknown
   write outcomes, safe idempotent retry, and unsafe fallback rejection;
 - route/OpenAPI/audit agreement for named failures and generic operational
@@ -1331,6 +1335,213 @@ propagated; no raw adapter exception enters authored source; defects remain
 contained; non-persistent entities work without storage; persistent entities
 retain the existing database guarantees; and entity-local policy composes with
 the application policy and approval model.
+
+### P10.7 — Callable execution, outcome matching, and IDE outcomes
+
+**Status:** accepted design; implementation not started.
+
+**Why this phase exists:** exposing target-level `async` and `await` would create
+a second, contagious effect system beside the existing function/action boundary
+and make an adapter implementation change alter authored application source.
+At the same time, `attempt` propagation alone does not supply the accepted local
+handling and recovery surface. This phase completes the callable model before
+P11 adds services, jobs, authentication, and more operational failures.
+
+#### Accepted callable and execution model
+
+- A `function` is pure, non-suspending computation from its arguments. It may
+  call functions and may produce declared failures, but it cannot access
+  persistence, services, events, secrets, ambient time or randomness, or invoke
+  an action.
+- An `action` is a runtime-managed application operation that may perform
+  effects and may suspend internally. It may call functions or actions. An
+  action need not perform an effect merely to qualify as a route or operation
+  boundary.
+- Authored Jadpo has no `async`, `await`, promise, or detached-call type. Every
+  ordinary action call completes before the next statement executes. The
+  compiler derives target-level suspension through the action call graph and
+  emits any required TypeScript/Bun `async` and `await` internally.
+- Ordinary calls are sequential. Parallelism, cancellation, partial completion,
+  and work that outlives its caller require a later explicit structured-
+  concurrency, event, or durable-job decision. Fire-and-forget calls are not an
+  escape hatch.
+- Routes remain action boundaries. One-off behaviour is an inline `action:`;
+  `run:` invokes a named action only. A route does not invoke a function
+  directly, though either action form may call pure functions.
+
+The canonical static route remains concise:
+
+```text
+route GET /health {
+    auth: none
+    output: Health
+
+    action: {
+        return Health {
+            status: HealthStatus.ok
+        }
+    }
+}
+```
+
+The canonical extracted operation remains:
+
+```text
+action health()
+    fails Unavailable
+    -> Health
+{
+    var database = attempt check_database()
+    return build_health(database)
+}
+
+route GET /health {
+    auth: none
+    output: Health
+    run: health()
+}
+```
+
+#### Accepted failure inference and acknowledgement model
+
+- The compiler calculates each callable's complete escaping failure set as a
+  fixed point over direct `reject` sites, fallible constructors and persistence
+  operations, attempted callees, explicitly propagated outcome arms, newly
+  rejected mappings, and compiler-known recoverable operational problems.
+- That inferred set must exactly equal the authored `fails` list. Missing,
+  duplicate, and stale entries are compile errors. A diagnostic shows the
+  concrete callee or operation that introduced each failure and offers an exact
+  guided declaration edit, but never silently changes the callable or its public
+  contract.
+- A fallible expression has exactly two legal acknowledgement forms. `attempt`
+  returns its successful value and propagates every failure. `match` handles
+  the complete success/failure outcome locally. A bare or ignored fallible call
+  is invalid, and no ordinary source value has an exposed `Result` type.
+- Outcome matches are exhaustive and have no failure wildcard. They contain one
+  `success(value)` arm and one exact `failure FailureName` arm for every declared
+  application failure or built-in operational problem. When the callee's
+  failure surface changes, the match becomes non-exhaustive until the author
+  makes a new decision.
+- A failure arm may return a compatible replacement success value, reject a new
+  declared failure, or use `propagate` to preserve the matched failure. Mapping
+  retains the original occurrence as an internal semantic cause. Defects and
+  impossible runtime states never enter outcome matching.
+
+Canonical propagation is:
+
+```text
+action customer_summary(id: Customer.id)
+    fails CustomerNotFound, Unavailable
+    -> CustomerSummary
+{
+    var customer = attempt load_customer(id)
+    return build_customer_summary(customer)
+}
+```
+
+Canonical local handling is:
+
+```text
+var customer = match load_customer(id) {
+    success(customer) => customer
+    failure CustomerNotFound => anonymous_customer(id)
+    failure Unavailable => propagate
+}
+```
+
+Mapping a failure remains explicit:
+
+```text
+var customer = match load_customer(id) {
+    success(customer) => customer
+    failure CustomerNotFound => reject InviteCodeRejected {
+        invite_code: input.invite_code
+    }
+    failure Unavailable => propagate
+}
+```
+
+The optional context-binding spelling
+`failure FailureName(problem) => ...` remains a focused follow-up decision. Its
+absence does not block handling, mapping, recovery, propagation, or the initial
+implementation of exhaustive outcome matching.
+
+#### IDE and inspection contract
+
+Hovering a function or action declaration, reference, or call must show the
+whole source-level outcome contract rather than only the successful signature.
+The compact view contains:
+
+- callable kind and parameters;
+- successful result type;
+- every declared application failure, with its standard kind and summary;
+- every built-in operational problem;
+- for a call site, whether each failure is propagated, handled, or mapped when
+  that fact is statically known; and
+- for an action, that it may suspend internally and always completes before the
+  caller continues.
+
+For example:
+
+```text
+action load_customer(id: Customer.id)
+
+Success
+  Customer
+
+Failures
+  CustomerNotFound · NotFound
+  Unavailable       · operational
+
+Execution
+  May suspend internally; completes before the caller continues.
+```
+
+The LSP obtains this view from the same semantic callable/failure graph used by
+the compiler, route inventory, audit, OpenAPI, and agent JSON. It must not show
+generated `Promise`, exception, or `Result` wrappers as Jadpo types. An
+infallible callable explicitly shows `Failures: none`; an inline action exposes
+the route output type as its success outcome and its own exact `fails` surface.
+Signature help and completion use the same contract, and navigation from a
+failure outcome resolves to its application declaration or standard catalogue
+entry.
+
+#### Required implementation evidence
+
+1. Add positive and negative compile fixtures for the complete call matrix:
+   function-to-function, action-to-function, action-to-action, and rejected
+   function-to-action calls, including direct and transitive cases.
+2. Add fixtures for infallible and fallible functions and actions; exact direct
+   and transitive `fails`; bare-call rejection; `attempt` propagation; exhaustive
+   outcome recovery, mapping, and propagation; and missing, duplicate, stale,
+   wildcard, and newly introduced outcome arms.
+3. Add route fixtures proving that inline and named actions remain the only
+   behaviour forms and that pure helpers remain callable from both.
+4. Add internal suspension analysis to the semantic graph, propagate it to a
+   fixed point through action calls, and generate target-level asynchronous code
+   without changing authored signatures.
+5. Add SQLite and live-PostgreSQL runtime cases for nested suspending actions,
+   transaction-context preservation, mapped and propagated failures across
+   suspension, deterministic sequencing, semantic traces, and absence of
+   unhandled target promises or rejections.
+6. Add central human/agent/IDE diagnostics for bare fallible calls, incomplete
+   outcome matches, function-to-action calls, invalid authored `async`/`await`,
+   and affected-caller guidance when promoting a function to an action.
+7. Add LSP and VS Code golden tests for declaration, reference, and call hover;
+   action/function signatures; success plus complete failure outcomes; handled,
+   mapped, and propagated call-site state; inline actions; navigation; and
+   Unicode ranges.
+8. Synchronise the formatter, semantic tokens, examples, grammar, syntax,
+   semantic model, compiler/runtime documentation, generated references, and
+   extension package only after the corresponding behaviour is executable.
+
+**Exit gate:** authored source contains no asynchronous target mechanism;
+functions remain pure and cannot invoke actions; every action call completes or
+produces a declared failure before its caller continues; every fallible
+expression is acknowledged by `attempt` or exhaustive outcome `match`; inferred
+and authored `fails` sets agree exactly; generated asynchronous execution
+preserves transactions and semantic traces; and every IDE hover presents the
+complete successful and failure outcome contract from the compiler graph.
 
 ### P11 — Authentication, policy, and golden todo
 
@@ -2616,6 +2827,29 @@ A phase may move backwards if a golden application invalidates its assumptions.
 - Added DX2 and its catalogue, IDE, repair, disclosure, compatibility, and
   repair-cycle exit evidence before the P12 tooling freeze.
 
+### 2026-09-26 — Callable execution and outcome matching accepted
+
+- Kept authored target scheduling out of the language: functions are pure and
+  non-suspending, actions are runtime-managed operations that may suspend, and
+  ordinary action calls always complete before their caller continues without
+  authored `async`, `await`, promises, or detached calls.
+- Kept routes as action boundaries. One-off behaviour remains an inline action,
+  named `run:` behaviour remains action-only, and pure functions remain reusable
+  from either action form.
+- Split fallible-expression acknowledgement into two canonical forms:
+  `attempt` propagates every failure, while exhaustive outcome `match` handles,
+  maps, recovers from, or explicitly propagates each success and failure case.
+- Required the compiler-derived escaping failure set to equal the authored
+  `fails` list exactly. Bare fallible calls, missing or stale declarations,
+  failure wildcards, and non-exhaustive outcome matches are invalid.
+- Required IDE hover over a function or action declaration, reference, or call
+  to show its successful result and complete failure surface, plus statically
+  known call-site handling and action completion semantics, without exposing
+  generated `Promise` or `Result` wrappers.
+- Added P10.7 as the fixture-first implementation phase before P11. Structured
+  parallelism, cancellation, and durable background-work syntax remain separate
+  decisions rather than implicit extensions of ordinary calls.
+
 ### 2026-09-26 — Problem, route, and entity boundary revision accepted
 
 - Accepted an explicit `kind` member for reusable application failure
@@ -2626,8 +2860,9 @@ A phase may move backwards if a golden application invalidates its assumptions.
 - Expanded the planned callable contract from domain-only rejection to an
   exhaustive set of recoverable application and operational problems: each
   problem must be handled, mapped, or propagated in `fails`.
-- Selected `attempt` as the single explicit propagation/handling mechanism;
-  exact replacement-value syntax remains open.
+- Selected `attempt` for explicit propagation. P10.7 subsequently assigned
+  local handling, mapping, recovery, and selective propagation to exhaustive
+  outcome `match`, avoiding a second handler grammar inside `attempt`.
 - Selected source-agnostic operational categories rather than storage/provider-
   qualified names, with provenance retained in compiler/runtime metadata.
   `Unavailable`, `TimedOut`, `RateLimited`, and `OutcomeUnknown` are the initial
@@ -2725,5 +2960,6 @@ transforms continue to fail closed. The language-learning slice, initial DX1
 language service, P10.6 failure/route contract, DX2 diagnostic presentation,
 and unified authored type/persistence model are complete. The next technical
 work returns to DX0.5 startup-failure restoration, portable structured
-shutdown, and the remaining edit-recovery protocol cases before P11
-application authoring.
+shutdown, and the remaining edit-recovery protocol cases, then implements the
+fixture-first P10.7 callable execution, exhaustive outcome matching, internal
+suspension, and IDE outcome-hover contract before P11 application authoring.
