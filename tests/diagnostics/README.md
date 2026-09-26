@@ -69,3 +69,7 @@ The `EFFECT_*` and `FAIL_*` families are fully authored and mostly backed by
 existing compiler fixtures. Their copy explains the function/action purity
 boundary, exact failure-set propagation, failure-kind mappings, and flat
 public/internal context rules.
+
+The `ROUTE_*` family is fully authored. It covers authentication ownership,
+exactly one behavior form, consistent item separators, duplicate items, and the
+one-to-one typed relationship between URL placeholders and `path:` fields.

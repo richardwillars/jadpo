@@ -685,6 +685,72 @@ fn failure_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     })
 }
 
+fn route_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "ROUTE_AUTH_VALUE_INVALID" => (
+            "Route authentication value `{found}` is not valid",
+            "Routes require authentication by default. The only explicit opt-out is the exact form `auth: none`, so the compiler cannot infer whether `{found}` was meant to retain authentication or disable it.",
+            "Choose the authentication boundary for `{route}`",
+        ),
+        "ROUTE_BEHAVIOUR_CONFLICT" => (
+            "Route declares two behavior forms",
+            "A route must select exactly one local inline `action:` or one named `run:` invocation; keeping both would create two competing handlers.",
+            "Keep either `run:` or the inline `action:`",
+        ),
+        "ROUTE_BEHAVIOUR_REQUIRED" => (
+            "Route has no behavior",
+            "Every route needs exactly one executable behavior, supplied either by a named `run:` action invocation or an inline `action:` block.",
+            "Add `run:` or an inline `action:`",
+        ),
+        "ROUTE_ITEM_COLON_REQUIRED" => (
+            "Route item requires a `:` separator",
+            "Every route item uses the explicit `name: value` form, including block-valued `path:` and `action:` items.",
+            "Insert `:` after the route item name",
+        ),
+        "ROUTE_ITEM_DUPLICATE" => (
+            "Route item is declared more than once",
+            "A route has one authentication setting, path schema, input, output, and behavior selection. Repeating an item would silently replace part of its public contract.",
+            "Keep one occurrence of this route item",
+        ),
+        "ROUTE_PATH_BINDING_DUPLICATE" => (
+            "Route path binding name is repeated",
+            "Each typed field in `path:` must bind one distinct placeholder; duplicate names cannot identify separate decoded path segments.",
+            "Rename or remove the repeated path field",
+        ),
+        "ROUTE_PATH_BINDING_EXTRA" => (
+            "Typed path binding has no placeholder",
+            "Every typed field in `path:` must correspond to one same-named `{placeholder}` in the route path so callers actually supply its value.",
+            "Remove the extra path field or add its matching placeholder",
+        ),
+        "ROUTE_PATH_BINDING_MISSING" => (
+            "Route placeholder has no typed binding",
+            "Every `{placeholder}` in a route path needs one same-named typed field in `path:` so the runtime can decode and validate it before the handler runs.",
+            "Add a typed path field for the route placeholder",
+        ),
+        "ROUTE_PATH_FIELD_MODIFIER_INVALID" => (
+            "Route path field has an unsupported modifier",
+            "Path fields are required transport inputs and contain only a semantic type. Nullable, optional, constraint, reference, and persistence modifiers would give URL decoding storage semantics it does not have.",
+            "Remove the modifier and keep only the required path-field type",
+        ),
+        "ROUTE_PATH_PLACEHOLDER_DUPLICATE" => (
+            "Route path placeholder is repeated",
+            "A placeholder name may occur once in a route path; repeating it would map one typed binding to multiple URL segments ambiguously.",
+            "Give each route placeholder a distinct name",
+        ),
+        "ROUTE_PATH_PLACEHOLDER_INVALID" => (
+            "Route path contains an invalid placeholder",
+            "A placeholder uses `{name}` with a non-empty Jadpo name beginning with a letter or underscore and ending with a closing brace.",
+            "Correct the placeholder to the `{name}` form",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let (category, remainder) = code.split_once('_').unwrap_or(("diagnostic", code));
     let category = match category {
@@ -710,7 +776,8 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let rule_id = format!("{category}.{}", remainder.to_ascii_lowercase());
     let authored = syntax_catalogue_copy(code)
         .or_else(|| semantic_catalogue_copy(code))
-        .or_else(|| failure_catalogue_copy(code));
+        .or_else(|| failure_catalogue_copy(code))
+        .or_else(|| route_catalogue_copy(code));
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
@@ -1517,6 +1584,22 @@ mod tests {
         for code in CATALOGUE_CODES
             .iter()
             .filter(|code| code.starts_with("EFFECT_") || code.starts_with("FAIL_"))
+        {
+            let definition = catalogue_definition(code);
+            assert!(definition.authored_copy, "{code}");
+            assert!(!definition.reason.contains(code), "{code}");
+            assert_ne!(
+                definition.recommended_title, "Update the source to satisfy this rule",
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_route_diagnostic_has_rule_specific_public_copy() {
+        for code in CATALOGUE_CODES
+            .iter()
+            .filter(|code| code.starts_with("ROUTE_"))
         {
             let definition = catalogue_definition(code);
             assert!(definition.authored_copy, "{code}");
