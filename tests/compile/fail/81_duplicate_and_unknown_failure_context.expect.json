@@ -5,20 +5,28 @@
     {
       "code": "FAIL_DUPLICATE_CONTEXT_FIELD",
       "primary_match": "retryable",
-      "summary": "Failure context field is supplied more than once",
-      "reason_includes": "assigning a field twice",
-      "recommended_title": "Keep one value for the repeated context field",
+      "summary": "`retryable` is supplied more than once for `InvalidRegistration`",
+      "reason_includes": "can contain one `retryable` value",
+      "recommended_title": "Keep one `retryable: ...` entry in this rejection",
       "repair_kind": "guided_choice",
-      "decision_owner": "agent"
+      "decision_owner": "agent",
+      "diagnostic_context": {
+        "failure": "InvalidRegistration",
+        "field": "retryable"
+      }
     },
     {
       "code": "FAIL_UNKNOWN_CONTEXT_FIELD",
       "primary_match": "debug",
-      "summary": "Rejected failure contains an unknown context field",
-      "reason_includes": "extra fields have no disclosure classification",
-      "recommended_title": "Remove the extra field or declare it on the failure",
+      "summary": "`InvalidRegistration` has no `debug` field",
+      "reason_includes": "not declared in the public or internal fields",
+      "recommended_title": "Remove `debug`, or declare it on `InvalidRegistration`",
       "repair_kind": "guided_choice",
-      "decision_owner": "agent"
+      "decision_owner": "agent",
+      "diagnostic_context": {
+        "failure": "InvalidRegistration",
+        "field": "debug"
+      }
     }
   ]
 }

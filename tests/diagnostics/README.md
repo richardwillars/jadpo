@@ -97,6 +97,17 @@ signature boundaries, and nominal compatibility. Match and persistence/query
 type rules remain separately tracked so partial progress cannot masquerade as a
 complete type-checker catalogue.
 
+Core type and failure emitters now supply typed facts rather than only selecting
+a rule. Type mismatches name the received and required types; constructors name
+their target, input type, and argument counts; record errors name the record and
+field; unknown names offer a compatible nearest-name suggestion; constrained
+literals name the failed constraint; and primitive signatures say whether the
+problem is a parameter or return value. Failure diagnostics name the function
+or action, escaping failure, context field and disclosure, predefined category,
+or duplicate public code involved. Compile expectations assert this exact
+context and wording. The fixture verifier rejects unknown expectation keys so a
+misspelled or obsolete assertion can no longer pass silently.
+
 The `TYPE_MATCH_*` subfamily is fully authored. Its copy distinguishes
 exhaustiveness, unreachable and duplicate arms, subject-pattern compatibility,
 nullable narrowing, closed-enum variants, and payload bindings. Persistence and

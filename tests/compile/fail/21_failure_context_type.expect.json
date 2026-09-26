@@ -5,9 +5,13 @@
     {
       "code": "TYPE_SIBLING_MISMATCH",
       "primary_match": "supplier.email",
-      "expected_type": "Customer.email",
-      "received_type": "Supplier.email",
-      "context": "CustomerRejected.email"
+      "summary": "`Supplier.email` can't be used where `Customer.email` is required",
+      "reason_includes": "separate named types",
+      "recommended_title": "Use a `Customer.email` value here",
+      "diagnostic_context": {
+        "expected": "Customer.email",
+        "received": "Supplier.email"
+      }
     }
   ]
 }

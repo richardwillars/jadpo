@@ -5,8 +5,13 @@
     {
       "code": "TYPE_INVALID_LITERAL",
       "primary_match": "Email(\"not-an-email\")",
-      "target_type": "Email"
+      "summary": "This value doesn't meet `Email`'s rules",
+      "reason_includes": "`Email`'s `format` constraint",
+      "recommended_title": "Change the value so it satisfies `format`",
+      "diagnostic_context": {
+        "subject": "Email",
+        "constraint": "format"
+      }
     }
   ]
 }
-

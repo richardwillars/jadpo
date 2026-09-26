@@ -5,9 +5,14 @@
     {
       "code": "FAIL_MISSING_CONTEXT_FIELD",
       "primary_match": "reject Missing",
-      "failure": "Missing",
-      "scope": "internal",
-      "field": "lookup"
+      "summary": "`Missing` is missing the internal `lookup` field",
+      "reason_includes": "`lookup` is required whenever `Missing` is rejected",
+      "recommended_title": "Add `lookup: ...` to this `Missing` rejection",
+      "diagnostic_context": {
+        "failure": "Missing",
+        "field": "lookup",
+        "scope": "internal"
+      }
     }
   ]
 }

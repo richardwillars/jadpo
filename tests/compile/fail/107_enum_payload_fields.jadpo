@@ -1,0 +1,13 @@
+type Name = Text {}
+
+enum Result {
+    Ok {
+        value: Name
+    }
+}
+
+function invalid_payload(name: Name) -> Result {
+    return Result.Ok {
+        valu: name
+    }
+}

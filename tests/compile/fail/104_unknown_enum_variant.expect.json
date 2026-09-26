@@ -1,0 +1,18 @@
+{
+  "fixture_version": 1,
+  "result": "fail",
+  "diagnostics": [
+    {
+      "code": "TYPE_UNKNOWN_ENUM_VARIANT",
+      "primary_match": "Activ",
+      "summary": "`Status` has no `Activ` variant",
+      "reason_includes": "Did you mean `Active`?",
+      "recommended_title": "Use `Status.Active`",
+      "diagnostic_context": {
+        "subject": "Status",
+        "name": "Activ",
+        "suggestedName": "Active"
+      }
+    }
+  ]
+}

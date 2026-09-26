@@ -121,8 +121,12 @@ impl FailureChecker {
                             .collect::<BTreeSet<_>>();
                         for field in &declaration.internal_fields {
                             if public_names.contains(field.name.text.as_str()) {
-                                self.push_code(
-                                    "FAIL_CONTEXT_FIELD_OVERLAP",
+                                self.push_diagnostic(
+                                    Diagnostic::error("FAIL_CONTEXT_FIELD_OVERLAP")
+                                        .with_fact(DiagnosticFact::Failure(
+                                            declaration.name.text.clone(),
+                                        ))
+                                        .with_fact(DiagnosticFact::Field(field.name.text.clone())),
                                     &file.source_name,
                                     field.name.range,
                                 );
@@ -134,9 +138,14 @@ impl FailureChecker {
                             .map(|literal| unquote(&literal.text))
                             .unwrap_or_default();
                         if let Some(code_literal) = &declaration.code {
-                            if let Some((_first_name, first_source, first_range)) = codes.get(&code)
+                            if let Some((first_name, first_source, first_range)) = codes.get(&code)
                             {
                                 let diagnostic = Diagnostic::error("FAIL_DUPLICATE_CODE")
+                                    .with_fact(DiagnosticFact::Failure(
+                                        declaration.name.text.clone(),
+                                    ))
+                                    .with_fact(DiagnosticFact::OtherFailure(first_name.clone()))
+                                    .with_fact(DiagnosticFact::CodeValue(code.clone()))
                                     .with_related(SourceSpan {
                                         source: first_source.clone(),
                                         start: first_range.start,
@@ -190,8 +199,12 @@ impl FailureChecker {
                         let mut declared = BTreeSet::new();
                         for failure in &declaration.failures {
                             if !declared.insert(failure.text.clone()) {
-                                self.push_code(
-                                    "FAIL_DUPLICATE_DECLARATION",
+                                self.push_diagnostic(
+                                    Diagnostic::error("FAIL_DUPLICATE_DECLARATION")
+                                        .with_fact(DiagnosticFact::Callable(
+                                            declaration.name.text.clone(),
+                                        ))
+                                        .with_fact(DiagnosticFact::Failure(failure.text.clone())),
                                     &file.source_name,
                                     failure.range,
                                 );
@@ -239,8 +252,12 @@ impl FailureChecker {
                             let mut declared = BTreeSet::new();
                             for failure in &action.failures {
                                 if !declared.insert(failure.text.clone()) {
-                                    self.push_code(
-                                        "FAIL_DUPLICATE_DECLARATION",
+                                    self.push_diagnostic(
+                                        Diagnostic::error("FAIL_DUPLICATE_DECLARATION")
+                                            .with_fact(DiagnosticFact::Callable(route_name.clone()))
+                                            .with_fact(DiagnosticFact::Failure(
+                                                failure.text.clone(),
+                                            )),
                                         &file.source_name,
                                         failure.range,
                                     );
@@ -284,18 +301,25 @@ impl FailureChecker {
             let mut reachable = BTreeSet::new();
             if facts.kind == CallableKind::Function {
                 for site in &facts.persistence {
-                    self.push_code("EFFECT_FUNCTION_PERSISTENCE", &facts.source, site.range);
+                    self.push_diagnostic(
+                        Diagnostic::error("EFFECT_FUNCTION_PERSISTENCE")
+                            .with_fact(DiagnosticFact::Callable(name.clone())),
+                        &facts.source,
+                        site.range,
+                    );
                 }
             }
             for site in &facts.persistence {
                 if !site.attempted {
                     self.push_diagnostic(
-                        Diagnostic::error("FAIL_ATTEMPT_REQUIRED").with_edit(TextEdit {
-                            source: facts.source.clone(),
-                            start: site.range.start,
-                            end: site.range.start,
-                            replacement: "attempt ".to_owned(),
-                        }),
+                        Diagnostic::error("FAIL_ATTEMPT_REQUIRED")
+                            .with_fact(DiagnosticFact::Usage("persistence operation".to_owned()))
+                            .with_edit(TextEdit {
+                                source: facts.source.clone(),
+                                start: site.range.start,
+                                end: site.range.start,
+                                replacement: "attempt ".to_owned(),
+                            }),
                         &facts.source,
                         site.acknowledgement_range,
                     );
@@ -305,8 +329,10 @@ impl FailureChecker {
                 let failure = &reject.statement.failure.text;
                 reachable.insert(failure.clone());
                 if !facts.declared.contains(failure) {
-                    self.push_code(
-                        "FAIL_UNDECLARED_PROPAGATION",
+                    self.push_diagnostic(
+                        Diagnostic::error("FAIL_UNDECLARED_PROPAGATION")
+                            .with_fact(DiagnosticFact::Callable(name.clone()))
+                            .with_fact(DiagnosticFact::Failure(failure.clone())),
                         &facts.source,
                         TextRange::new(
                             reject.statement.range.start,
@@ -341,7 +367,24 @@ impl FailureChecker {
                     };
                     if let Some((kind, code, _label)) = requirement {
                         if shape.contract.kind != kind {
-                            self.push_code(code, &facts.source, reject.statement.failure.range);
+                            let usage = match reject.binding {
+                                FailureBinding::RequiredQueryMissing
+                                | FailureBinding::RequiredMutationMissing => "`missing:`",
+                                FailureBinding::MutationConflict => "`conflict:`",
+                                FailureBinding::PatchEmpty => "`empty:`",
+                                FailureBinding::Direct => "this binding",
+                            };
+                            self.push_diagnostic(
+                                Diagnostic::error(code)
+                                    .with_fact(DiagnosticFact::Failure(failure.clone()))
+                                    .with_fact(DiagnosticFact::Expected(kind.to_owned()))
+                                    .with_fact(DiagnosticFact::Received(
+                                        shape.contract.kind.clone(),
+                                    ))
+                                    .with_fact(DiagnosticFact::Usage(usage.to_owned())),
+                                &facts.source,
+                                reject.statement.failure.range,
+                            );
                         }
                     }
                 }
@@ -352,16 +395,25 @@ impl FailureChecker {
                     continue;
                 };
                 if facts.kind == CallableKind::Function && callee.kind == CallableKind::Action {
-                    self.push_code("EFFECT_FUNCTION_CALLS_ACTION", &facts.source, call.range);
+                    self.push_diagnostic(
+                        Diagnostic::error("EFFECT_FUNCTION_CALLS_ACTION")
+                            .with_fact(DiagnosticFact::Callable(name.clone()))
+                            .with_fact(DiagnosticFact::Name(call.callee.clone())),
+                        &facts.source,
+                        call.range,
+                    );
                 }
                 if !callee.declared.is_empty() && !call.attempted {
                     self.push_diagnostic(
-                        Diagnostic::error("FAIL_ATTEMPT_REQUIRED").with_edit(TextEdit {
-                            source: facts.source.clone(),
-                            start: call.range.start,
-                            end: call.range.start,
-                            replacement: "attempt ".to_owned(),
-                        }),
+                        Diagnostic::error("FAIL_ATTEMPT_REQUIRED")
+                            .with_fact(DiagnosticFact::Usage("call".to_owned()))
+                            .with_fact(DiagnosticFact::Operation(call.callee.clone()))
+                            .with_edit(TextEdit {
+                                source: facts.source.clone(),
+                                start: call.range.start,
+                                end: call.range.start,
+                                replacement: "attempt ".to_owned(),
+                            }),
                         &facts.source,
                         call.range,
                     );
@@ -369,7 +421,13 @@ impl FailureChecker {
                 for failure in &callee.declared {
                     reachable.insert(failure.clone());
                     if !facts.declared.contains(failure) {
-                        self.push_code("FAIL_UNDECLARED_PROPAGATION", &facts.source, call.range);
+                        self.push_diagnostic(
+                            Diagnostic::error("FAIL_UNDECLARED_PROPAGATION")
+                                .with_fact(DiagnosticFact::Callable(name.clone()))
+                                .with_fact(DiagnosticFact::Failure(failure.clone())),
+                            &facts.source,
+                            call.range,
+                        );
                     }
                 }
             }
@@ -402,7 +460,8 @@ impl FailureChecker {
                     ))
                     .with_fact(DiagnosticFact::ReachableProblems(
                         reachable.iter().cloned().collect::<Vec<_>>().join(","),
-                    ));
+                    ))
+                    .with_fact(DiagnosticFact::Failures(stale.join(", ")));
                 self.push_diagnostic(diagnostic, &facts.source, range);
             }
 
@@ -445,10 +504,21 @@ impl FailureChecker {
             return;
         };
         let mut expected = shape.public_fields;
+        let mut scopes = expected
+            .keys()
+            .map(|field| (field.clone(), "public".to_owned()))
+            .collect::<BTreeMap<_, _>>();
+        scopes.extend(
+            shape
+                .internal_fields
+                .keys()
+                .map(|field| (field.clone(), "internal".to_owned())),
+        );
         expected.extend(shape.internal_fields);
         self.validate_context(
             &shape.contract.name,
             &expected,
+            &scopes,
             &reject.values,
             reject.range,
             source,
@@ -457,8 +527,9 @@ impl FailureChecker {
 
     fn validate_context(
         &mut self,
-        _failure: &str,
+        failure: &str,
         expected: &BTreeMap<String, FieldDeclaration>,
+        scopes: &BTreeMap<String, String>,
         supplied: &[FieldInitialiser],
         rejection_range: TextRange,
         source: &str,
@@ -466,21 +537,41 @@ impl FailureChecker {
         let mut seen = BTreeSet::new();
         for field in supplied {
             if !seen.insert(field.name.text.clone()) {
-                self.push_code("FAIL_DUPLICATE_CONTEXT_FIELD", source, field.name.range);
+                self.push_diagnostic(
+                    Diagnostic::error("FAIL_DUPLICATE_CONTEXT_FIELD")
+                        .with_fact(DiagnosticFact::Failure(failure.to_owned()))
+                        .with_fact(DiagnosticFact::Field(field.name.text.clone())),
+                    source,
+                    field.name.range,
+                );
             }
             if !expected.contains_key(&field.name.text) {
-                self.push_code("FAIL_UNKNOWN_CONTEXT_FIELD", source, field.name.range);
+                self.push_diagnostic(
+                    Diagnostic::error("FAIL_UNKNOWN_CONTEXT_FIELD")
+                        .with_fact(DiagnosticFact::Failure(failure.to_owned()))
+                        .with_fact(DiagnosticFact::Field(field.name.text.clone())),
+                    source,
+                    field.name.range,
+                );
             }
         }
         for (field, declaration) in expected {
             if !declaration.optional && !seen.contains(field) {
-                self.push_code("FAIL_MISSING_CONTEXT_FIELD", source, rejection_range);
+                self.push_diagnostic(
+                    Diagnostic::error("FAIL_MISSING_CONTEXT_FIELD")
+                        .with_fact(DiagnosticFact::Failure(failure.to_owned()))
+                        .with_fact(DiagnosticFact::Field(field.clone()))
+                        .with_fact(DiagnosticFact::Scope(
+                            scopes
+                                .get(field)
+                                .cloned()
+                                .unwrap_or_else(|| "required".to_owned()),
+                        )),
+                    source,
+                    rejection_range,
+                );
             }
         }
-    }
-
-    fn push_code(&mut self, code: &'static str, source: &str, range: TextRange) {
-        self.push_diagnostic(Diagnostic::error(code), source, range);
     }
 
     fn push_diagnostic(&mut self, mut diagnostic: Diagnostic, source: &str, range: TextRange) {

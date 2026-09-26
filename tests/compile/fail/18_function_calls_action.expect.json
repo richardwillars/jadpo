@@ -5,8 +5,13 @@
     {
       "code": "EFFECT_FUNCTION_CALLS_ACTION",
       "primary_match": "perform()",
-      "function": "pretend_pure",
-      "action": "perform"
+      "summary": "Function `pretend_pure` can't call action `perform`",
+      "reason_includes": "cannot run persistence or other action effects",
+      "recommended_title": "Move this call into an action, or call a function instead of `perform`",
+      "diagnostic_context": {
+        "callable": "pretend_pure",
+        "name": "perform"
+      }
     }
   ]
 }

@@ -5,10 +5,13 @@
     {
       "code": "TYPE_SIBLING_MISMATCH",
       "primary_match": "order.id",
-      "expected_type": "Customer.id",
-      "received_type": "Order.id",
-      "shared_parent": "Uuid"
+      "summary": "`Order.id` can't be used where `Customer.id` is required",
+      "reason_includes": "separate named types",
+      "recommended_title": "Use a `Customer.id` value here",
+      "diagnostic_context": {
+        "expected": "Customer.id",
+        "received": "Order.id"
+      }
     }
   ]
 }
-

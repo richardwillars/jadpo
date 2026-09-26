@@ -65,6 +65,18 @@ pub enum DiagnosticFact {
     Examples(String),
     SuggestedName(String),
     Usage(String),
+    Received(String),
+    Subject(String),
+    Field(String),
+    ExpectedCount(String),
+    ReceivedCount(String),
+    Constraint(String),
+    Failure(String),
+    OtherFailure(String),
+    CodeValue(String),
+    Scope(String),
+    Operation(String),
+    Failures(String),
 }
 
 impl DiagnosticFact {
@@ -83,6 +95,18 @@ impl DiagnosticFact {
             Self::Examples(value) => ("examples", value),
             Self::SuggestedName(value) => ("suggestedName", value),
             Self::Usage(value) => ("usage", value),
+            Self::Received(value) => ("received", value),
+            Self::Subject(value) => ("subject", value),
+            Self::Field(value) => ("field", value),
+            Self::ExpectedCount(value) => ("expectedCount", value),
+            Self::ReceivedCount(value) => ("receivedCount", value),
+            Self::Constraint(value) => ("constraint", value),
+            Self::Failure(value) => ("failure", value),
+            Self::OtherFailure(value) => ("otherFailure", value),
+            Self::CodeValue(value) => ("codeValue", value),
+            Self::Scope(value) => ("scope", value),
+            Self::Operation(value) => ("operation", value),
+            Self::Failures(value) => ("failures", value),
         }
     }
 }
@@ -265,6 +289,8 @@ impl CompilerDiagnostic {
             render_catalogue_text(&definition.recommended_title, &self.context);
         self.recommended_next_step.reason = self.reason.clone();
         self.refresh_semantic_name_copy();
+        self.refresh_type_copy();
+        self.refresh_failure_copy();
     }
 
     fn refresh_semantic_name_copy(&mut self) {
@@ -321,6 +347,303 @@ impl CompilerDiagnostic {
                         .to_owned();
                 self.recommended_next_step.title =
                     "Call a function or action instead, or remove the parentheses".to_owned();
+            }
+            _ => return,
+        }
+        self.recommended_next_step.reason = self.reason.clone();
+    }
+
+    fn refresh_type_copy(&mut self) {
+        let value = |key: &str| {
+            self.context
+                .iter()
+                .find_map(|(candidate, value)| (candidate == key).then_some(value.as_str()))
+        };
+        let name = value("name");
+        let subject = value("subject");
+        let field = value("field");
+        let expected = value("expected");
+        let received = value("received");
+        let suggestion = value("suggestedName");
+
+        match self.code {
+            "TYPE_MISMATCH" | "TYPE_SIBLING_MISMATCH" => {
+                let (Some(expected), Some(received)) = (expected, received) else {
+                    return;
+                };
+                self.message = format!("`{received}` can't be used where `{expected}` is required");
+                self.reason = if self.code == "TYPE_SIBLING_MISMATCH" {
+                    format!(
+                        "`{received}` and `{expected}` are separate named types, even if they build on the same base type."
+                    )
+                } else {
+                    format!("This value has type `{received}`, but this part of the source needs `{expected}`.")
+                };
+                self.recommended_next_step.title = format!("Use a `{expected}` value here");
+            }
+            "TYPE_ARGUMENT_COUNT" | "TYPE_CONSTRUCTOR_ARGUMENT_COUNT" => {
+                let (Some(expected_count), Some(received_count)) =
+                    (value("expectedCount"), value("receivedCount"))
+                else {
+                    return;
+                };
+                let subject = name.unwrap_or("This call");
+                self.message = format!(
+                    "`{subject}` expects {expected_count} {}, but received {received_count}",
+                    plural("argument", expected_count)
+                );
+                self.reason =
+                    "Each declared parameter needs one value in the same order.".to_owned();
+                self.recommended_next_step.title = format!(
+                    "Pass {expected_count} {} to `{subject}`",
+                    plural("argument", expected_count)
+                );
+            }
+            "TYPE_CONSTRUCTOR_INPUT" => {
+                let (Some(expected), Some(received)) = (expected, received) else {
+                    return;
+                };
+                let constructor = name.unwrap_or("This type");
+                self.message = format!("`{constructor}` can't be constructed from `{received}`");
+                self.reason = format!("`{constructor}` builds on `{expected}`, so its value must be compatible with `{expected}`.");
+                self.recommended_next_step.title =
+                    format!("Pass a `{expected}` value to `{constructor}`");
+            }
+            "TYPE_MISSING_FIELD" | "TYPE_MISSING_VARIANT_FIELD" => {
+                let (Some(subject), Some(field)) = (subject, field) else {
+                    return;
+                };
+                self.message = format!("`{subject}` is missing the required `{field}` field");
+                self.reason = format!("`{field}` is required by the `{subject}` declaration.");
+                self.recommended_next_step.title = format!("Add `{field}: ...` to `{subject}`");
+            }
+            "TYPE_UNKNOWN_FIELD" | "TYPE_UNKNOWN_VARIANT_FIELD" => {
+                let (Some(subject), Some(field)) = (subject, field) else {
+                    return;
+                };
+                self.message = format!("`{subject}` has no `{field}` field");
+                self.reason = suggestion.map_or_else(
+                    || format!("`{field}` is not declared on `{subject}`."),
+                    |suggested| {
+                        format!(
+                            "`{field}` is not declared on `{subject}`. Did you mean `{suggested}`?"
+                        )
+                    },
+                );
+                self.recommended_next_step.title = suggestion.map_or_else(
+                    || format!("Use a field declared on `{subject}`"),
+                    |suggested| format!("Use `{suggested}` instead of `{field}`"),
+                );
+            }
+            "TYPE_UNKNOWN_VALUE" => {
+                let Some(name) = name else { return };
+                self.message = format!("`{name}` isn't defined in this scope");
+                self.reason = suggestion.map_or_else(
+                    || "Jadpo could not find a parameter or local value with this name.".to_owned(),
+                    |suggested| {
+                        format!("Jadpo could not find this name. Did you mean `{suggested}`?")
+                    },
+                );
+                self.recommended_next_step.title = suggestion.map_or_else(
+                    || format!("Define `{name}` before using it"),
+                    |suggested| format!("Use `{suggested}` instead of `{name}`"),
+                );
+            }
+            "TYPE_UNKNOWN_ENUM_VARIANT" => {
+                let (Some(subject), Some(name)) = (subject, name) else {
+                    return;
+                };
+                self.message = format!("`{subject}` has no `{name}` variant");
+                self.reason = suggestion.map_or_else(
+                    || format!("`{name}` is not one of the variants declared by `{subject}`."),
+                    |suggested| {
+                        format!(
+                            "`{name}` is not declared by `{subject}`. Did you mean `{suggested}`?"
+                        )
+                    },
+                );
+                self.recommended_next_step.title = suggestion.map_or_else(
+                    || format!("Use a variant declared by `{subject}`"),
+                    |suggested| format!("Use `{subject}.{suggested}`"),
+                );
+            }
+            "TYPE_FIELD_ON_NON_RECORD" => {
+                let (Some(received), Some(field)) = (received, field) else {
+                    return;
+                };
+                self.message = format!("`{received}` values have no `{field}` field");
+                self.reason = format!("`{received}` is not a record with named fields.");
+                self.recommended_next_step.title =
+                    "Use a record value before `.`, or remove the field access".to_owned();
+            }
+            "TYPE_NULLABLE_SELECTION" => {
+                let (Some(received), Some(field)) = (received, field) else {
+                    return;
+                };
+                self.message =
+                    format!("`{received}` may be `none`, so `{field}` can't be read yet");
+                self.reason =
+                    "Jadpo needs the `some(...)` case before it can safely read this field."
+                        .to_owned();
+                self.recommended_next_step.title =
+                    "Match the nullable value and read the field inside `some(...)`".to_owned();
+            }
+            "TYPE_PRIMITIVE_SIGNATURE" => {
+                let (Some(received), Some(usage)) = (received, value("usage")) else {
+                    return;
+                };
+                self.message = format!("This {usage} uses `{received}` directly");
+                self.reason = format!("A {usage} needs a named Jadpo type so its meaning and validation rules are explicit.");
+                self.recommended_next_step.title =
+                    format!("Define a named type based on `{received}` and use it here");
+            }
+            "TYPE_INVALID_LITERAL" => {
+                let Some(subject) = subject else { return };
+                self.message = format!("This value doesn't meet `{subject}`'s rules");
+                if let Some(constraint) = value("constraint") {
+                    self.reason = format!(
+                        "The value does not satisfy `{subject}`'s `{constraint}` constraint."
+                    );
+                    self.recommended_next_step.title =
+                        format!("Change the value so it satisfies `{constraint}`");
+                }
+            }
+            _ => return,
+        }
+        self.recommended_next_step.reason = self.reason.clone();
+    }
+
+    fn refresh_failure_copy(&mut self) {
+        let value = |key: &str| {
+            self.context
+                .iter()
+                .find_map(|(candidate, value)| (candidate == key).then_some(value.as_str()))
+        };
+        let callable = value("callable");
+        let failure = value("failure");
+        let field = value("field");
+
+        match self.code {
+            "EFFECT_FUNCTION_CALLS_ACTION" => {
+                let (Some(function), Some(action)) = (callable, value("name")) else {
+                    return;
+                };
+                self.message = format!("Function `{function}` can't call action `{action}`");
+                self.reason = format!("`{function}` is a function, so it cannot run persistence or other action effects through `{action}`.");
+                self.recommended_next_step.title = format!(
+                    "Move this call into an action, or call a function instead of `{action}`"
+                );
+            }
+            "EFFECT_FUNCTION_PERSISTENCE" => {
+                let Some(function) = callable else { return };
+                self.message = format!("Function `{function}` can't use persistence");
+                self.reason = "Create, query, update, and delete operations are available only inside actions.".to_owned();
+                self.recommended_next_step.title =
+                    "Move this persistence operation into an action".to_owned();
+            }
+            "FAIL_ATTEMPT_REQUIRED" => {
+                let usage = value("usage").unwrap_or("operation");
+                self.message = format!("This {usage} can fail and requires `attempt`");
+                self.reason = "`attempt` makes it clear that a declared failure may leave the current function or action.".to_owned();
+                self.recommended_next_step.title = format!("Add `attempt` before this {usage}");
+            }
+            "FAIL_CONTEXT_FIELD_OVERLAP" => {
+                let (Some(failure), Some(field)) = (failure, field) else {
+                    return;
+                };
+                self.message = format!("`{failure}.{field}` is both public and internal");
+                self.reason = "The same field cannot be returned to callers and hidden from them at the same time.".to_owned();
+                self.recommended_next_step.title =
+                    format!("Keep `{field}` in either `public` or `internal`, not both");
+            }
+            "FAIL_DUPLICATE_CODE" => {
+                let (Some(code), Some(first), Some(second)) =
+                    (value("codeValue"), value("otherFailure"), failure)
+                else {
+                    return;
+                };
+                self.message = format!("Failure code `{code}` is already used by `{first}`");
+                self.reason = format!("`{second}` and `{first}` cannot share a public code because callers use it to identify one failure.");
+                self.recommended_next_step.title =
+                    format!("Give `{second}` a different stable public code");
+            }
+            "FAIL_DUPLICATE_CONTEXT_FIELD" => {
+                let (Some(failure), Some(field)) = (failure, field) else {
+                    return;
+                };
+                self.message = format!("`{field}` is supplied more than once for `{failure}`");
+                self.reason =
+                    format!("A rejected `{failure}` value can contain one `{field}` value.");
+                self.recommended_next_step.title =
+                    format!("Keep one `{field}: ...` entry in this rejection");
+            }
+            "FAIL_DUPLICATE_DECLARATION" => {
+                let (Some(callable), Some(failure)) = (callable, failure) else {
+                    return;
+                };
+                self.message = format!("`{failure}` is listed more than once after `fails`");
+                self.reason =
+                    format!("Listing `{failure}` twice does not change what `{callable}` can do.");
+                self.recommended_next_step.title =
+                    format!("Keep one `{failure}` entry after `fails`");
+            }
+            "FAIL_MISSING_CONTEXT_FIELD" => {
+                let (Some(failure), Some(field)) = (failure, field) else {
+                    return;
+                };
+                let scope = value("scope").unwrap_or("required");
+                self.message = format!("`{failure}` is missing the {scope} `{field}` field");
+                self.reason = format!("`{field}` is required whenever `{failure}` is rejected.");
+                self.recommended_next_step.title =
+                    format!("Add `{field}: ...` to this `{failure}` rejection");
+            }
+            "FAIL_MUTATION_CONFLICT_NOT_CONFLICT"
+            | "FAIL_PATCH_EMPTY_NOT_INVALID_VALUE"
+            | "FAIL_REQUIRED_MUTATION_NOT_NOT_FOUND"
+            | "FAIL_REQUIRED_QUERY_NOT_NOT_FOUND" => {
+                let (Some(failure), Some(expected), Some(received)) =
+                    (failure, value("expected"), value("received"))
+                else {
+                    return;
+                };
+                let usage = value("usage").unwrap_or("this failure binding");
+                self.message =
+                    format!("`{failure}` uses `{received}`, but {usage} requires `{expected}`");
+                self.reason =
+                    format!("`{failure}` must use the predefined `{expected}` category here.");
+                self.recommended_next_step.title =
+                    format!("Use a failure declared with `kind {expected}`");
+            }
+            "FAIL_STALE_DECLARATION" => {
+                let (Some(callable), Some(failures)) = (callable, value("failures")) else {
+                    return;
+                };
+                self.message = format!("`{failures}` can never leave `{callable}`");
+                self.reason = format!("`{callable}` lists this after `fails`, but no call or `reject` can produce it.");
+                self.recommended_next_step.title =
+                    format!("Remove `{failures}` from `{callable}`'s `fails` list");
+            }
+            "FAIL_UNDECLARED_PROPAGATION" => {
+                let (Some(callable), Some(failure)) = (callable, failure) else {
+                    return;
+                };
+                self.message =
+                    format!("`{failure}` can leave `{callable}` but isn't listed after `fails`");
+                self.reason =
+                    format!("Callers of `{callable}` need to know that `{failure}` can happen.");
+                self.recommended_next_step.title =
+                    format!("Add `{failure}` after `fails`, or handle it inside `{callable}`");
+            }
+            "FAIL_UNKNOWN_CONTEXT_FIELD" => {
+                let (Some(failure), Some(field)) = (failure, field) else {
+                    return;
+                };
+                self.message = format!("`{failure}` has no `{field}` field");
+                self.reason = format!(
+                    "`{field}` is not declared in the public or internal fields of `{failure}`."
+                );
+                self.recommended_next_step.title =
+                    format!("Remove `{field}`, or declare it on `{failure}`");
             }
             _ => return,
         }
@@ -2339,7 +2662,27 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         repair_kind,
         decision_owner,
         context_keys: match code {
-            "FAIL_STALE_DECLARATION" => vec!["callable", "declared", "reachable"],
+            "EFFECT_FUNCTION_CALLS_ACTION" => vec!["callable", "name"],
+            "EFFECT_FUNCTION_PERSISTENCE" => vec!["callable"],
+            "FAIL_ATTEMPT_REQUIRED" => vec!["usage", "operation"],
+            "FAIL_CONTEXT_FIELD_OVERLAP" => vec!["failure", "field"],
+            "FAIL_DUPLICATE_CODE" => vec!["failure", "otherFailure", "codeValue"],
+            "FAIL_DUPLICATE_CONTEXT_FIELD" | "FAIL_UNKNOWN_CONTEXT_FIELD" => {
+                vec!["failure", "field"]
+            }
+            "FAIL_DUPLICATE_DECLARATION" | "FAIL_UNDECLARED_PROPAGATION" => {
+                vec!["callable", "failure"]
+            }
+            "FAIL_MISSING_CONTEXT_FIELD" => vec!["failure", "field", "scope"],
+            "FAIL_MUTATION_CONFLICT_NOT_CONFLICT"
+            | "FAIL_PATCH_EMPTY_NOT_INVALID_VALUE"
+            | "FAIL_REQUIRED_MUTATION_NOT_NOT_FOUND"
+            | "FAIL_REQUIRED_QUERY_NOT_NOT_FOUND" => {
+                vec!["failure", "expected", "received", "usage"]
+            }
+            "FAIL_STALE_DECLARATION" => {
+                vec!["callable", "declared", "reachable", "failures"]
+            }
             "CLI_INCIDENT_REVISION_MISMATCH" => vec!["eventRevision", "localRevision"],
             "ROUTE_AUTH_VALUE_INVALID" => vec!["route", "found"],
             "SEM_DUPLICATE_DECLARATION" => vec!["name"],
@@ -2353,6 +2696,24 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             ],
             "SEM_UNKNOWN_CALLEE" => vec!["name", "expected", "suggestedName", "usage"],
             "SEM_NOT_CALLABLE" => vec!["name", "expected", "actualKind"],
+            "TYPE_MISMATCH" | "TYPE_SIBLING_MISMATCH" => vec!["expected", "received"],
+            "TYPE_ARGUMENT_COUNT" | "TYPE_CONSTRUCTOR_ARGUMENT_COUNT" => {
+                vec!["name", "expectedCount", "receivedCount"]
+            }
+            "TYPE_CONSTRUCTOR_INPUT" => vec!["name", "expected", "received"],
+            "TYPE_MISSING_FIELD" | "TYPE_MISSING_VARIANT_FIELD" => {
+                vec!["subject", "field"]
+            }
+            "TYPE_UNKNOWN_FIELD" | "TYPE_UNKNOWN_VARIANT_FIELD" => {
+                vec!["subject", "field", "suggestedName"]
+            }
+            "TYPE_UNKNOWN_VALUE" => vec!["name", "suggestedName"],
+            "TYPE_UNKNOWN_ENUM_VARIANT" => vec!["subject", "name", "suggestedName"],
+            "TYPE_FIELD_ON_NON_RECORD" | "TYPE_NULLABLE_SELECTION" => {
+                vec!["received", "field"]
+            }
+            "TYPE_PRIMITIVE_SIGNATURE" => vec!["received", "usage"],
+            "TYPE_INVALID_LITERAL" => vec!["subject", "constraint"],
             "SYN_EXPECTED_DECLARATION" => vec!["found"],
             "SYN_UNEXPECTED_TOKEN" => vec!["expected", "found"],
             _ => Vec::new(),
@@ -2414,6 +2775,17 @@ fn semantic_replacement_guidance(expected: &str) -> String {
         "declared failure" => "Use a declared failure here".to_owned(),
         "function or action" => "Use a function or action here".to_owned(),
         other => format!("Use a {other} here"),
+    }
+}
+
+fn plural<'a>(singular: &'a str, count: &str) -> &'a str {
+    if count == "1" {
+        singular
+    } else {
+        match singular {
+            "argument" => "arguments",
+            other => other,
+        }
     }
 }
 
@@ -2863,6 +3235,53 @@ mod tests {
         assert_eq!(
             diagnostic_help_url(&diagnostic.help_id),
             "https://jadpo.dev/docs/diagnostics/semantic.unknown_name"
+        );
+    }
+
+    #[test]
+    fn type_errors_name_the_received_and_required_types() {
+        let diagnostic = Diagnostic::error("TYPE_SIBLING_MISMATCH")
+            .with_fact(DiagnosticFact::Expected("CustomerId".to_owned()))
+            .with_fact(DiagnosticFact::Received("OrderId".to_owned()));
+
+        assert_eq!(
+            diagnostic.message,
+            "`OrderId` can't be used where `CustomerId` is required"
+        );
+        assert_eq!(
+            diagnostic.reason,
+            "`OrderId` and `CustomerId` are separate named types, even if they build on the same base type."
+        );
+        assert_eq!(
+            diagnostic.recommended_next_step.title,
+            "Use a `CustomerId` value here"
+        );
+        assert_eq!(
+            diagnostic.context,
+            vec![
+                ("expected".to_owned(), "CustomerId".to_owned()),
+                ("received".to_owned(), "OrderId".to_owned())
+            ]
+        );
+    }
+
+    #[test]
+    fn failure_errors_name_the_function_and_escaping_failure() {
+        let diagnostic = Diagnostic::error("FAIL_UNDECLARED_PROPAGATION")
+            .with_fact(DiagnosticFact::Callable("register".to_owned()))
+            .with_fact(DiagnosticFact::Failure("RegistrationClosed".to_owned()));
+
+        assert_eq!(
+            diagnostic.message,
+            "`RegistrationClosed` can leave `register` but isn't listed after `fails`"
+        );
+        assert_eq!(
+            diagnostic.reason,
+            "Callers of `register` need to know that `RegistrationClosed` can happen."
+        );
+        assert_eq!(
+            diagnostic.recommended_next_step.title,
+            "Add `RegistrationClosed` after `fails`, or handle it inside `register`"
         );
     }
 

@@ -42,6 +42,17 @@ expectations.each do |expectation_path|
   end
 
   expected_diagnostics = expectation.fetch("diagnostics", [])
+  supported_expectation_keys = %w[
+    code primary_match summary reason_includes recommended_title repair_kind
+    decision_owner diagnostic_context alternative_titles alternative_replacements
+    public_contract_impact_includes
+  ]
+  expected_diagnostics.each do |expected|
+    unknown_keys = expected.keys - supported_expectation_keys
+    unless unknown_keys.empty?
+      failures << "#{relative_source}: unsupported diagnostic expectation keys #{unknown_keys.inspect}"
+    end
+  end
   actual_diagnostics = report.fetch("diagnostics", []).select { |diagnostic| diagnostic["severity"] == "error" }
   actual_codes = actual_diagnostics.map { |diagnostic| diagnostic.fetch("legacyAliases", []).first }
   expected_codes = expected_diagnostics.map { |diagnostic| diagnostic.fetch("code") }

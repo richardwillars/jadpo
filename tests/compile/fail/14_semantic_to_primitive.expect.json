@@ -5,8 +5,13 @@
     {
       "code": "TYPE_MISMATCH",
       "primary_match": "Email(\"person@example.com\")",
-      "expected_type": "Text",
-      "received_type": "Email"
+      "summary": "`Email` can't be used where `Text` is required",
+      "reason_includes": "needs `Text`",
+      "recommended_title": "Use a `Text` value here",
+      "diagnostic_context": {
+        "expected": "Text",
+        "received": "Email"
+      }
     }
   ]
 }

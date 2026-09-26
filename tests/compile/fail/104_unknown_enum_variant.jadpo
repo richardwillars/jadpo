@@ -1,0 +1,8 @@
+enum Status {
+    Active
+    Inactive
+}
+
+function status() -> Status {
+    return Status.Activ
+}

@@ -5,8 +5,13 @@
     {
       "code": "TYPE_MISMATCH",
       "primary_match": "groups.items",
-      "expected_type": "List<Customer.email>",
-      "received_type": "AnyEmails.items"
+      "summary": "`AnyEmails.items` can't be used where `List<Customer.email>` is required",
+      "reason_includes": "needs `List<Customer.email>`",
+      "recommended_title": "Use a `List<Customer.email>` value here",
+      "diagnostic_context": {
+        "expected": "List<Customer.email>",
+        "received": "AnyEmails.items"
+      }
     }
   ]
 }

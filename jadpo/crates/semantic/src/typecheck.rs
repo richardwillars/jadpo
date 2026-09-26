@@ -1,5 +1,5 @@
 use crate::{NodeKind, SemanticGraph};
-use jadpo_diagnostics::{Diagnostic, SourceSpan};
+use jadpo_diagnostics::{Diagnostic, DiagnosticFact, SourceSpan};
 use jadpo_syntax::{
     Block, CallableDeclaration, Constraint, ConstraintKind, Declaration, Expression,
     FieldInitialiser, InvocationExpression, Literal, LiteralKind, Name, ParsedSyntax,
@@ -374,17 +374,29 @@ impl TypeChecker<'_> {
         for parameter in &callable.parameters {
             let parameter_type = type_value(&parameter.parameter_type);
             if self.is_primitive_signature_type(&parameter_type) {
-                self.push_diagnostic("TYPE_PRIMITIVE_SIGNATURE", source, parameter.range);
+                self.push_diagnostic_with_facts(
+                    "TYPE_PRIMITIVE_SIGNATURE",
+                    source,
+                    parameter.range,
+                    [
+                        DiagnosticFact::Received(parameter_type.display()),
+                        DiagnosticFact::Usage("parameter".to_owned()),
+                    ],
+                );
             }
             environment.insert(parameter.name.text.clone(), parameter_type);
         }
 
         let return_type = type_value(&callable.return_type);
         if self.is_primitive_signature_type(&return_type) {
-            self.push_diagnostic(
+            self.push_diagnostic_with_facts(
                 "TYPE_PRIMITIVE_SIGNATURE",
                 source,
                 callable.return_annotation_range,
+                [
+                    DiagnosticFact::Received(return_type.display()),
+                    DiagnosticFact::Usage("return value".to_owned()),
+                ],
             );
         }
 
@@ -1716,7 +1728,16 @@ impl TypeChecker<'_> {
         let callee = joined_name(&invocation.callee.path);
         if let Some(signature) = self.catalogue.callables.get(&callee).cloned() {
             if signature.parameters.len() != invocation.arguments.len() {
-                self.push_diagnostic("TYPE_ARGUMENT_COUNT", source, invocation.range);
+                self.push_diagnostic_with_facts(
+                    "TYPE_ARGUMENT_COUNT",
+                    source,
+                    invocation.range,
+                    [
+                        DiagnosticFact::Name(callee.clone()),
+                        DiagnosticFact::ExpectedCount(signature.parameters.len().to_string()),
+                        DiagnosticFact::ReceivedCount(invocation.arguments.len().to_string()),
+                    ],
+                );
             }
             for (argument, expected) in invocation.arguments.iter().zip(&signature.parameters) {
                 if let Some(received) = self.infer_expression(argument, environment, source) {
@@ -1736,7 +1757,16 @@ impl TypeChecker<'_> {
             return None;
         }
         if invocation.arguments.len() != 1 {
-            self.push_diagnostic("TYPE_CONSTRUCTOR_ARGUMENT_COUNT", source, invocation.range);
+            self.push_diagnostic_with_facts(
+                "TYPE_CONSTRUCTOR_ARGUMENT_COUNT",
+                source,
+                invocation.range,
+                [
+                    DiagnosticFact::Name(callee.clone()),
+                    DiagnosticFact::ExpectedCount("1".to_owned()),
+                    DiagnosticFact::ReceivedCount(invocation.arguments.len().to_string()),
+                ],
+            );
             return Some(simple_type(&callee));
         }
 
@@ -1744,12 +1774,39 @@ impl TypeChecker<'_> {
         let argument_type = self.infer_expression(argument, environment, source);
         if let Some(argument_type) = &argument_type {
             if !self.constructor_input_compatible(argument_type, &callee) {
-                self.push_diagnostic("TYPE_CONSTRUCTOR_INPUT", source, argument.range());
+                let expected = self
+                    .ancestors(&callee)
+                    .get(1)
+                    .cloned()
+                    .unwrap_or_else(|| callee.clone());
+                self.push_diagnostic_with_facts(
+                    "TYPE_CONSTRUCTOR_INPUT",
+                    source,
+                    argument.range(),
+                    [
+                        DiagnosticFact::Name(callee.clone()),
+                        DiagnosticFact::Expected(expected),
+                        DiagnosticFact::Received(argument_type.display()),
+                    ],
+                );
             }
         }
         if let Expression::Literal(literal) = argument {
-            if let Some(_reason) = self.invalid_literal_reason(&callee, literal) {
-                self.push_diagnostic("TYPE_INVALID_LITERAL", source, invocation.range);
+            if let Some(reason) = self.invalid_literal_reason(&callee, literal) {
+                let constraint = reason
+                    .strip_prefix("constraint `")
+                    .and_then(|value| value.strip_suffix("` was not satisfied"))
+                    .unwrap_or("declared")
+                    .to_owned();
+                self.push_diagnostic_with_facts(
+                    "TYPE_INVALID_LITERAL",
+                    source,
+                    invocation.range,
+                    [
+                        DiagnosticFact::Subject(callee.clone()),
+                        DiagnosticFact::Constraint(constraint),
+                    ],
+                );
             }
         }
         Some(simple_type(&callee))
@@ -1775,12 +1832,34 @@ impl TypeChecker<'_> {
 
         for (name, expected) in &expected_fields {
             if !expected.optional && !supplied.contains(name.as_str()) {
-                self.push_diagnostic("TYPE_MISSING_FIELD", source, range);
+                self.push_diagnostic_with_facts(
+                    "TYPE_MISSING_FIELD",
+                    source,
+                    range,
+                    [
+                        DiagnosticFact::Subject(target.to_owned()),
+                        DiagnosticFact::Field(name.clone()),
+                    ],
+                );
             }
         }
         for field in fields {
             let Some(expected) = expected_fields.get(&field.name.text) else {
-                self.push_diagnostic("TYPE_UNKNOWN_FIELD", source, field.name.range);
+                let mut facts = vec![
+                    DiagnosticFact::Subject(target.to_owned()),
+                    DiagnosticFact::Field(field.name.text.clone()),
+                ];
+                if let Some(suggestion) =
+                    closest_name(&field.name.text, expected_fields.keys().map(String::as_str))
+                {
+                    facts.push(DiagnosticFact::SuggestedName(suggestion));
+                }
+                self.push_diagnostic_with_facts(
+                    "TYPE_UNKNOWN_FIELD",
+                    source,
+                    field.name.range,
+                    facts,
+                );
                 continue;
             };
             if let Some(received) = self.infer_expression(&field.value, environment, source) {
@@ -1800,7 +1879,7 @@ impl TypeChecker<'_> {
 
     fn check_variant_construction(
         &mut self,
-        _target: &str,
+        target: &str,
         expected_fields: &BTreeMap<String, RecordField>,
         supplied_fields: &[FieldInitialiser],
         range: TextRange,
@@ -1813,7 +1892,15 @@ impl TypeChecker<'_> {
             .collect::<BTreeSet<_>>();
         for (name, expected) in expected_fields {
             if !expected.optional && !supplied.contains(name.as_str()) {
-                self.push_diagnostic("TYPE_MISSING_VARIANT_FIELD", source, range);
+                self.push_diagnostic_with_facts(
+                    "TYPE_MISSING_VARIANT_FIELD",
+                    source,
+                    range,
+                    [
+                        DiagnosticFact::Subject(target.to_owned()),
+                        DiagnosticFact::Field(name.clone()),
+                    ],
+                );
             }
         }
         let mut seen = BTreeSet::new();
@@ -1823,7 +1910,21 @@ impl TypeChecker<'_> {
                 continue;
             }
             let Some(expected) = expected_fields.get(&field.name.text) else {
-                self.push_diagnostic("TYPE_UNKNOWN_VARIANT_FIELD", source, field.name.range);
+                let mut facts = vec![
+                    DiagnosticFact::Subject(target.to_owned()),
+                    DiagnosticFact::Field(field.name.text.clone()),
+                ];
+                if let Some(suggestion) =
+                    closest_name(&field.name.text, expected_fields.keys().map(String::as_str))
+                {
+                    facts.push(DiagnosticFact::SuggestedName(suggestion));
+                }
+                self.push_diagnostic_with_facts(
+                    "TYPE_UNKNOWN_VARIANT_FIELD",
+                    source,
+                    field.name.range,
+                    facts,
+                );
                 continue;
             };
             if let Some(received) = self.infer_expression(&field.value, environment, source) {
@@ -1897,32 +1998,75 @@ impl TypeChecker<'_> {
                 if variants.contains_key(&variant.text) {
                     return Some(simple_type(&first.text));
                 }
-                self.push_diagnostic("TYPE_UNKNOWN_ENUM_VARIANT", source, variant.range);
+                let mut facts = vec![
+                    DiagnosticFact::Subject(first.text.clone()),
+                    DiagnosticFact::Name(variant.text.clone()),
+                ];
+                if let Some(suggestion) =
+                    closest_name(&variant.text, variants.keys().map(String::as_str))
+                {
+                    facts.push(DiagnosticFact::SuggestedName(suggestion));
+                }
+                self.push_diagnostic_with_facts(
+                    "TYPE_UNKNOWN_ENUM_VARIANT",
+                    source,
+                    variant.range,
+                    facts,
+                );
                 return None;
             }
         }
         let Some(mut current) = environment.get(&first.text).cloned() else {
-            self.push_diagnostic("TYPE_UNKNOWN_VALUE", source, first.range);
+            let mut facts = vec![DiagnosticFact::Name(first.text.clone())];
+            if let Some(suggestion) =
+                closest_name(&first.text, environment.keys().map(String::as_str))
+            {
+                facts.push(DiagnosticFact::SuggestedName(suggestion));
+            }
+            self.push_diagnostic_with_facts("TYPE_UNKNOWN_VALUE", source, first.range, facts);
             return None;
         };
 
         for field in &path[1..] {
             if current.nullable {
-                self.push_diagnostic("TYPE_NULLABLE_SELECTION", source, field.range);
+                self.push_diagnostic_with_facts(
+                    "TYPE_NULLABLE_SELECTION",
+                    source,
+                    field.range,
+                    [
+                        DiagnosticFact::Received(current.display()),
+                        DiagnosticFact::Field(field.text.clone()),
+                    ],
+                );
                 return None;
             }
             let Some(record_name) = self.record_shape_name(&current.name) else {
-                self.push_diagnostic("TYPE_FIELD_ON_NON_RECORD", source, field.range);
+                self.push_diagnostic_with_facts(
+                    "TYPE_FIELD_ON_NON_RECORD",
+                    source,
+                    field.range,
+                    [
+                        DiagnosticFact::Received(current.display()),
+                        DiagnosticFact::Field(field.text.clone()),
+                    ],
+                );
                 return None;
             };
-            let declared = self
-                .catalogue
-                .records
-                .get(&record_name)
+            let record_fields = self.catalogue.records.get(&record_name);
+            let declared = record_fields
                 .and_then(|fields| fields.get(&field.text))
                 .cloned();
             let Some(declared) = declared else {
-                self.push_diagnostic("TYPE_UNKNOWN_FIELD", source, field.range);
+                let mut facts = vec![
+                    DiagnosticFact::Subject(record_name.clone()),
+                    DiagnosticFact::Field(field.text.clone()),
+                ];
+                if let Some(suggestion) = record_fields
+                    .and_then(|fields| closest_name(&field.text, fields.keys().map(String::as_str)))
+                {
+                    facts.push(DiagnosticFact::SuggestedName(suggestion));
+                }
+                self.push_diagnostic_with_facts("TYPE_UNKNOWN_FIELD", source, field.range, facts);
                 return None;
             };
             current = if record_name.starts_with("__route_path_") {
@@ -1952,9 +2096,25 @@ impl TypeChecker<'_> {
         let both_fields = self.node_kind(&received.name) == Some(NodeKind::Field)
             && self.node_kind(&expected.name) == Some(NodeKind::Field);
         if both_fields && shared_parent.is_some() {
-            self.push_diagnostic("TYPE_SIBLING_MISMATCH", source, range);
+            self.push_diagnostic_with_facts(
+                "TYPE_SIBLING_MISMATCH",
+                source,
+                range,
+                [
+                    DiagnosticFact::Expected(expected.display()),
+                    DiagnosticFact::Received(received.display()),
+                ],
+            );
         } else {
-            self.push_diagnostic("TYPE_MISMATCH", source, range);
+            self.push_diagnostic_with_facts(
+                "TYPE_MISMATCH",
+                source,
+                range,
+                [
+                    DiagnosticFact::Expected(expected.display()),
+                    DiagnosticFact::Received(received.display()),
+                ],
+            );
         }
     }
 
@@ -2131,7 +2291,19 @@ impl TypeChecker<'_> {
     }
 
     fn push_diagnostic(&mut self, code: &'static str, source: &str, range: TextRange) {
-        let mut diagnostic = Diagnostic::error(code);
+        self.push_diagnostic_with_facts(code, source, range, []);
+    }
+
+    fn push_diagnostic_with_facts(
+        &mut self,
+        code: &'static str,
+        source: &str,
+        range: TextRange,
+        facts: impl IntoIterator<Item = DiagnosticFact>,
+    ) {
+        let mut diagnostic = facts
+            .into_iter()
+            .fold(Diagnostic::error(code), Diagnostic::with_fact);
         diagnostic.primary = Some(SourceSpan {
             source: source.to_owned(),
             start: range.start,
@@ -2192,6 +2364,36 @@ fn joined_name(path: &[Name]) -> String {
         .map(|name| name.text.as_str())
         .collect::<Vec<_>>()
         .join(".")
+}
+
+fn closest_name<'a>(requested: &str, candidates: impl Iterator<Item = &'a str>) -> Option<String> {
+    let requested_lower = requested.to_ascii_lowercase();
+    candidates
+        .filter(|candidate| *candidate != requested)
+        .filter_map(|candidate| {
+            let distance = edit_distance(&requested_lower, &candidate.to_ascii_lowercase());
+            (distance <= 3).then_some((distance, candidate))
+        })
+        .min_by(|left, right| left.cmp(right))
+        .map(|(_, candidate)| candidate.to_owned())
+}
+
+fn edit_distance(left: &str, right: &str) -> usize {
+    let mut previous = (0..=right.chars().count()).collect::<Vec<_>>();
+    for (left_index, left_character) in left.chars().enumerate() {
+        let mut current = vec![left_index + 1];
+        for (right_index, right_character) in right.chars().enumerate() {
+            current.push(
+                (previous[right_index + 1] + 1).min(
+                    (current[right_index] + 1).min(
+                        previous[right_index] + usize::from(left_character != right_character),
+                    ),
+                ),
+            );
+        }
+        previous = current;
+    }
+    previous.last().copied().unwrap_or_default()
 }
 
 fn unquote(value: &str) -> String {

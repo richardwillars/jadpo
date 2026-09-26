@@ -5,9 +5,13 @@
     {
       "code": "FAIL_UNDECLARED_PROPAGATION",
       "primary_match": "child()",
-      "failure": "RegistrationClosed",
-      "callable": "parent",
-      "path": ["parent", "child"]
+      "summary": "`RegistrationClosed` can leave `parent` but isn't listed after `fails`",
+      "reason_includes": "Callers of `parent` need to know",
+      "recommended_title": "Add `RegistrationClosed` after `fails`, or handle it inside `parent`",
+      "diagnostic_context": {
+        "callable": "parent",
+        "failure": "RegistrationClosed"
+      }
     }
   ]
 }

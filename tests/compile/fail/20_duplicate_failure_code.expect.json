@@ -5,9 +5,14 @@
     {
       "code": "FAIL_DUPLICATE_CODE",
       "primary_match": "Second {\n    kind Conflict\n    code \"same\"",
-      "code_value": "same",
-      "first_failure": "First",
-      "second_failure": "Second"
+      "summary": "Failure code `same` is already used by `First`",
+      "reason_includes": "`Second` and `First` cannot share a public code",
+      "recommended_title": "Give `Second` a different stable public code",
+      "diagnostic_context": {
+        "failure": "Second",
+        "otherFailure": "First",
+        "codeValue": "same"
+      }
     }
   ]
 }
