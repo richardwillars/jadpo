@@ -89,3 +89,9 @@ The `TYPE_MATCH_*` subfamily is fully authored. Its copy distinguishes
 exhaustiveness, unreachable and duplicate arms, subject-pattern compatibility,
 nullable narrowing, closed-enum variants, and payload bindings. Persistence and
 query type rules remain separately tracked.
+
+The complete `TYPE_*` family is now fully authored. Persistence copy preserves
+the distinct contracts for entity operations, deterministic query bounds,
+constraint mappings, omission-aware patches, and each supported include plan:
+to-many, owning-parent, inverse-one, and bounded two-hop. Real trigger-fixture
+coverage remains independently enforced by the strict completion gate.

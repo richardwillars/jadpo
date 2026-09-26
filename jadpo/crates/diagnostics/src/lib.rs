@@ -1044,6 +1044,267 @@ fn match_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     })
 }
 
+fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "TYPE_CONFLICT_DUPLICATE_BINDING" => (
+            "Constraint failure is mapped more than once",
+            "Each named persistence constraint, and the optional fallback, may have only one conflict mapping so a database violation selects one domain failure.",
+            "Keep one conflict mapping for this constraint",
+        ),
+        "TYPE_CONFLICT_UNKNOWN_CONSTRAINT" => (
+            "Conflict mapping names an unknown constraint",
+            "A specific conflict mapping must refer to a compiler-owned identity, unique, or named compound-unique constraint on the mutated entity.",
+            "Use a declared persistence constraint from the target entity",
+        ),
+        "TYPE_CREATE_NOT_ENTITY" => (
+            "Create target is not an entity",
+            "`create` persists a declared entity shape; values, inputs, outputs, failures, and scalar types have no entity storage contract.",
+            "Create a declared entity or use ordinary value construction",
+        ),
+        "TYPE_DELETE_NOT_ENTITY" => (
+            "Delete target is not an entity",
+            "`delete required` operates on persisted entity rows and cannot target a value, input, output, failure, or scalar type.",
+            "Delete a declared entity",
+        ),
+        "TYPE_INCLUDE_DUPLICATE_RELATIONSHIP" => (
+            "Relationship is included more than once",
+            "A to-many query result has one field per included relationship; repeating a relationship would make that output field and its loading plan ambiguous.",
+            "Keep one include for each relationship",
+        ),
+        "TYPE_INCLUDE_MIXED_CARDINALITY" => (
+            "To-many include set contains a non-many relationship",
+            "The batched child-include form combines only `many` inverse relationships. Owning-parent and optional inverse loads use their dedicated single-include forms.",
+            "Use `many` for every include in this set or split out the single-related load",
+        ),
+        "TYPE_INCLUDE_ORDER_NOT_DETERMINISTIC" => (
+            "Included children are not ordered by a stable key",
+            "A bounded to-many include must order by an identity or unique child field so generated results cannot change arbitrarily between executions.",
+            "Order the included relationship by an identity or unique field",
+        ),
+        "TYPE_INCLUDE_PARENT_PAGINATION_REQUIRED" => (
+            "Many-parent include requires parent pagination",
+            "Including children for an unbounded many-parent query could expand an unlimited parent set before child loading.",
+            "Add a literal parent `limit` and optional non-negative `offset`",
+        ),
+        "TYPE_INCLUDE_REQUIRED_PARENT" => (
+            "Optional parent query cannot include children",
+            "The to-many include result shape contains a concrete parent value; an optional parent query could produce no parent to place in that shape.",
+            "Use a required or many-parent query for this include",
+        ),
+        "TYPE_INCLUDE_RESULT_MISMATCH" => (
+            "Includes use different result output types",
+            "All relationships loaded by one query are assembled into one exact output shape and therefore must name the same `into` output type.",
+            "Use the same result output type for every include",
+        ),
+        "TYPE_INCLUDE_RESULT_NOT_OUTPUT" => (
+            "Include result type is not an output",
+            "An include returns an explicitly declared boundary projection. Entities, values, and inputs cannot stand in for that named output contract.",
+            "Declare and use an output type for the include result",
+        ),
+        "TYPE_INCLUDE_RESULT_SHAPE" => (
+            "To-many include output has the wrong shape",
+            "The result output must contain exactly `parent` with the queried entity type and one non-nullable `List<Child>` field for each included inverse relationship.",
+            "Make the output fields exactly match the parent and included child lists",
+        ),
+        "TYPE_INCLUDE_UNKNOWN_RELATIONSHIP" => (
+            "Included to-many relationship does not exist",
+            "A to-many include must name a declared `inverse ... many` relationship on the queried parent entity.",
+            "Use a declared many-valued inverse relationship",
+        ),
+        "TYPE_INVERSE_ONE_CARDINALITY" => (
+            "Inverse-one include must be optional",
+            "A zero-or-one inverse can have no related child, so its include cardinality and output field must preserve that possibility.",
+            "Mark the inverse-one include `optional`",
+        ),
+        "TYPE_INVERSE_ONE_REQUIRED_QUERY" => (
+            "Inverse-one include requires a parent value",
+            "The inverse-one output contains a concrete parent and is only defined for a required parent query.",
+            "Use `query required` for this inverse-one include",
+        ),
+        "TYPE_INVERSE_ONE_RESULT_SHAPE" => (
+            "Inverse-one include output has the wrong shape",
+            "The result output must contain exactly `parent` with the queried entity type and a nullable child field named for the optional inverse relationship.",
+            "Make the output contain the exact parent and nullable inverse child fields",
+        ),
+        "TYPE_INVERSE_ONE_SINGLE" => (
+            "Inverse-one query has more than one include",
+            "The bounded zero-or-one loading plan supports exactly one optional inverse relationship per required parent query.",
+            "Keep only one inverse-one include in this query",
+        ),
+        "TYPE_MUTATION_NULLABLE_FIELD_UNSUPPORTED" => (
+            "Mutation predicate field is nullable",
+            "The current required update and delete slice accepts a single equality predicate on a non-nullable entity field; nullable equality semantics are not implicit.",
+            "Use a non-nullable predicate field",
+        ),
+        "TYPE_MUTATION_UNKNOWN_PREDICATE_FIELD" => (
+            "Mutation predicate field does not exist",
+            "The `where` field must be part of the target entity's declared record shape so its nominal type and storage column are known.",
+            "Use a declared field from the target entity",
+        ),
+        "TYPE_NESTED_INCLUDE_CARDINALITY" => (
+            "Nested include must be optional",
+            "The supported second hop is a unique-backed optional inverse, so the final related value may be absent.",
+            "Mark the nested include `optional`",
+        ),
+        "TYPE_NESTED_INCLUDE_FIRST_HOP" => (
+            "Nested include first hop is not an owning reference",
+            "The bounded two-hop form must first follow a declared owning reference from the queried child to its parent.",
+            "Use a declared owning relationship for the first hop",
+        ),
+        "TYPE_NESTED_INCLUDE_NULLABLE_FIRST_HOP" => (
+            "Nested include first hop is nullable",
+            "The supported two-hop plan requires its intermediate parent to exist; a nullable owning reference cannot guarantee a value for the second lookup.",
+            "Use a non-nullable owning reference for the first hop",
+        ),
+        "TYPE_NESTED_INCLUDE_REQUIRED_QUERY" => (
+            "Nested include requires a parent value",
+            "The bounded two-hop output contains the queried entity as a concrete `parent`, so it is defined only for a required query.",
+            "Use `query required` for this nested include",
+        ),
+        "TYPE_NESTED_INCLUDE_RESULT_SHAPE" => (
+            "Nested include output has the wrong shape",
+            "The outer output must contain exactly the queried `parent` and the named first-hop field whose output, in turn, contains its parent and nullable second-hop child.",
+            "Make both output layers match the exact two-hop result shape",
+        ),
+        "TYPE_NESTED_INCLUDE_SECOND_HOP" => (
+            "Nested include second hop is not an optional inverse",
+            "After the owning-reference hop, the supported bounded plan may follow only a declared unique-backed optional inverse relationship.",
+            "Use an optional inverse relationship for the second hop",
+        ),
+        "TYPE_NESTED_INCLUDE_SINGLE" => (
+            "Nested query has more than one include",
+            "The bounded two-hop loading plan supports one explicit nested path and does not combine it with additional includes.",
+            "Keep only the nested include in this query",
+        ),
+        "TYPE_PARENT_INCLUDE_NULLABLE_REFERENCE" => (
+            "Required parent include follows a nullable reference",
+            "A nullable owning reference may contain `none`, so the related parent cannot be promised as a non-nullable required output field.",
+            "Mark the include optional or use a non-nullable reference",
+        ),
+        "TYPE_PARENT_INCLUDE_REQUIRED_QUERY" => (
+            "Owning-parent include requires a child value",
+            "The owning-parent output contains the queried child as a concrete `parent`, so it is defined only for a required child query.",
+            "Use `query required` for this owning-parent include",
+        ),
+        "TYPE_PARENT_INCLUDE_RESULT_SHAPE" => (
+            "Owning-parent include output has the wrong shape",
+            "The result output must contain exactly `parent` with the queried child type and a relationship field whose nullability matches the include cardinality.",
+            "Make the output contain the exact child and related-parent fields",
+        ),
+        "TYPE_PARENT_INCLUDE_SINGLE" => (
+            "Owning-parent query has more than one include",
+            "The bounded owning-reference loading plan supports exactly one related parent per required child query.",
+            "Keep only one owning-parent include in this query",
+        ),
+        "TYPE_PARENT_INCLUDE_UNKNOWN_REFERENCE" => (
+            "Included parent relationship is not an owning reference",
+            "An owning-parent include must name a stored reference declared on the queried child entity, using its explicit relationship name when present.",
+            "Use a declared owning relationship from the queried entity",
+        ),
+        "TYPE_PATCH_CONDITION_BINDING" => (
+            "Patch supplied-condition uses the wrong binding",
+            "A `when ... supplied` condition must select one field directly from the same patch input binding named by `patch:`.",
+            "Use `<patch_binding>.<field> supplied` in the condition",
+        ),
+        "TYPE_PATCH_CONDITION_UNKNOWN_FIELD" => (
+            "Patch supplied-condition names an unknown field",
+            "The supplied flag exists only for fields declared by the patch input shape.",
+            "Use a field declared on the patch input",
+        ),
+        "TYPE_PATCH_DERIVED_OVERLAP" => (
+            "Patch and derived update write the same field",
+            "A field cannot be written by both `patch:` and `set:` because the result would depend on an implicit update order.",
+            "Remove the field from either the patch input or the derived `set` block",
+        ),
+        "TYPE_PATCH_FIELD_NOT_OPTIONAL" => (
+            "Patch input field is not omission-aware",
+            "Every patch input field must use the `optional` presence modifier so omission can be distinguished from supplying a value, including `none` for nullable fields.",
+            "Mark every patch input field `optional`",
+        ),
+        "TYPE_PATCH_FIELD_REQUIRED" => (
+            "Patch input has no fields",
+            "A patch shape must declare at least one possible entity field; an empty input can never describe a write.",
+            "Add at least one optional entity field to the patch input",
+        ),
+        "TYPE_PATCH_INPUT_BINDING" => (
+            "Patch must name a direct input binding",
+            "`patch:` accepts one local or parameter name so the compiler can track each field's supplied flag; field selections and longer paths are not patch bindings.",
+            "Pass the patch input binding directly",
+        ),
+        "TYPE_PATCH_NOT_INPUT" => (
+            "Patch binding is not an input record",
+            "Omission metadata belongs to declared input fields. Values, outputs, entities, and scalar values do not carry the required supplied flags.",
+            "Use a binding whose type is a declared input",
+        ),
+        "TYPE_PATCH_UNKNOWN_FIELD" => (
+            "Patch input contains a field not on the entity",
+            "Every patch field must map statically to a declared target-entity field so the generated update remains fixed and type checked.",
+            "Remove the field or declare the corresponding entity field",
+        ),
+        "TYPE_QUERY_NOT_ENTITY" => (
+            "Query target is not an entity",
+            "`query` reads persisted entity rows; values, inputs, outputs, failures, and scalar types have no entity storage contract.",
+            "Query a declared entity",
+        ),
+        "TYPE_QUERY_NULLABLE_FIELD_UNSUPPORTED" => (
+            "Query predicate field is nullable",
+            "The current query slice accepts a single equality predicate on a non-nullable field; nullable equality and `none` matching are not implicit.",
+            "Use a non-nullable predicate field",
+        ),
+        "TYPE_QUERY_ORDER_NOT_DETERMINISTIC" => (
+            "Query ordering field is not a stable key",
+            "A many-result query must order by an identity or unique field so its row order and pagination boundary are deterministic.",
+            "Order by an identity or unique field",
+        ),
+        "TYPE_QUERY_PAGINATION_CONSTANT_REQUIRED" => (
+            "Pagination bound must be a literal integer",
+            "Compile-time literal bounds keep the current query plan explicitly and statically bounded; dynamic limits and offsets are not part of this language slice.",
+            "Use an integer literal for `limit` or `offset`",
+        ),
+        "TYPE_QUERY_PAGINATION_RANGE" => (
+            "Pagination bound is outside its allowed range",
+            "`limit` must be a positive integer and `offset` must be a non-negative integer.",
+            "Use `limit` of at least 1 and `offset` of at least 0",
+        ),
+        "TYPE_QUERY_UNKNOWN_FIELD" => (
+            "Query predicate field does not exist",
+            "The `where` field must be part of the target entity's declared record shape so its nominal type and storage column are known.",
+            "Use a declared field from the target entity",
+        ),
+        "TYPE_QUERY_UNKNOWN_ORDER_FIELD" => (
+            "Query ordering field does not exist",
+            "`order_by` must name a declared field on the queried entity before its stability can be checked.",
+            "Use a declared field from the target entity",
+        ),
+        "TYPE_UPDATE_DUPLICATE_FIELD" => (
+            "Update writes the same field more than once",
+            "Each entity field may have only one fixed or conditional `set` write so the mutation has a single deterministic value for that column.",
+            "Keep one `set` write for this field",
+        ),
+        "TYPE_UPDATE_FIELD_REQUIRED" => (
+            "Update does not write any fields",
+            "A required update must contain at least one fixed, conditional, or patch-derived field change; a predicate alone performs no mutation.",
+            "Add a `set` change or a `patch` binding",
+        ),
+        "TYPE_UPDATE_NOT_ENTITY" => (
+            "Update target is not an entity",
+            "`update required` mutates persisted entity rows and cannot target a value, input, output, failure, or scalar type.",
+            "Update a declared entity",
+        ),
+        "TYPE_UPDATE_UNKNOWN_FIELD" => (
+            "Updated field does not exist on the entity",
+            "Every fixed or conditional `set` entry must name a declared target-entity field so its nominal type and storage column are known.",
+            "Use a declared field from the target entity",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let (category, remainder) = code.split_once('_').unwrap_or(("diagnostic", code));
     let category = match category {
@@ -1073,7 +1334,8 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         .or_else(|| route_catalogue_copy(code))
         .or_else(|| data_catalogue_copy(code))
         .or_else(|| core_type_catalogue_copy(code))
-        .or_else(|| match_type_catalogue_copy(code));
+        .or_else(|| match_type_catalogue_copy(code))
+        .or_else(|| persistence_type_catalogue_copy(code));
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
@@ -1982,6 +2244,22 @@ mod tests {
 
         for code in MATCH_TYPE_CODES {
             assert!(CATALOGUE_CODES.contains(code), "{code}");
+            let definition = catalogue_definition(code);
+            assert!(definition.authored_copy, "{code}");
+            assert!(!definition.reason.contains(code), "{code}");
+            assert_ne!(
+                definition.recommended_title, "Update the source to satisfy this rule",
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_type_diagnostic_has_rule_specific_public_copy() {
+        for code in CATALOGUE_CODES
+            .iter()
+            .filter(|code| code.starts_with("TYPE_"))
+        {
             let definition = catalogue_definition(code);
             assert!(definition.authored_copy, "{code}");
             assert!(!definition.reason.contains(code), "{code}");
