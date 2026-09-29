@@ -1,8 +1,8 @@
 enum Status {
-    Active
-    Inactive
+    active
+    inactive
 }
 
 function status() -> Status {
-    return Status.Activ
+    return Status.activ
 }

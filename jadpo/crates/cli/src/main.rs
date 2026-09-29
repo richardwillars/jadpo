@@ -3,23 +3,28 @@
 #![allow(clippy::result_large_err)]
 
 use jadpo_core::{
-    accept_index_recommendation, analyze_project, checked_source_revision, create_project,
-    derive_artifacts, derive_target, diff_schema_identities, discover_sources, format_source,
-    index_recommendation_count, index_recommendations_json, initialize_schema_identities,
-    register_schema_additions, rename_schema_identity, snapshot_schema_identities,
-    validate_schema_decisions, validate_schema_identities, write_artifacts,
-    write_schema_decision_template, write_schema_migration_plan, write_schema_migration_sql_review,
-    AnalyzedProject,
+    accept_index_recommendation, analyze_project, check_local_configuration,
+    checked_source_revision, configuration_fields, create_project, derive_artifacts, derive_target,
+    diff_schema_identities, discover_sources, format_source, index_recommendation_count,
+    index_recommendations_json, initialize_schema_identities, local_configuration_environment,
+    register_schema_additions, rename_schema_identity, set_local_configuration,
+    snapshot_schema_identities, validate_schema_decisions, validate_schema_identities,
+    write_artifacts, write_schema_decision_template, write_schema_migration_plan,
+    write_schema_migration_sql_review, AnalyzedProject,
 };
 use jadpo_diagnostics::{catalogue_definition, json_string, Diagnostic, DiagnosticFact};
 use jadpo_semantic::checked_manifest_json;
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, IsTerminal, Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -27,6 +32,14 @@ mod lsp;
 mod terminal;
 
 use terminal::{ColorChoice, LayoutChoice, Presentation};
+
+// Bun 1.2.20 does not recognize --no-env-file. An explicit empty file
+// disables ambient dotenv discovery while retaining the supplied environment.
+const BUN_EMPTY_ENV_FILE: &str = if cfg!(windows) {
+    "--env-file=NUL"
+} else {
+    "--env-file=/dev/null"
+};
 
 fn main() -> ExitCode {
     let raw_arguments = env::args().skip(1).collect::<Vec<_>>();
@@ -132,6 +145,10 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
             return Err(Diagnostic::error("CLI_LSP_ARGUMENTS"));
         }
         return lsp::run_stdio();
+    }
+
+    if command == "config" {
+        return run_config(&arguments);
     }
 
     let project = arguments
@@ -266,9 +283,121 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
         _other => Err(Diagnostic::error(
             "CLI_UNKNOWN_COMMAND")
         .with_note(
-            "expected one of: new, check, inspect, artifacts, build, test, fmt, watch, dev, schema, help",
+            "expected one of: new, check, inspect, artifacts, build, test, fmt, watch, dev, config, schema, help",
         )),
     }
+}
+
+fn run_config(arguments: &[String]) -> Result<(), Diagnostic> {
+    let subcommand = arguments.get(1).ok_or_else(|| {
+        Diagnostic::error("CLI_CONFIG_ARGUMENTS")
+            .with_note("expected: jadpo config <set <field>|check>")
+    })?;
+    let project_path =
+        env::current_dir().map_err(|_| Diagnostic::error("JADPO_PROJECT_READ_FAILED"))?;
+    let checked = checked_project(&project_path).map_err(|mut report| {
+        report
+            .diagnostics
+            .pop()
+            .expect("a failed configuration check must contain a diagnostic")
+    })?;
+
+    match subcommand.as_str() {
+        "set" if arguments.len() == 3 => {
+            let field_name = &arguments[2];
+            let fields = configuration_fields(&checked.analyzed);
+            let field = fields
+                .iter()
+                .find(|field| field.name == *field_name)
+                .ok_or_else(|| {
+                    Diagnostic::error("CONFIG_FIELD_UNKNOWN")
+                        .with_fact(DiagnosticFact::Field(field_name.clone()))
+                })?;
+            let value = prompt_configuration_value(&field.binding, field.secret)?;
+            let configured =
+                set_local_configuration(&project_path, &checked.analyzed, field_name, &value)?;
+            print_success(
+                &format!("configured {} locally", configured.name),
+                "Local configuration saved",
+                &format!("{} · .env.local", configured.name),
+            );
+            Ok(())
+        }
+        "check" if arguments.len() == 2 => {
+            let statuses = check_local_configuration(&project_path, &checked.analyzed)?;
+            for status in &statuses {
+                println!("{}: {}", status.field, status.state.as_str());
+            }
+            let invalid = statuses
+                .iter()
+                .filter(|status| !status.state.is_valid())
+                .count();
+            if invalid > 0 {
+                return Err(
+                    Diagnostic::error("CONFIG_LOCAL_CHECK_FAILED").with_note(format!(
+                        "{invalid} configuration field(s) are missing or invalid"
+                    )),
+                );
+            }
+            print_success(
+                &format!("validated {} local configuration field(s)", statuses.len()),
+                "Local configuration valid",
+                &terminal::plural(statuses.len(), "field", "fields"),
+            );
+            Ok(())
+        }
+        _ => Err(Diagnostic::error("CLI_CONFIG_ARGUMENTS")
+            .with_note("expected: jadpo config <set <field>|check>")),
+    }
+}
+
+fn prompt_configuration_value(binding: &str, secret: bool) -> Result<String, Diagnostic> {
+    if !io::stdin().is_terminal() || !io::stderr().is_terminal() {
+        return Err(Diagnostic::error("CLI_CONFIG_TTY_REQUIRED"));
+    }
+    eprint!("Enter {binding}: ");
+    io::stderr()
+        .flush()
+        .map_err(|_| Diagnostic::error("CLI_CONFIG_PROMPT_FAILED"))?;
+    if secret {
+        set_terminal_echo(false)?;
+    }
+    let mut value = String::new();
+    let read = io::stdin().read_line(&mut value);
+    let restore = if secret {
+        let result = set_terminal_echo(true);
+        eprintln!();
+        result
+    } else {
+        Ok(())
+    };
+    restore?;
+    read.map_err(|_| Diagnostic::error("CLI_CONFIG_PROMPT_FAILED"))?;
+    while value.ends_with(['\n', '\r']) {
+        value.pop();
+    }
+    Ok(value)
+}
+
+#[cfg(unix)]
+fn set_terminal_echo(enabled: bool) -> Result<(), Diagnostic> {
+    let status = Command::new("stty")
+        .arg(if enabled { "echo" } else { "-echo" })
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|_| Diagnostic::error("CLI_CONFIG_PROMPT_FAILED"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(Diagnostic::error("CLI_CONFIG_PROMPT_FAILED"))
+    }
+}
+
+#[cfg(not(unix))]
+fn set_terminal_echo(_enabled: bool) -> Result<(), Diagnostic> {
+    Err(Diagnostic::error("CLI_CONFIG_PROMPT_FAILED"))
 }
 
 fn run_schema(arguments: &[String]) -> Result<(), Diagnostic> {
@@ -600,6 +729,7 @@ struct CheckedProject {
 
 #[derive(Debug)]
 struct BuildSuccess {
+    analyzed: AnalyzedProject,
     diagnostics: Vec<Diagnostic>,
     summary: CheckSummary,
     artifact_count: usize,
@@ -938,6 +1068,7 @@ fn run_human_test(project: &Path) -> Result<(), Diagnostic> {
     }
     let status = Command::new("bun")
         .arg("--no-install")
+        .arg(BUN_EMPTY_ENV_FILE)
         .arg(&entrypoint)
         .status()
         .map_err(|_error| Diagnostic::error("TEST_RUNTIME_START_FAILED"))?;
@@ -999,6 +1130,7 @@ fn build_project(project: &Path) -> Result<BuildSuccess, CheckReport> {
         summary: Some(checked.summary),
     })?;
     Ok(BuildSuccess {
+        analyzed: checked.analyzed,
         diagnostics: checked.diagnostics,
         summary: checked.summary,
         artifact_count,
@@ -1107,12 +1239,13 @@ fn lifecycle_event_json(
 }
 
 fn run_watch(project: &Path, json: bool) -> Result<(), Diagnostic> {
+    let shutdown = install_shutdown_handler()?;
     let mut sequence = 0_u64;
     let mut revision = 0_u64;
     let mut has_successful_build = false;
     let mut snapshot = watch_input_snapshot(project).unwrap_or_default();
 
-    loop {
+    while !shutdown.load(Ordering::SeqCst) {
         revision += 1;
         sequence += 1;
         emit_lifecycle_event(
@@ -1168,20 +1301,49 @@ fn run_watch(project: &Path, json: bool) -> Result<(), Diagnostic> {
             }
         }
 
-        snapshot =
-            wait_for_settled_change(project, &snapshot, "watch", json, &mut sequence, revision)?;
+        if let Some(next) = wait_for_settled_change(
+            project,
+            &snapshot,
+            "watch",
+            json,
+            &mut sequence,
+            revision,
+            &shutdown,
+        )? {
+            snapshot = next;
+        } else {
+            break;
+        }
     }
+
+    sequence += 1;
+    emit_lifecycle_event(
+        json,
+        "watch",
+        project,
+        sequence,
+        revision,
+        "shutdown",
+        "stopped",
+        false,
+        None,
+        &[],
+        None,
+        None,
+    )
 }
 
 fn run_dev(project: &Path, json: bool) -> Result<(), Diagnostic> {
+    let shutdown = install_shutdown_handler()?;
     let port = dev_port()?;
     let mut sequence = 0_u64;
     let mut revision = 0_u64;
     let mut runtime: Option<Child> = None;
     let mut has_ready_runtime = false;
+    let mut active_environment = BTreeMap::new();
     let mut snapshot = watch_input_snapshot(project).unwrap_or_default();
 
-    loop {
+    while !shutdown.load(Ordering::SeqCst) {
         revision += 1;
         sequence += 1;
         emit_lifecycle_event(
@@ -1199,8 +1361,17 @@ fn run_dev(project: &Path, json: bool) -> Result<(), Diagnostic> {
             None,
         )?;
 
+        let rollback = if has_ready_runtime {
+            Some(prepare_runtime_rollback(project, revision)?)
+        } else {
+            None
+        };
+
         match build_project(project) {
             Err(report) => {
+                if let Some(rollback) = rollback.as_ref() {
+                    restore_runtime_rollback(rollback)?;
+                }
                 sequence += 1;
                 emit_lifecycle_event(
                     json,
@@ -1234,46 +1405,13 @@ fn run_dev(project: &Path, json: bool) -> Result<(), Diagnostic> {
                     Some(&success.output),
                 )?;
 
-                if let Some(mut child) = runtime.take() {
-                    sequence += 1;
-                    emit_lifecycle_event(
-                        json,
-                        "dev",
-                        project,
-                        sequence,
-                        revision,
-                        "runtime_restarting",
-                        "running",
-                        true,
-                        Some(success.summary),
-                        &[],
-                        None,
-                        Some(&success.output),
-                    )?;
-                    stop_runtime(&mut child);
-                    has_ready_runtime = false;
-                }
-
-                sequence += 1;
-                emit_lifecycle_event(
-                    json,
-                    "dev",
-                    project,
-                    sequence,
-                    revision,
-                    "runtime_starting",
-                    "running",
-                    false,
-                    Some(success.summary),
-                    &[],
-                    None,
-                    Some(&success.output),
-                )?;
-
-                match start_bun_runtime(project, port, json) {
-                    Ok(mut child) => match wait_until_ready(&mut child, port) {
-                        Ok(()) => {
-                            has_ready_runtime = true;
+                let local_environment =
+                    match local_configuration_environment(project, &success.analyzed) {
+                        Ok(environment) => Some(environment),
+                        Err(diagnostic) => {
+                            if let Some(rollback) = rollback.as_ref() {
+                                restore_runtime_rollback(rollback)?;
+                            }
                             sequence += 1;
                             emit_lifecycle_event(
                                 json,
@@ -1281,18 +1419,117 @@ fn run_dev(project: &Path, json: bool) -> Result<(), Diagnostic> {
                                 project,
                                 sequence,
                                 revision,
-                                "runtime_ready",
-                                "ready",
-                                false,
+                                "configuration_failed",
+                                "failed",
+                                has_ready_runtime,
                                 Some(success.summary),
-                                &[],
+                                &[diagnostic],
                                 None,
                                 Some(&success.output),
                             )?;
-                            runtime = Some(child);
+                            None
                         }
+                    };
+
+                if let Some(local_environment) = local_environment {
+                    let replacing_ready_runtime = runtime.is_some();
+                    if let Some(mut child) = runtime.take() {
+                        sequence += 1;
+                        emit_lifecycle_event(
+                            json,
+                            "dev",
+                            project,
+                            sequence,
+                            revision,
+                            "runtime_restarting",
+                            "running",
+                            true,
+                            Some(success.summary),
+                            &[],
+                            None,
+                            Some(&success.output),
+                        )?;
+                        stop_runtime(&mut child);
+                        has_ready_runtime = false;
+                    }
+
+                    sequence += 1;
+                    emit_lifecycle_event(
+                        json,
+                        "dev",
+                        project,
+                        sequence,
+                        revision,
+                        "runtime_starting",
+                        "running",
+                        false,
+                        Some(success.summary),
+                        &[],
+                        None,
+                        Some(&success.output),
+                    )?;
+
+                    match start_bun_runtime(project, port, json, &local_environment) {
+                        Ok(mut child) => match wait_until_ready(&mut child, port) {
+                            Ok(()) => {
+                                if let Some(rollback) = rollback.as_ref() {
+                                    if let Err(diagnostic) = discard_runtime_rollback(rollback) {
+                                        stop_runtime(&mut child);
+                                        return Err(diagnostic);
+                                    }
+                                }
+                                has_ready_runtime = true;
+                                sequence += 1;
+                                emit_lifecycle_event(
+                                    json,
+                                    "dev",
+                                    project,
+                                    sequence,
+                                    revision,
+                                    "runtime_ready",
+                                    "ready",
+                                    false,
+                                    Some(success.summary),
+                                    &[],
+                                    None,
+                                    Some(&success.output),
+                                )?;
+                                runtime = Some(child);
+                                active_environment = local_environment;
+                            }
+                            Err(diagnostic) => {
+                                stop_runtime(&mut child);
+                                sequence += 1;
+                                emit_lifecycle_event(
+                                    json,
+                                    "dev",
+                                    project,
+                                    sequence,
+                                    revision,
+                                    "runtime_failed",
+                                    "failed",
+                                    false,
+                                    Some(success.summary),
+                                    &[diagnostic],
+                                    None,
+                                    Some(&success.output),
+                                )?;
+                                if replacing_ready_runtime {
+                                    rollback_runtime(
+                                        project,
+                                        json,
+                                        port,
+                                        &mut sequence,
+                                        revision,
+                                        &mut runtime,
+                                        &mut has_ready_runtime,
+                                        rollback.as_ref(),
+                                        &active_environment,
+                                    )?;
+                                }
+                            }
+                        },
                         Err(diagnostic) => {
-                            stop_runtime(&mut child);
                             sequence += 1;
                             emit_lifecycle_event(
                                 json,
@@ -1308,30 +1545,26 @@ fn run_dev(project: &Path, json: bool) -> Result<(), Diagnostic> {
                                 None,
                                 Some(&success.output),
                             )?;
+                            if replacing_ready_runtime {
+                                rollback_runtime(
+                                    project,
+                                    json,
+                                    port,
+                                    &mut sequence,
+                                    revision,
+                                    &mut runtime,
+                                    &mut has_ready_runtime,
+                                    rollback.as_ref(),
+                                    &active_environment,
+                                )?;
+                            }
                         }
-                    },
-                    Err(diagnostic) => {
-                        sequence += 1;
-                        emit_lifecycle_event(
-                            json,
-                            "dev",
-                            project,
-                            sequence,
-                            revision,
-                            "runtime_failed",
-                            "failed",
-                            false,
-                            Some(success.summary),
-                            &[diagnostic],
-                            None,
-                            Some(&success.output),
-                        )?;
                     }
                 }
             }
         }
 
-        snapshot = wait_for_dev_change(
+        let Some(next) = wait_for_dev_change(
             project,
             &snapshot,
             json,
@@ -1339,8 +1572,32 @@ fn run_dev(project: &Path, json: bool) -> Result<(), Diagnostic> {
             revision,
             &mut runtime,
             &mut has_ready_runtime,
-        )?;
+            &shutdown,
+        )?
+        else {
+            break;
+        };
+        snapshot = next;
     }
+
+    if let Some(mut child) = runtime.take() {
+        stop_runtime(&mut child);
+    }
+    sequence += 1;
+    emit_lifecycle_event(
+        json,
+        "dev",
+        project,
+        sequence,
+        revision,
+        "shutdown",
+        "stopped",
+        false,
+        None,
+        &[],
+        None,
+        None,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1352,8 +1609,12 @@ fn wait_for_dev_change(
     revision: u64,
     runtime: &mut Option<Child>,
     has_ready_runtime: &mut bool,
-) -> Result<InputSnapshot, Diagnostic> {
+    shutdown: &AtomicBool,
+) -> Result<Option<InputSnapshot>, Diagnostic> {
     loop {
+        if shutdown.load(Ordering::SeqCst) {
+            return Ok(None);
+        }
         let exited = if let Some(child) = runtime.as_mut() {
             match child.try_wait() {
                 Ok(Some(_status)) => Some(Diagnostic::error("CLI_DEV_RUNTIME_EXITED")),
@@ -1417,7 +1678,7 @@ fn wait_for_dev_change(
                 Err(_) => continue,
             };
             if next == candidate {
-                return Ok(candidate);
+                return Ok(Some(candidate));
             }
             candidate = next;
         }
@@ -1437,7 +1698,12 @@ fn parse_dev_port(value: &str) -> Result<u16, Diagnostic> {
         .ok_or_else(|| Diagnostic::error("CLI_DEV_PORT_INVALID"))
 }
 
-fn start_bun_runtime(project: &Path, port: u16, json: bool) -> Result<Child, Diagnostic> {
+fn start_bun_runtime(
+    project: &Path,
+    port: u16,
+    json: bool,
+    configuration: &BTreeMap<String, String>,
+) -> Result<Child, Diagnostic> {
     let project_root = if project.is_dir() {
         project
     } else {
@@ -1450,9 +1716,11 @@ fn start_bun_runtime(project: &Path, port: u16, json: bool) -> Result<Child, Dia
     let mut command = Command::new("bun");
     command
         .arg("--no-install")
+        .arg(BUN_EMPTY_ENV_FILE)
         .arg(&target)
         .current_dir(project_root)
         .env("PORT", port.to_string())
+        .envs(configuration)
         .stdin(Stdio::null())
         .stderr(Stdio::inherit());
     if json {
@@ -1519,6 +1787,145 @@ fn stop_runtime(child: &mut Child) {
     let _ = child.wait();
 }
 
+#[derive(Debug)]
+struct RuntimeRollback {
+    output_root: PathBuf,
+    backup_root: PathBuf,
+}
+
+fn project_root(project: &Path) -> &Path {
+    if project.is_dir() {
+        project
+    } else {
+        project.parent().unwrap_or_else(|| Path::new("."))
+    }
+}
+
+fn prepare_runtime_rollback(project: &Path, revision: u64) -> Result<RuntimeRollback, Diagnostic> {
+    let project_root = project_root(project);
+    let output_root = project_root.join("build");
+    let backup_root = project_root.join(format!(
+        ".jadpo-runtime-backup.{}.{revision}",
+        std::process::id()
+    ));
+    if backup_root.exists() {
+        fs::remove_dir_all(&backup_root)
+            .map_err(|_error| Diagnostic::error("CLI_DEV_ROLLBACK_PREPARE_FAILED"))?;
+    }
+    fs::rename(&output_root, &backup_root)
+        .map_err(|_error| Diagnostic::error("CLI_DEV_ROLLBACK_PREPARE_FAILED"))?;
+    Ok(RuntimeRollback {
+        output_root,
+        backup_root,
+    })
+}
+
+fn restore_runtime_rollback(rollback: &RuntimeRollback) -> Result<(), Diagnostic> {
+    if rollback.output_root.exists() {
+        fs::remove_dir_all(&rollback.output_root)
+            .map_err(|_error| Diagnostic::error("CLI_DEV_ROLLBACK_RESTORE_FAILED"))?;
+    }
+    fs::rename(&rollback.backup_root, &rollback.output_root)
+        .map_err(|_error| Diagnostic::error("CLI_DEV_ROLLBACK_RESTORE_FAILED"))
+}
+
+fn discard_runtime_rollback(rollback: &RuntimeRollback) -> Result<(), Diagnostic> {
+    if rollback.backup_root.exists() {
+        fs::remove_dir_all(&rollback.backup_root)
+            .map_err(|_error| Diagnostic::error("CLI_DEV_ROLLBACK_CLEANUP_FAILED"))?;
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn rollback_runtime(
+    project: &Path,
+    json: bool,
+    port: u16,
+    sequence: &mut u64,
+    revision: u64,
+    runtime: &mut Option<Child>,
+    has_ready_runtime: &mut bool,
+    rollback: Option<&RuntimeRollback>,
+    configuration: &BTreeMap<String, String>,
+) -> Result<(), Diagnostic> {
+    let Some(rollback) = rollback else {
+        return Ok(());
+    };
+    *sequence += 1;
+    emit_lifecycle_event(
+        json,
+        "dev",
+        project,
+        *sequence,
+        revision,
+        "runtime_rollback_starting",
+        "running",
+        true,
+        None,
+        &[],
+        None,
+        Some(&rollback.backup_root),
+    )?;
+    restore_runtime_rollback(rollback)?;
+
+    let result = start_bun_runtime(project, port, json, configuration).and_then(|mut child| {
+        if let Err(diagnostic) = wait_until_ready(&mut child, port) {
+            stop_runtime(&mut child);
+            return Err(diagnostic);
+        }
+        *runtime = Some(child);
+        Ok(())
+    });
+
+    match result {
+        Ok(()) => {
+            *has_ready_runtime = true;
+            *sequence += 1;
+            emit_lifecycle_event(
+                json,
+                "dev",
+                project,
+                *sequence,
+                revision,
+                "runtime_rollback_succeeded",
+                "ready",
+                true,
+                None,
+                &[],
+                None,
+                Some(&rollback.output_root),
+            )
+        }
+        Err(diagnostic) => {
+            *has_ready_runtime = false;
+            *sequence += 1;
+            emit_lifecycle_event(
+                json,
+                "dev",
+                project,
+                *sequence,
+                revision,
+                "runtime_rollback_failed",
+                "failed",
+                false,
+                None,
+                &[diagnostic],
+                None,
+                Some(&rollback.output_root),
+            )
+        }
+    }
+}
+
+fn install_shutdown_handler() -> Result<Arc<AtomicBool>, Diagnostic> {
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let requested = Arc::clone(&shutdown);
+    ctrlc::set_handler(move || requested.store(true, Ordering::SeqCst))
+        .map_err(|_error| Diagnostic::error("CLI_SIGNAL_HANDLER_FAILED"))?;
+    Ok(shutdown)
+}
+
 fn wait_for_settled_change(
     project: &Path,
     baseline: &InputSnapshot,
@@ -1526,8 +1933,12 @@ fn wait_for_settled_change(
     json: bool,
     sequence: &mut u64,
     revision: u64,
-) -> Result<InputSnapshot, Diagnostic> {
+    shutdown: &AtomicBool,
+) -> Result<Option<InputSnapshot>, Diagnostic> {
     loop {
+        if shutdown.load(Ordering::SeqCst) {
+            return Ok(None);
+        }
         thread::sleep(Duration::from_millis(100));
         let mut candidate = match watch_input_snapshot(project) {
             Ok(snapshot) => snapshot,
@@ -1561,7 +1972,7 @@ fn wait_for_settled_change(
                 Err(_) => continue,
             };
             if next == candidate {
-                return Ok(candidate);
+                return Ok(Some(candidate));
             }
             candidate = next;
         }
@@ -1602,7 +2013,10 @@ fn collect_watch_inputs(path: &Path, output: &mut Vec<PathBuf>) -> Result<(), Di
         let name = entry.file_name();
         let name = name.to_string_lossy();
         if entry_path.is_dir() {
-            if name == "build" || name.starts_with(".jadpo-build-") {
+            if name == "build"
+                || name.starts_with(".jadpo-build-")
+                || name.starts_with(".jadpo-runtime-")
+            {
                 continue;
             }
             collect_watch_inputs(&entry_path, output)?;
@@ -1611,6 +2025,7 @@ fn collect_watch_inputs(path: &Path, output: &mut Vec<PathBuf>) -> Result<(), Di
             .and_then(|extension| extension.to_str())
             == Some("jadpo")
             || name == "schema.identities.json"
+            || name == ".env.local"
         {
             output.push(entry_path);
         }
@@ -1713,8 +2128,8 @@ fn require_valid_frontend(project: &AnalyzedProject) -> Result<(), Diagnostic> {
 mod tests {
     use super::{
         build_project, check_project, check_report_json, human_diagnostic, incident_packet,
-        lifecycle_event_json, parse_dev_port, presentation_arguments, watch_input_snapshot,
-        CheckReport, CheckSummary,
+        lifecycle_event_json, parse_dev_port, prepare_runtime_rollback, presentation_arguments,
+        restore_runtime_rollback, watch_input_snapshot, CheckReport, CheckSummary,
     };
     use crate::terminal::{ColorChoice, LayoutChoice};
     use jadpo_diagnostics::{Diagnostic, SourceSpan};
@@ -2023,5 +2438,62 @@ mod tests {
                 .code,
             "CLI_DEV_PORT_INVALID"
         );
+    }
+
+    #[test]
+    fn preserves_and_restores_the_last_known_good_runtime_revision() {
+        let root =
+            std::env::temp_dir().join(format!("jadpo-cli-runtime-rollback-{}", std::process::id()));
+        if root.exists() {
+            fs::remove_dir_all(&root).expect("stale rollback fixture should be removable");
+        }
+        fs::create_dir_all(root.join("build/target")).expect("build fixture should be created");
+        fs::write(root.join("build/target/app.ts"), "known-good\n")
+            .expect("known-good target should be written");
+
+        let rollback =
+            prepare_runtime_rollback(&root, 2).expect("known-good build should be preserved");
+        assert!(!root.join("build").exists());
+        assert!(rollback.backup_root.exists());
+        fs::create_dir_all(root.join("build/target")).expect("candidate build should be created");
+        fs::write(root.join("build/target/app.ts"), "broken-candidate\n")
+            .expect("candidate target should be written");
+
+        restore_runtime_rollback(&rollback).expect("known-good build should be restored");
+        assert_eq!(
+            fs::read_to_string(root.join("build/target/app.ts"))
+                .expect("restored target should be readable"),
+            "known-good\n"
+        );
+        assert!(!rollback.backup_root.exists());
+        fs::remove_dir_all(root).expect("rollback fixture should be removable");
+    }
+
+    #[test]
+    fn rollback_failures_have_stable_diagnostic_contracts() {
+        for code in [
+            "CLI_DEV_ROLLBACK_CLEANUP_FAILED",
+            "CLI_DEV_ROLLBACK_PREPARE_FAILED",
+            "CLI_DEV_ROLLBACK_RESTORE_FAILED",
+            "CLI_SIGNAL_HANDLER_FAILED",
+        ] {
+            let diagnostic = Diagnostic::error(code);
+            assert!(!diagnostic.message.is_empty(), "{code}");
+            assert!(!diagnostic.reason.is_empty(), "{code}");
+        }
+    }
+
+    #[test]
+    fn configuration_cli_failures_have_stable_safe_copy() {
+        for code in [
+            "CLI_CONFIG_ARGUMENTS",
+            "CLI_CONFIG_PROMPT_FAILED",
+            "CLI_CONFIG_TTY_REQUIRED",
+        ] {
+            let diagnostic = Diagnostic::error(code);
+            assert!(!diagnostic.message.is_empty(), "{code}");
+            assert!(!diagnostic.reason.is_empty(), "{code}");
+            assert!(!diagnostic.message.contains("value"), "{code}");
+        }
     }
 }

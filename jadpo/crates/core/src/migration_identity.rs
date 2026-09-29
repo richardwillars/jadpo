@@ -1813,7 +1813,16 @@ fn migration_sql_type(
             MigrationAdapter::Postgres => "NUMERIC",
             MigrationAdapter::Sqlite => "REAL",
         }),
-        "Text" | "Uuid" | "DateTime" => Ok("TEXT"),
+        "Text" | "Uuid" => Ok("TEXT"),
+        "Instant" => Ok(match adapter {
+            MigrationAdapter::Postgres => "TIMESTAMPTZ(3)",
+            MigrationAdapter::Sqlite => "BIGINT",
+        }),
+        "CalendarDate" => Ok(match adapter {
+            MigrationAdapter::Postgres => "DATE",
+            MigrationAdapter::Sqlite => "TEXT",
+        }),
+        "Duration" => Ok("BIGINT"),
         _other => Err(Diagnostic::error("MIG_SQL_TYPE_UNSUPPORTED")),
     }
 }
@@ -1831,10 +1840,12 @@ fn compile_migration_literal(
         "Text" => Ok(sql_string_literal(value)),
         "Uuid" if valid_uuid(value) => Ok(sql_string_literal(value)),
         "Uuid" => Err(Diagnostic::error("MIG_SQL_LITERAL_INVALID")),
-        "DateTime" if value.contains('T') && (value.ends_with('Z') || value.contains('+')) => {
+        "Instant" if adapter == MigrationAdapter::Postgres && valid_migration_instant(value) => {
             Ok(sql_string_literal(value))
         }
-        "DateTime" => Err(Diagnostic::error("MIG_SQL_LITERAL_INVALID")),
+        "Instant" => Err(Diagnostic::error("MIG_SQL_LITERAL_INVALID")),
+        "CalendarDate" if valid_migration_calendar_date(value) => Ok(sql_string_literal(value)),
+        "CalendarDate" => Err(Diagnostic::error("MIG_SQL_LITERAL_INVALID")),
         "Int" if value.parse::<i64>().is_ok() => Ok(value.to_owned()),
         "Decimal" if valid_decimal(value) => Ok(value.to_owned()),
         "Bool" if value == "true" => Ok(match adapter {
@@ -1879,6 +1890,80 @@ fn valid_decimal(value: &str) -> bool {
             !part.is_empty() && part.chars().all(|character| character.is_ascii_digit())
         })
         && parts.next().is_none()
+}
+
+fn valid_migration_calendar_date(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return false;
+    }
+    let number = |range: std::ops::Range<usize>| value.get(range)?.parse::<u32>().ok();
+    let (Some(year), Some(month), Some(day)) = (number(0..4), number(5..7), number(8..10)) else {
+        return false;
+    };
+    if year == 0 || !(1..=12).contains(&month) {
+        return false;
+    }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let maximum = match month {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    (1..=maximum).contains(&day)
+}
+
+fn valid_migration_instant(value: &str) -> bool {
+    let Some((date, time_and_offset)) = value.split_once('T') else {
+        return false;
+    };
+    if !valid_migration_calendar_date(date) {
+        return false;
+    }
+    let (clock, offset) = if let Some(clock) = time_and_offset.strip_suffix('Z') {
+        (clock, "Z")
+    } else if time_and_offset.len() >= 6 {
+        time_and_offset.split_at(time_and_offset.len() - 6)
+    } else {
+        return false;
+    };
+    let (whole_clock, fraction) = clock
+        .split_once('.')
+        .map_or((clock, None), |(whole, fraction)| (whole, Some(fraction)));
+    if fraction.is_some_and(|fraction| {
+        fraction.is_empty()
+            || fraction.len() > 3
+            || !fraction.bytes().all(|byte| byte.is_ascii_digit())
+    }) {
+        return false;
+    }
+    let clock_fields = whole_clock.split(':').collect::<Vec<_>>();
+    if clock_fields.len() != 3
+        || clock_fields
+            .iter()
+            .any(|field| field.len() != 2 || !field.bytes().all(|byte| byte.is_ascii_digit()))
+        || clock_fields[0].parse::<u8>().map_or(true, |hour| hour > 23)
+        || clock_fields[1]
+            .parse::<u8>()
+            .map_or(true, |minute| minute > 59)
+        || clock_fields[2]
+            .parse::<u8>()
+            .map_or(true, |second| second > 59)
+    {
+        return false;
+    }
+    if offset == "Z" {
+        return true;
+    }
+    let bytes = offset.as_bytes();
+    bytes.len() == 6
+        && matches!(bytes[0], b'+' | b'-')
+        && bytes[3] == b':'
+        && bytes[1..3].iter().all(u8::is_ascii_digit)
+        && bytes[4..6].iter().all(u8::is_ascii_digit)
+        && offset[1..3].parse::<u8>().is_ok_and(|hour| hour <= 23)
+        && offset[4..6].parse::<u8>().is_ok_and(|minute| minute <= 59)
 }
 
 fn schema_migration_sql_review_json(
@@ -1986,7 +2071,7 @@ fn derive_registry_entries(analyzed: &AnalyzedProject) -> Vec<RegistryEntry> {
             let Declaration::Record(record) = declaration else {
                 continue;
             };
-            if record.kind != RecordKind::Entity {
+            if !record.is_persistent_entity() {
                 continue;
             }
 
@@ -2100,7 +2185,7 @@ fn derive_schema_snapshot_entries(
             let Declaration::Record(record) = declaration else {
                 continue;
             };
-            if record.kind != RecordKind::Entity {
+            if !record.is_persistent_entity() {
                 continue;
             }
             let entity = record.name.text.as_str();

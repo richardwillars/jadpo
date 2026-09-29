@@ -1,0 +1,5 @@
+locales {
+    default: "fr-FR"
+    supported: ["not a locale", "en-us", "en-GB", "en-GB"]
+    unsupported: reject
+}

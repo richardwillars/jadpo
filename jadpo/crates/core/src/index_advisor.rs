@@ -4,7 +4,7 @@ use crate::{
 use jadpo_diagnostics::Diagnostic;
 use jadpo_syntax::{
     Block, Declaration, Expression, FieldDeclaration, PersistenceModifier, QueryCardinality,
-    QueryExpression, RecordKind, Statement,
+    QueryExpression, Statement,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -120,7 +120,7 @@ fn derive_index_recommendations(analyzed: &AnalyzedProject) -> Vec<IndexRecommen
         .iter()
         .flat_map(|source| &source.file.declarations)
         .filter_map(|declaration| match declaration {
-            Declaration::Record(record) if record.kind == RecordKind::Entity => {
+            Declaration::Record(record) if record.is_persistent_entity() => {
                 Some((record.name.text.as_str(), record))
             }
             _ => None,
@@ -228,6 +228,7 @@ fn collect_queries<'a>(block: &'a Block, queries: &mut Vec<&'a QueryExpression>)
                 }
             }
             Statement::Assert(statement) => collect_expression(&statement.condition, queries),
+            Statement::AdvanceClock(statement) => collect_expression(&statement.duration, queries),
             Statement::Unsupported(_) => {}
         }
     }
@@ -251,9 +252,25 @@ fn collect_expression<'a>(expression: &'a Expression, queries: &mut Vec<&'a Quer
             for argument in &invocation.arguments {
                 collect_expression(argument, queries);
             }
+            for argument in &invocation.named_arguments {
+                collect_expression(&argument.value, queries);
+            }
+        }
+        Expression::TestCall(call) => {
+            for argument in &call.invocation.arguments {
+                collect_expression(argument, queries);
+            }
+            for argument in &call.invocation.named_arguments {
+                collect_expression(&argument.value, queries);
+            }
         }
         Expression::Construction(construction) => {
             for field in &construction.fields {
+                collect_expression(&field.value, queries);
+            }
+        }
+        Expression::Object(object) => {
+            for field in &object.fields {
                 collect_expression(&field.value, queries);
             }
         }
@@ -279,6 +296,22 @@ fn collect_expression<'a>(expression: &'a Expression, queries: &mut Vec<&'a Quer
         Expression::Unary(unary) => collect_expression(&unary.value, queries),
         Expression::Grouped(grouped) => collect_expression(&grouped.value, queries),
         Expression::Attempt(attempt) => collect_expression(&attempt.value, queries),
+        Expression::OutcomeMatch(outcome) => {
+            collect_expression(&outcome.subject, queries);
+            for arm in &outcome.arms {
+                match &arm.body {
+                    jadpo_syntax::OutcomeMatchArmBody::Value(value) => {
+                        collect_expression(value, queries)
+                    }
+                    jadpo_syntax::OutcomeMatchArmBody::Reject(rejection) => {
+                        for field in &rejection.values {
+                            collect_expression(&field.value, queries);
+                        }
+                    }
+                    jadpo_syntax::OutcomeMatchArmBody::Propagate(_) => {}
+                }
+            }
+        }
         Expression::Literal(_) | Expression::Name(_) | Expression::Missing(_) => {}
     }
 }
@@ -293,7 +326,7 @@ fn find_field(
             let Declaration::Record(record) = declaration else {
                 return None;
             };
-            if record.kind != RecordKind::Entity || record.name.text != entity {
+            if !record.is_persistent_entity() || record.name.text != entity {
                 return None;
             }
             record

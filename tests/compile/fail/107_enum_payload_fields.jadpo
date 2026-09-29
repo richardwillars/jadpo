@@ -1,13 +1,13 @@
 type Name = Text {}
 
 enum Result {
-    Ok {
+    ok {
         value: Name
     }
 }
 
 function invalid_payload(name: Name) -> Result {
-    return Result.Ok {
+    return Result.ok {
         valu: name
     }
 }

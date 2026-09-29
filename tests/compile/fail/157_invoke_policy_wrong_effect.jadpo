@@ -1,0 +1,10 @@
+output Health {
+    ok: Bool
+}
+
+action public_health() -> Health {
+    policy {
+        Access.public: [read]
+    }
+    return Health { ok: true }
+}

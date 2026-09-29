@@ -1,7 +1,7 @@
 type ReceiptId = Uuid {}
 type DeclineReason = Text {}
 type OutcomeLabel = Text {}
-type EventTime = DateTime {}
+type EventTime = Instant {}
 
 enum PaymentOutcome {
     pending {

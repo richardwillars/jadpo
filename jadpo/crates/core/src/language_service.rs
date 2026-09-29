@@ -135,6 +135,24 @@ impl LanguageIndex {
             .filter(move |occurrence| occurrence.key == key)
     }
 
+    /// Reject local renames that could capture a binding in an overlapping scope.
+    /// Names in separate functions or sibling blocks do not conflict.
+    pub fn local_rename_conflicts(&self, key: &str, new_name: &str) -> bool {
+        let Some(selected) = self.locals.iter().find(|local| local.symbol.key == key) else {
+            return false;
+        };
+        if selected.symbol.name == new_name {
+            return false;
+        }
+        self.locals.iter().any(|candidate| {
+            candidate.symbol.key != key
+                && candidate.symbol.source == selected.symbol.source
+                && candidate.symbol.name == new_name
+                && candidate.scope.start < selected.scope.end
+                && selected.scope.start < candidate.scope.end
+        })
+    }
+
     pub fn locals_at(&self, source: &str, offset: usize) -> Vec<&LanguageSymbol> {
         let mut seen = BTreeSet::new();
         let mut definitions = self
@@ -267,15 +285,38 @@ fn collect_block_locals(
 ) {
     for statement in &block.statements {
         match statement {
-            Statement::Binding(binding) => push_local(
+            Statement::Binding(binding) => {
+                push_local(
+                    source,
+                    &binding.name.text,
+                    "variable",
+                    binding.name.range,
+                    block.range,
+                    binding.range.end,
+                    container.clone(),
+                    inferred_expression_type(project, source, binding.value.range()),
+                    output,
+                );
+                collect_outcome_match_locals(
+                    source,
+                    &binding.value,
+                    container.clone(),
+                    project,
+                    output,
+                );
+            }
+            Statement::Assignment(statement) => collect_outcome_match_locals(
                 source,
-                &binding.name.text,
-                "variable",
-                binding.name.range,
-                block.range,
-                binding.range.end,
+                &statement.value,
                 container.clone(),
-                inferred_expression_type(project, source, binding.value.range()),
+                project,
+                output,
+            ),
+            Statement::Return(statement) => collect_outcome_match_locals(
+                source,
+                &statement.value,
+                container.clone(),
+                project,
                 output,
             ),
             Statement::If(statement) => {
@@ -330,6 +371,34 @@ fn collect_block_locals(
                 }
             }
             _ => {}
+        }
+    }
+}
+
+fn collect_outcome_match_locals(
+    source: &ParsedSyntax,
+    expression: &Expression,
+    container: Option<String>,
+    project: &AnalyzedProject,
+    output: &mut Vec<LocalDefinition>,
+) {
+    let Expression::OutcomeMatch(outcome) = expression else {
+        return;
+    };
+    let subject_type = inferred_expression_type(project, source, outcome.subject.range());
+    for arm in &outcome.arms {
+        if let jadpo_syntax::OutcomeMatchPattern::Success(binding) = &arm.pattern {
+            push_local(
+                source,
+                &binding.text,
+                "variable",
+                binding.range,
+                arm.body.range(),
+                arm.body.range().start,
+                container.clone(),
+                subject_type.clone(),
+                output,
+            );
         }
     }
 }
@@ -490,13 +559,29 @@ fn collect_explicit_references(
                 collect_block_references(source, &callable.body, globals, output);
             }
             Declaration::Test(test) => {
+                if let Some(fixture) = &test.fixture {
+                    insert_explicit(source, fixture.range, fixture.text.clone(), globals, output);
+                }
                 collect_block_references(source, &test.body, globals, output);
+            }
+            Declaration::Fixture(fixture) => {
+                if let Some(clock) = &fixture.clock {
+                    collect_expression_references(source, clock, globals, output);
+                }
+                if let Some(configuration) = &fixture.configuration {
+                    for item in configuration {
+                        collect_expression_references(source, &item.value, globals, output);
+                    }
+                }
             }
             Declaration::Route(route) => {
                 if let Some(run) = &route.run {
                     collect_name_expression(source, &run.callee, globals, output);
                     for argument in &run.arguments {
                         collect_expression_references(source, argument, globals, output);
+                    }
+                    for argument in &run.named_arguments {
+                        collect_expression_references(source, &argument.value, globals, output);
                     }
                 }
             }
@@ -547,6 +632,9 @@ fn collect_block_references(
             Statement::Assert(statement) => {
                 collect_expression_references(source, &statement.condition, globals, output)
             }
+            Statement::AdvanceClock(statement) => {
+                collect_expression_references(source, &statement.duration, globals, output)
+            }
             Statement::Unsupported(_) => {}
         }
     }
@@ -566,6 +654,18 @@ fn collect_expression_references(
             for argument in &invocation.arguments {
                 collect_expression_references(source, argument, globals, output);
             }
+            for argument in &invocation.named_arguments {
+                collect_expression_references(source, &argument.value, globals, output);
+            }
+        }
+        Expression::TestCall(call) => {
+            collect_name_expression(source, &call.invocation.callee, globals, output);
+            for argument in &call.invocation.arguments {
+                collect_expression_references(source, argument, globals, output);
+            }
+            for argument in &call.invocation.named_arguments {
+                collect_expression_references(source, &argument.value, globals, output);
+            }
         }
         Expression::Construction(construction) => {
             collect_name_expression(source, &construction.target, globals, output);
@@ -576,6 +676,9 @@ fn collect_expression_references(
                 globals,
                 output,
             );
+        }
+        Expression::Object(object) => {
+            collect_initialisers(source, "Object", &object.fields, globals, output)
         }
         Expression::Create(create) => {
             collect_name_expression(source, &create.target, globals, output);
@@ -676,6 +779,32 @@ fn collect_expression_references(
         }
         Expression::Attempt(attempt) => {
             collect_expression_references(source, &attempt.value, globals, output)
+        }
+        Expression::OutcomeMatch(outcome) => {
+            collect_expression_references(source, &outcome.subject, globals, output);
+            for arm in &outcome.arms {
+                if let jadpo_syntax::OutcomeMatchPattern::Failure(failure) = &arm.pattern {
+                    insert_explicit(source, failure.range, failure.text.clone(), globals, output);
+                }
+                match &arm.body {
+                    jadpo_syntax::OutcomeMatchArmBody::Value(value) => {
+                        collect_expression_references(source, value, globals, output)
+                    }
+                    jadpo_syntax::OutcomeMatchArmBody::Reject(rejection) => {
+                        insert_explicit(
+                            source,
+                            rejection.failure.range,
+                            rejection.failure.text.clone(),
+                            globals,
+                            output,
+                        );
+                        for field in &rejection.values {
+                            collect_expression_references(source, &field.value, globals, output);
+                        }
+                    }
+                    jadpo_syntax::OutcomeMatchArmBody::Propagate(_) => {}
+                }
+            }
         }
     }
 }

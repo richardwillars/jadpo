@@ -1,0 +1,11 @@
+output Changed {
+    ok: Bool
+}
+
+route POST /sensitive-change {
+    auth: fresh
+    output: Changed
+    action: {
+        return Changed { ok: true }
+    }
+}

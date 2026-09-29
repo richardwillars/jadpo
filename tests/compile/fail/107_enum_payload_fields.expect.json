@@ -4,23 +4,23 @@
   "diagnostics": [
     {
       "code": "TYPE_MISSING_VARIANT_FIELD",
-      "primary_match": "Result.Ok {\n        valu: name\n    }",
-      "summary": "`Result.Ok` is missing the required `value` field",
-      "reason_includes": "`value` is required by the `Result.Ok` declaration",
-      "recommended_title": "Add `value: ...` to `Result.Ok`",
+      "primary_match": "Result.ok {\n        valu: name\n    }",
+      "summary": "`Result.ok` is missing the required `value` field",
+      "reason_includes": "`value` is required by the `Result.ok` declaration",
+      "recommended_title": "Add `value: ...` to `Result.ok`",
       "diagnostic_context": {
-        "subject": "Result.Ok",
+        "subject": "Result.ok",
         "field": "value"
       }
     },
     {
       "code": "TYPE_UNKNOWN_VARIANT_FIELD",
       "primary_match": "valu",
-      "summary": "`Result.Ok` has no `valu` field",
+      "summary": "`Result.ok` has no `valu` field",
       "reason_includes": "Did you mean `value`?",
       "recommended_title": "Use `value` instead of `valu`",
       "diagnostic_context": {
-        "subject": "Result.Ok",
+        "subject": "Result.ok",
         "field": "valu",
         "suggestedName": "value"
       }

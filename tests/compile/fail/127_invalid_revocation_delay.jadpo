@@ -1,0 +1,18 @@
+application TodoApplication {
+    authentication {
+        principal: Principal?
+        revocation {
+            mode: bounded
+            maximum_delay: 0m
+        }
+    }
+}
+
+principal Principal {
+    user {
+        subject: Text
+    }
+    service {
+        subject: Text
+    }
+}

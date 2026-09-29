@@ -2,7 +2,8 @@ use crate::SemanticGraph;
 use jadpo_diagnostics::{Diagnostic, DiagnosticFact, SourceSpan, TextEdit};
 use jadpo_syntax::{
     Block, CallableKind, Declaration, Expression, FieldDeclaration, FieldInitialiser, HttpMethod,
-    InvocationExpression, ParsedSyntax, RejectStatement, Statement, TextRange,
+    InvocationExpression, OutcomeMatchArmBody, OutcomeMatchExpression, OutcomeMatchPattern,
+    ParsedSyntax, RejectStatement, Statement, TextRange,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -21,6 +22,7 @@ pub struct FailureContract {
 pub struct CallableFailureSet {
     pub callable: String,
     pub failures: Vec<String>,
+    pub may_suspend: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -49,13 +51,16 @@ struct FailureShape {
 
 #[derive(Clone, Debug)]
 struct CallSite {
+    reachable: bool,
     callee: String,
     range: TextRange,
     attempted: bool,
+    outcome: Option<OutcomeMatchExpression>,
 }
 
 #[derive(Clone, Debug)]
 struct RejectSite {
+    reachable: bool,
     statement: RejectStatement,
     binding: FailureBinding,
 }
@@ -65,6 +70,7 @@ struct PersistenceSite {
     range: TextRange,
     acknowledgement_range: TextRange,
     attempted: bool,
+    mutative: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -283,16 +289,40 @@ impl FailureChecker {
                             ));
                         }
                     }
-                    Declaration::Type(_)
+                    Declaration::Application(_)
+                    | Declaration::Locales(_)
+                    | Declaration::AuthenticationStrategy(_)
+                    | Declaration::Principal(_)
+                    | Declaration::Config(_)
+                    | Declaration::Type(_)
                     | Declaration::Enum(_)
                     | Declaration::Record(_)
+                    | Declaration::Fixture(_)
                     | Declaration::Test(_) => {}
+                }
+            }
+        }
+        let callable_names = self.callables.keys().cloned().collect::<BTreeSet<_>>();
+        for facts in self.callables.values_mut() {
+            for call in &mut facts.calls {
+                if callable_names.contains(&call.callee) {
+                    continue;
+                }
+                let operation = call.callee.rsplit('.').next().unwrap_or(&call.callee);
+                let mut candidates = callable_names
+                    .iter()
+                    .filter(|candidate| candidate.ends_with(&format!(".{operation}")));
+                if let Some(candidate) = candidates.next() {
+                    if candidates.next().is_none() {
+                        call.callee.clone_from(candidate);
+                    }
                 }
             }
         }
     }
 
     fn validate(&mut self) {
+        let suspending = self.suspending_callables();
         for shape in self.failures.values() {
             self.result.contracts.push(shape.contract.clone());
         }
@@ -303,6 +333,16 @@ impl FailureChecker {
                 for site in &facts.persistence {
                     self.push_diagnostic(
                         Diagnostic::error("EFFECT_FUNCTION_PERSISTENCE")
+                            .with_fact(DiagnosticFact::Callable(name.clone())),
+                        &facts.source,
+                        site.range,
+                    );
+                }
+            }
+            if facts.kind == CallableKind::Query {
+                for site in facts.persistence.iter().filter(|site| site.mutative) {
+                    self.push_diagnostic(
+                        Diagnostic::error("EFFECT_QUERY_MUTATION")
                             .with_fact(DiagnosticFact::Callable(name.clone())),
                         &facts.source,
                         site.range,
@@ -327,8 +367,10 @@ impl FailureChecker {
             }
             for reject in &facts.rejects {
                 let failure = &reject.statement.failure.text;
-                reachable.insert(failure.clone());
-                if !facts.declared.contains(failure) {
+                if reject.reachable {
+                    reachable.insert(failure.clone());
+                }
+                if reject.reachable && !facts.declared.contains(failure) {
                     self.push_diagnostic(
                         Diagnostic::error("FAIL_UNDECLARED_PROPAGATION")
                             .with_fact(DiagnosticFact::Callable(name.clone()))
@@ -391,10 +433,18 @@ impl FailureChecker {
             }
 
             for call in &facts.calls {
+                if call.callee.is_empty() && call.outcome.is_some() {
+                    self.push_diagnostic(
+                        Diagnostic::error("FAIL_OUTCOME_SUBJECT_REQUIRED"),
+                        &facts.source,
+                        call.range,
+                    );
+                    continue;
+                }
                 let Some(callee) = self.callables.get(&call.callee).cloned() else {
                     continue;
                 };
-                if facts.kind == CallableKind::Function && callee.kind == CallableKind::Action {
+                if facts.kind == CallableKind::Function && callee.kind != CallableKind::Function {
                     self.push_diagnostic(
                         Diagnostic::error("EFFECT_FUNCTION_CALLS_ACTION")
                             .with_fact(DiagnosticFact::Callable(name.clone()))
@@ -402,6 +452,114 @@ impl FailureChecker {
                         &facts.source,
                         call.range,
                     );
+                }
+                if facts.kind == CallableKind::Query && callee.kind == CallableKind::Action {
+                    self.push_diagnostic(
+                        Diagnostic::error("EFFECT_QUERY_CALLS_ACTION")
+                            .with_fact(DiagnosticFact::Callable(name.clone()))
+                            .with_fact(DiagnosticFact::Name(call.callee.clone())),
+                        &facts.source,
+                        call.range,
+                    );
+                }
+                if let Some(outcome) = &call.outcome {
+                    if callee.declared.is_empty() {
+                        self.push_diagnostic(
+                            Diagnostic::error("FAIL_OUTCOME_INFALLIBLE")
+                                .with_fact(DiagnosticFact::Operation(call.callee.clone())),
+                            &facts.source,
+                            outcome.range,
+                        );
+                    }
+                    let success_arms = outcome
+                        .arms
+                        .iter()
+                        .filter(|arm| matches!(arm.pattern, OutcomeMatchPattern::Success(_)))
+                        .collect::<Vec<_>>();
+                    if success_arms.is_empty() {
+                        self.push_diagnostic(
+                            Diagnostic::error("FAIL_OUTCOME_SUCCESS_MISSING")
+                                .with_fact(DiagnosticFact::Operation(call.callee.clone())),
+                            &facts.source,
+                            outcome.range,
+                        );
+                    }
+                    for duplicate in success_arms.iter().skip(1) {
+                        self.push_diagnostic(
+                            Diagnostic::error("FAIL_OUTCOME_SUCCESS_DUPLICATE")
+                                .with_fact(DiagnosticFact::Operation(call.callee.clone())),
+                            &facts.source,
+                            duplicate.pattern.range(),
+                        );
+                    }
+                    if let Some(success) = success_arms.first() {
+                        if !matches!(success.body, OutcomeMatchArmBody::Value(_)) {
+                            self.push_diagnostic(
+                                Diagnostic::error("FAIL_OUTCOME_SUCCESS_VALUE_REQUIRED")
+                                    .with_fact(DiagnosticFact::Operation(call.callee.clone())),
+                                &facts.source,
+                                success.body.range(),
+                            );
+                        }
+                    }
+
+                    let mut matched = BTreeSet::new();
+                    for arm in &outcome.arms {
+                        let OutcomeMatchPattern::Failure(failure) = &arm.pattern else {
+                            continue;
+                        };
+                        if failure.text == "_" {
+                            self.push_diagnostic(
+                                Diagnostic::error("FAIL_OUTCOME_WILDCARD")
+                                    .with_fact(DiagnosticFact::Operation(call.callee.clone())),
+                                &facts.source,
+                                failure.range,
+                            );
+                            continue;
+                        }
+                        if !callee.declared.contains(&failure.text) {
+                            self.push_diagnostic(
+                                Diagnostic::error("FAIL_OUTCOME_UNKNOWN_ARM")
+                                    .with_fact(DiagnosticFact::Operation(call.callee.clone()))
+                                    .with_fact(DiagnosticFact::Failure(failure.text.clone())),
+                                &facts.source,
+                                failure.range,
+                            );
+                            continue;
+                        }
+                        if !matched.insert(failure.text.clone()) {
+                            self.push_diagnostic(
+                                Diagnostic::error("FAIL_OUTCOME_DUPLICATE_ARM")
+                                    .with_fact(DiagnosticFact::Operation(call.callee.clone()))
+                                    .with_fact(DiagnosticFact::Failure(failure.text.clone())),
+                                &facts.source,
+                                failure.range,
+                            );
+                            continue;
+                        }
+                        if call.reachable && matches!(arm.body, OutcomeMatchArmBody::Propagate(_)) {
+                            reachable.insert(failure.text.clone());
+                            if !facts.declared.contains(&failure.text) {
+                                self.push_diagnostic(
+                                    Diagnostic::error("FAIL_UNDECLARED_PROPAGATION")
+                                        .with_fact(DiagnosticFact::Callable(name.clone()))
+                                        .with_fact(DiagnosticFact::Failure(failure.text.clone())),
+                                    &facts.source,
+                                    arm.body.range(),
+                                );
+                            }
+                        }
+                    }
+                    for failure in callee.declared.difference(&matched) {
+                        self.push_diagnostic(
+                            Diagnostic::error("FAIL_OUTCOME_MISSING_ARM")
+                                .with_fact(DiagnosticFact::Operation(call.callee.clone()))
+                                .with_fact(DiagnosticFact::Failure(failure.clone())),
+                            &facts.source,
+                            outcome.range,
+                        );
+                    }
+                    continue;
                 }
                 if !callee.declared.is_empty() && !call.attempted {
                     self.push_diagnostic(
@@ -418,7 +576,7 @@ impl FailureChecker {
                         call.range,
                     );
                 }
-                for failure in &callee.declared {
+                for failure in callee.declared.iter().filter(|_| call.reachable) {
                     reachable.insert(failure.clone());
                     if !facts.declared.contains(failure) {
                         self.push_diagnostic(
@@ -466,6 +624,7 @@ impl FailureChecker {
             }
 
             self.result.callables.push(CallableFailureSet {
+                may_suspend: suspending.contains(&name),
                 callable: name,
                 failures: facts.declared.into_iter().collect(),
             });
@@ -497,6 +656,32 @@ impl FailureChecker {
         self.result.routes.sort_by(|left, right| {
             (&left.route, &left.failure).cmp(&(&right.route, &right.failure))
         });
+    }
+
+    fn suspending_callables(&self) -> BTreeSet<String> {
+        let mut suspending = self
+            .callables
+            .iter()
+            .filter_map(|(name, facts)| (!facts.persistence.is_empty()).then_some(name.clone()))
+            .collect::<BTreeSet<_>>();
+        loop {
+            let newly_suspending = self
+                .callables
+                .iter()
+                .filter(|(name, _)| !suspending.contains(*name))
+                .filter_map(|(name, facts)| {
+                    facts
+                        .calls
+                        .iter()
+                        .any(|call| suspending.contains(&call.callee))
+                        .then_some(name.clone())
+                })
+                .collect::<Vec<_>>();
+            if newly_suspending.is_empty() {
+                return suspending;
+            }
+            suspending.extend(newly_suspending);
+        }
     }
 
     fn validate_reject_payload(&mut self, reject: &RejectStatement, source: &str) {
@@ -590,7 +775,10 @@ fn collect_block(
     rejects: &mut Vec<RejectSite>,
     persistence: &mut Vec<PersistenceSite>,
 ) {
+    let mut reachable = true;
     for statement in &block.statements {
+        let first_call = calls.len();
+        let first_reject = rejects.len();
         match statement {
             Statement::Binding(statement) => {
                 collect_expression(&statement.value, calls, rejects, persistence)
@@ -603,6 +791,7 @@ fn collect_block(
             }
             Statement::Reject(statement) => {
                 rejects.push(RejectSite {
+                    reachable: true,
                     statement: statement.clone(),
                     binding: FailureBinding::Direct,
                 });
@@ -626,8 +815,44 @@ fn collect_block(
             Statement::Assert(statement) => {
                 collect_expression(&statement.condition, calls, rejects, persistence)
             }
+            Statement::AdvanceClock(statement) => {
+                collect_expression(&statement.duration, calls, rejects, persistence)
+            }
             Statement::Unsupported(_) => {}
         }
+        // Keep dead source in validation: malformed context, missing `attempt`
+        // and forbidden effects remain errors. Only its contribution to the
+        // callable's reachable failure contract is suppressed.
+        if !reachable {
+            for call in &mut calls[first_call..] {
+                call.reachable = false;
+            }
+            for rejection in &mut rejects[first_reject..] {
+                rejection.reachable = false;
+            }
+        }
+        reachable &= statement_can_continue(statement);
+    }
+}
+
+fn block_can_continue(block: &Block) -> bool {
+    block.statements.iter().all(statement_can_continue)
+}
+
+fn statement_can_continue(statement: &Statement) -> bool {
+    match statement {
+        Statement::Return(_) | Statement::Reject(_) => false,
+        Statement::If(branch) => {
+            block_can_continue(&branch.then_block)
+                || branch.else_block.as_ref().map_or(true, block_can_continue)
+        }
+        // The type checker independently requires an exhaustive statement
+        // match. Empty or incomplete matches cannot become valid programs by
+        // changing failure inference.
+        Statement::Match(branch) => {
+            branch.arms.is_empty() || branch.arms.iter().any(|arm| block_can_continue(&arm.body))
+        }
+        _ => true,
     }
 }
 
@@ -653,9 +878,26 @@ fn collect_expression_inner(
             for argument in &invocation.arguments {
                 collect_expression(argument, calls, rejects, persistence);
             }
+            for argument in &invocation.named_arguments {
+                collect_expression(&argument.value, calls, rejects, persistence);
+            }
+        }
+        Expression::TestCall(call) => {
+            calls.push(call_site(&call.invocation, attempted));
+            for argument in &call.invocation.arguments {
+                collect_expression(argument, calls, rejects, persistence);
+            }
+            for argument in &call.invocation.named_arguments {
+                collect_expression(&argument.value, calls, rejects, persistence);
+            }
         }
         Expression::Construction(construction) => {
             for field in &construction.fields {
+                collect_expression(&field.value, calls, rejects, persistence);
+            }
+        }
+        Expression::Object(object) => {
+            for field in &object.fields {
                 collect_expression(&field.value, calls, rejects, persistence);
             }
         }
@@ -664,6 +906,7 @@ fn collect_expression_inner(
                 range: create.range,
                 acknowledgement_range: TextRange::new(create.range.start, create.range.start + 6),
                 attempted,
+                mutative: true,
             });
             for field in &create.fields {
                 collect_expression(&field.value, calls, rejects, persistence);
@@ -683,6 +926,7 @@ fn collect_expression_inner(
                 range: query.range,
                 acknowledgement_range: TextRange::new(query.range.start, query.range.start + 5),
                 attempted,
+                mutative: false,
             });
             collect_expression(&query.value, calls, rejects, persistence);
             if let Some(pagination) = &query.pagination {
@@ -695,6 +939,7 @@ fn collect_expression_inner(
             }
             if let Some(missing) = &query.missing {
                 rejects.push(RejectSite {
+                    reachable: true,
                     statement: missing.clone(),
                     binding: FailureBinding::RequiredQueryMissing,
                 });
@@ -708,6 +953,7 @@ fn collect_expression_inner(
                 range: update.range,
                 acknowledgement_range: TextRange::new(update.range.start, update.range.start + 6),
                 attempted,
+                mutative: true,
             });
             collect_expression(&update.value, calls, rejects, persistence);
             for change in &update.changes {
@@ -747,6 +993,7 @@ fn collect_expression_inner(
                 range: delete.range,
                 acknowledgement_range: TextRange::new(delete.range.start, delete.range.start + 6),
                 attempted,
+                mutative: true,
             });
             collect_expression(&delete.value, calls, rejects, persistence);
             collect_failure_binding(
@@ -777,6 +1024,49 @@ fn collect_expression_inner(
         Expression::Attempt(attempt) => {
             collect_expression_inner(&attempt.value, calls, rejects, persistence, true)
         }
+        Expression::OutcomeMatch(outcome) => {
+            if let Expression::Invocation(invocation) = outcome.subject.as_ref() {
+                calls.push(CallSite {
+                    reachable: true,
+                    callee: joined_name(&invocation.callee.path),
+                    range: invocation.range,
+                    attempted: false,
+                    outcome: Some(outcome.clone()),
+                });
+                for argument in &invocation.arguments {
+                    collect_expression(argument, calls, rejects, persistence);
+                }
+                for argument in &invocation.named_arguments {
+                    collect_expression(&argument.value, calls, rejects, persistence);
+                }
+            } else {
+                calls.push(CallSite {
+                    reachable: true,
+                    callee: String::new(),
+                    range: outcome.subject.range(),
+                    attempted: false,
+                    outcome: Some(outcome.clone()),
+                });
+            }
+            for arm in &outcome.arms {
+                match &arm.body {
+                    OutcomeMatchArmBody::Value(value) => {
+                        collect_expression(value, calls, rejects, persistence)
+                    }
+                    OutcomeMatchArmBody::Reject(rejection) => {
+                        rejects.push(RejectSite {
+                            reachable: true,
+                            statement: rejection.clone(),
+                            binding: FailureBinding::Direct,
+                        });
+                        for field in &rejection.values {
+                            collect_expression(&field.value, calls, rejects, persistence);
+                        }
+                    }
+                    OutcomeMatchArmBody::Propagate(_) => {}
+                }
+            }
+        }
         Expression::Literal(_) | Expression::Name(_) | Expression::Missing(_) => {}
     }
 }
@@ -789,6 +1079,7 @@ fn collect_failure_binding(
     persistence: &mut Vec<PersistenceSite>,
 ) {
     rejects.push(RejectSite {
+        reachable: true,
         statement: binding.clone(),
         binding: kind,
     });
@@ -799,9 +1090,11 @@ fn collect_failure_binding(
 
 fn call_site(invocation: &InvocationExpression, attempted: bool) -> CallSite {
     CallSite {
+        reachable: true,
         callee: joined_name(&invocation.callee.path),
         range: invocation.range,
         attempted,
+        outcome: None,
     }
 }
 

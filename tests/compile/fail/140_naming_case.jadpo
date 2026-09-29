@@ -1,0 +1,10 @@
+type customer_id = Uuid {}
+
+enum payment_status {
+    AwaitingPayment
+}
+
+function CalculateTotal(BadParameter: customer_id) -> customer_id {
+    var BadBinding = BadParameter
+    return BadBinding
+}

@@ -11,7 +11,7 @@ mod typecheck;
 pub use failurecheck::{
     check_failures, CallableFailureSet, FailureCheckResult, FailureContract, RouteFailure,
 };
-pub use typecheck::{check_types, InferredExpression, TypeCheckResult};
+pub use typecheck::{check_types, ClockRead, InferredExpression, TypeCheckResult};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NodeId(pub u32);
@@ -19,11 +19,27 @@ pub struct NodeId(pub u32);
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum NodeKind {
     PreludeType,
+    StandardNamespace,
+    StandardFunction,
+    StandardValue,
     StandardFailure,
+    Application,
+    Locales,
+    AuthenticationStrategy,
+    CredentialSlot,
+    CredentialValidation,
+    CredentialClaimMapping,
+    PrincipalResolution,
+    PrincipalMapping,
+    Principal,
+    PrincipalVariant,
+    Configuration,
+    ConfigurationField,
     Type,
     Enum,
     EnumVariant,
     Entity,
+    EntityReference,
     Value,
     Input,
     Output,
@@ -33,6 +49,8 @@ pub enum NodeKind {
     Failure,
     Function,
     Action,
+    Query,
+    Fixture,
     Test,
     Route,
 }
@@ -41,11 +59,27 @@ impl NodeKind {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::PreludeType => "prelude_type",
+            Self::StandardNamespace => "standard_namespace",
+            Self::StandardFunction => "standard_function",
+            Self::StandardValue => "standard_value",
             Self::StandardFailure => "standard_failure",
+            Self::Application => "application",
+            Self::Locales => "locales",
+            Self::AuthenticationStrategy => "authentication_strategy",
+            Self::CredentialSlot => "credential_slot",
+            Self::CredentialValidation => "credential_validation",
+            Self::CredentialClaimMapping => "credential_claim_mapping",
+            Self::PrincipalResolution => "principal_resolution",
+            Self::PrincipalMapping => "principal_mapping",
+            Self::Principal => "principal",
+            Self::PrincipalVariant => "principal_variant",
+            Self::Configuration => "configuration",
+            Self::ConfigurationField => "configuration_field",
             Self::Type => "type",
             Self::Enum => "enum",
             Self::EnumVariant => "enum_variant",
-            Self::Entity => "persistent_object",
+            Self::Entity => "entity",
+            Self::EntityReference => "entity_reference",
             Self::Value => "object",
             Self::Input => "input",
             Self::Output => "output",
@@ -55,6 +89,8 @@ impl NodeKind {
             Self::Failure => "failure",
             Self::Function => "function",
             Self::Action => "action",
+            Self::Query => "query",
+            Self::Fixture => "fixture",
             Self::Test => "test",
             Self::Route => "route",
         }
@@ -66,7 +102,10 @@ impl NodeKind {
             Self::PreludeType
                 | Self::Type
                 | Self::Enum
+                | Self::Principal
+                | Self::PrincipalVariant
                 | Self::Entity
+                | Self::EntityReference
                 | Self::Value
                 | Self::Input
                 | Self::Output
@@ -77,10 +116,26 @@ impl NodeKind {
     const fn user_name(self) -> &'static str {
         match self {
             Self::PreludeType | Self::Type => "type",
+            Self::StandardNamespace => "standard-library namespace",
+            Self::StandardFunction => "standard-library function",
+            Self::StandardValue => "standard-library value",
             Self::StandardFailure => "predefined category",
+            Self::Application => "application",
+            Self::Locales => "locale declaration",
+            Self::AuthenticationStrategy => "authentication strategy",
+            Self::CredentialSlot => "credential slot",
+            Self::CredentialValidation => "credential validation",
+            Self::CredentialClaimMapping => "credential claim mapping",
+            Self::PrincipalResolution => "principal resolution",
+            Self::PrincipalMapping => "principal mapping",
+            Self::Principal => "principal declaration",
+            Self::PrincipalVariant => "principal variant",
+            Self::Configuration => "configuration",
+            Self::ConfigurationField => "configuration field",
             Self::Enum => "enum",
             Self::EnumVariant => "enum variant",
-            Self::Entity => "persistent object type",
+            Self::Entity => "entity",
+            Self::EntityReference => "entity reference",
             Self::Value => "object type",
             Self::Input => "input",
             Self::Output => "output",
@@ -90,6 +145,8 @@ impl NodeKind {
             Self::Failure => "failure",
             Self::Function => "function",
             Self::Action => "action",
+            Self::Query => "query",
+            Self::Fixture => "test fixture",
             Self::Test => "test",
             Self::Route => "route",
         }
@@ -117,12 +174,21 @@ pub struct CallEdge {
     pub callee: NodeId,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AuthenticationResolutionEdge {
+    pub resolution: NodeId,
+    pub authority: NodeId,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SemanticGraph {
     pub modules: Vec<SemanticModule>,
     pub nodes: Vec<SemanticNode>,
     pub refinements: Vec<RefinementEdge>,
+    /// Named contracts that include absence, including inherited field references.
+    pub nullable_types: BTreeSet<String>,
     pub calls: Vec<CallEdge>,
+    pub authentication_resolutions: Vec<AuthenticationResolutionEdge>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -209,9 +275,22 @@ impl SemanticManifest<'_> {
             })
             .collect::<Vec<_>>()
             .join(",");
+        let authentication_resolutions = self
+            .graph
+            .authentication_resolutions
+            .iter()
+            .map(|edge| {
+                format!(
+                    "{{\"resolution\":\"{}\",\"authority\":\"{}\"}}",
+                    escape_json(&self.graph.nodes[edge.resolution.0 as usize].name),
+                    escape_json(&self.graph.nodes[edge.authority.0 as usize].name)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
 
         format!(
-            "{{\"schema_version\":1,\"phase\":\"semantic\",\"modules\":[{modules}],\"nodes\":[{nodes}],\"refinements\":[{refinements}],\"calls\":[{calls}]}}"
+            "{{\"schema_version\":1,\"phase\":\"semantic\",\"modules\":[{modules}],\"nodes\":[{nodes}],\"refinements\":[{refinements}],\"calls\":[{calls}],\"authentication_resolutions\":[{authentication_resolutions}]}}"
         )
     }
 }
@@ -256,6 +335,21 @@ pub fn checked_manifest_json(
         })
         .collect::<Vec<_>>()
         .join(",");
+    let mut clock_reads = typing.clock_reads.clone();
+    clock_reads.sort_by_key(|read| (read.source.clone(), read.range.start, read.range.end));
+    clock_reads.dedup();
+    let clock_reads = clock_reads
+        .iter()
+        .map(|read| {
+            format!(
+                "{{\"source\":\"{}\",\"start\":{},\"end\":{}}}",
+                escape_json(&read.source),
+                read.range.start,
+                read.range.end
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
     let contracts = failures
         .contracts
         .iter()
@@ -292,8 +386,21 @@ pub fn checked_manifest_json(
         })
         .collect::<Vec<_>>()
         .join(",");
+    let callable_outcomes = failures
+        .callables
+        .iter()
+        .map(|callable| {
+            format!(
+                "{{\"callable\":\"{}\",\"failures\":{},\"may_suspend\":{},\"completion\":\"before_caller_continues\"}}",
+                escape_json(&callable.callable),
+                json_strings(&callable.failures),
+                callable.may_suspend
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
     manifest.push_str(&format!(
-        ",\"expression_types\":[{expressions}],\"failure_contracts\":[{contracts}],\"route_failures\":[{route_failures}]}}"
+        ",\"expression_types\":[{expressions}],\"clock_reads\":[{clock_reads}],\"failure_contracts\":[{contracts}],\"callable_outcomes\":[{callable_outcomes}],\"route_failures\":[{route_failures}]}}"
     ));
     manifest
 }
@@ -332,16 +439,24 @@ struct PendingNode {
 #[derive(Clone, Copy, Debug)]
 enum ReferenceKind {
     Type,
+    Principal,
+    PrincipalVariant,
+    AuthenticationField,
     Failure,
     StandardFailure,
+    Fixture,
 }
 
 impl ReferenceKind {
     const fn user_name(self) -> &'static str {
         match self {
             Self::Type => "type",
+            Self::Principal => "principal declaration",
+            Self::PrincipalVariant => "principal variant",
+            Self::AuthenticationField => "authentication authority or principal field",
             Self::Failure => "declared failure",
             Self::StandardFailure => "predefined category",
+            Self::Fixture => "test fixture",
         }
     }
 
@@ -350,22 +465,36 @@ impl ReferenceKind {
             Self::StandardFailure => {
                 Some("`InvalidValue`, `NotFound`, `Conflict`, or `Unavailable`")
             }
-            Self::Type | Self::Failure => None,
+            Self::Type
+            | Self::Principal
+            | Self::PrincipalVariant
+            | Self::AuthenticationField
+            | Self::Failure => None,
+            Self::Fixture => None,
         }
     }
 
     const fn accepts(self, kind: NodeKind) -> bool {
         match self {
             Self::Type => kind.is_type(),
+            Self::Principal => matches!(kind, NodeKind::Principal),
+            Self::PrincipalVariant => matches!(kind, NodeKind::PrincipalVariant),
+            Self::AuthenticationField => matches!(kind, NodeKind::Field),
             Self::Failure => matches!(kind, NodeKind::Failure | NodeKind::StandardFailure),
             Self::StandardFailure => matches!(kind, NodeKind::StandardFailure),
+            Self::Fixture => matches!(kind, NodeKind::Fixture),
         }
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 enum ReferenceUsage {
+    ApplicationPrincipal,
+    AuthenticationPrincipal,
+    AuthenticationMapping,
+    AuthenticationAuthority,
     TypeDefinition,
+    LocalAnnotation,
     Field,
     Relationship,
     InverseRelationship,
@@ -375,12 +504,19 @@ enum ReferenceUsage {
     ReturnValue,
     RouteInput,
     RouteOutput,
+    ConfigurationField,
+    TestFixture,
 }
 
 impl ReferenceUsage {
     const fn user_name(self) -> &'static str {
         match self {
+            Self::ApplicationPrincipal => "application authentication principal",
+            Self::AuthenticationPrincipal => "authentication strategy principal",
+            Self::AuthenticationMapping => "authentication mapping",
+            Self::AuthenticationAuthority => "authentication authority lookup",
             Self::TypeDefinition => "type definition",
+            Self::LocalAnnotation => "local type annotation",
             Self::Field => "field",
             Self::Relationship => "relationship",
             Self::InverseRelationship => "inverse relationship",
@@ -390,6 +526,8 @@ impl ReferenceUsage {
             Self::ReturnValue => "return value",
             Self::RouteInput => "route input",
             Self::RouteOutput => "route output",
+            Self::ConfigurationField => "configuration field",
+            Self::TestFixture => "test fixture",
         }
     }
 }
@@ -412,13 +550,22 @@ struct PendingCall {
     range: TextRange,
 }
 
+#[derive(Clone, Debug)]
+struct PendingAuthenticationResolution {
+    resolution: String,
+    authority: String,
+}
+
 pub fn build_semantic_graph(files: &[ParsedSyntax]) -> SemanticGraph {
     let mut builder = GraphBuilder::default();
     builder.add_prelude();
+    builder.validate_naming(files);
     builder.configure_modules(files);
     for file in files {
         builder.collect_file(file);
     }
+    builder.resolve_nullability();
+    builder.validate_storage_nullability(files);
     builder.validate_relationships(files);
     builder.finish()
 }
@@ -429,8 +576,19 @@ struct GraphBuilder {
     modules: Vec<SemanticModule>,
     module_scopes: BTreeMap<String, ModuleScope>,
     references: Vec<PendingReference>,
+    nullable_types: BTreeSet<String>,
+    nullable_references: Vec<(String, String, TextRange)>,
     calls: Vec<PendingCall>,
+    authentication_resolutions: Vec<PendingAuthenticationResolution>,
     diagnostics: Vec<Diagnostic>,
+    application: Option<String>,
+    locales: bool,
+    principal: Option<String>,
+    configuration: Option<String>,
+    configuration_bindings: BTreeMap<String, (String, TextRange)>,
+    authentication_strategies: BTreeSet<String>,
+    credential_slots: BTreeMap<String, (String, TextRange)>,
+    authentication_principals: Vec<(String, String, TextRange)>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -439,14 +597,591 @@ struct ModuleScope {
 }
 
 impl GraphBuilder {
+    fn validate_naming(&mut self, files: &[ParsedSyntax]) {
+        for file in files {
+            if let Some(module) = &file.file.module {
+                for segment in &module.path {
+                    self.require_name_case(segment, NameCase::LowerSnake, &file.source_name);
+                }
+            }
+            for declaration in &file.file.declarations {
+                match declaration {
+                    Declaration::Application(value) => {
+                        self.require_name_case(
+                            &value.name,
+                            NameCase::UpperCamel,
+                            &file.source_name,
+                        );
+                    }
+                    Declaration::AuthenticationStrategy(value) => {
+                        self.require_name_case(
+                            &value.name,
+                            NameCase::LowerSnake,
+                            &file.source_name,
+                        );
+                        for validator in &value.validators {
+                            self.require_name_case(
+                                &validator.name,
+                                NameCase::LowerSnake,
+                                &file.source_name,
+                            );
+                        }
+                        if let jadpo_syntax::CredentialLocation::Bearer(slot) =
+                            &value.transport.location
+                        {
+                            self.require_name_case(slot, NameCase::LowerSnake, &file.source_name);
+                        }
+                        for mapping in value.claims.iter().chain(
+                            value
+                                .resolutions
+                                .iter()
+                                .flat_map(|resolution| &resolution.mappings),
+                        ) {
+                            self.require_name_case(
+                                &mapping.source,
+                                NameCase::LowerSnake,
+                                &file.source_name,
+                            );
+                        }
+                    }
+                    Declaration::Principal(value) => {
+                        self.require_name_case(
+                            &value.name,
+                            NameCase::UpperCamel,
+                            &file.source_name,
+                        );
+                        for variant in &value.variants {
+                            self.require_name_case(
+                                &variant.name,
+                                NameCase::LowerSnake,
+                                &file.source_name,
+                            );
+                            self.require_field_names(&variant.fields, &file.source_name);
+                        }
+                    }
+                    Declaration::Config(value) => {
+                        self.require_name_case(
+                            &value.name,
+                            NameCase::UpperCamel,
+                            &file.source_name,
+                        );
+                        for field in &value.fields {
+                            self.require_name_case(
+                                &field.name,
+                                NameCase::LowerSnake,
+                                &file.source_name,
+                            );
+                        }
+                    }
+                    Declaration::Type(value) => {
+                        if !value.name.text.contains('.')
+                            && !value.name.text.starts_with("__jadpo_")
+                        {
+                            self.require_name_case(
+                                &value.name,
+                                NameCase::UpperCamel,
+                                &file.source_name,
+                            );
+                        }
+                    }
+                    Declaration::Enum(value) => {
+                        self.require_name_case(
+                            &value.name,
+                            NameCase::UpperCamel,
+                            &file.source_name,
+                        );
+                        for variant in &value.variants {
+                            self.require_name_case(
+                                &variant.name,
+                                NameCase::LowerSnake,
+                                &file.source_name,
+                            );
+                            self.require_field_names(&variant.fields, &file.source_name);
+                        }
+                    }
+                    Declaration::Record(value) => {
+                        if !value.name.text.contains('.')
+                            && !value.name.text.starts_with("__jadpo_")
+                        {
+                            self.require_name_case(
+                                &value.name,
+                                NameCase::UpperCamel,
+                                &file.source_name,
+                            );
+                        }
+                        self.require_field_names(&value.fields, &file.source_name);
+                        for inverse in &value.inverses {
+                            self.require_name_case(
+                                &inverse.name,
+                                NameCase::LowerSnake,
+                                &file.source_name,
+                            );
+                        }
+                        for constraint in &value.persistence_constraints {
+                            self.require_name_case(
+                                &constraint.name,
+                                NameCase::LowerSnake,
+                                &file.source_name,
+                            );
+                        }
+                        if let Some(dossier) = &value.dossier {
+                            if let Some(persistence) = &dossier.persistence {
+                                self.require_name_case(
+                                    &persistence.store,
+                                    NameCase::LowerSnake,
+                                    &file.source_name,
+                                );
+                            }
+                            for representation in &dossier.representations {
+                                self.require_name_case(
+                                    &representation.name,
+                                    NameCase::LowerSnake,
+                                    &file.source_name,
+                                );
+                                self.require_name_case(
+                                    &representation.store,
+                                    NameCase::LowerSnake,
+                                    &file.source_name,
+                                );
+                                self.require_name_case(
+                                    &representation.from,
+                                    NameCase::LowerSnake,
+                                    &file.source_name,
+                                );
+                                if let Some(strategy) = &representation.strategy {
+                                    self.require_name_case(
+                                        strategy,
+                                        NameCase::LowerSnake,
+                                        &file.source_name,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Declaration::Failure(value) => {
+                        self.require_name_case(
+                            &value.name,
+                            NameCase::UpperCamel,
+                            &file.source_name,
+                        );
+                        self.require_field_names(&value.public_fields, &file.source_name);
+                        self.require_field_names(&value.internal_fields, &file.source_name);
+                    }
+                    Declaration::Callable(value) => {
+                        let operation = value
+                            .name
+                            .text
+                            .rsplit('.')
+                            .next()
+                            .unwrap_or(&value.name.text);
+                        let operation_name = jadpo_syntax::Name {
+                            text: operation.to_owned(),
+                            range: value.name.range,
+                        };
+                        self.require_name_case(
+                            &operation_name,
+                            NameCase::LowerSnake,
+                            &file.source_name,
+                        );
+                        if standard_operation_namespace(operation).is_some() {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_STANDARD_OPERATION_RESERVED")
+                                    .with_fact(DiagnosticFact::Name(operation.to_owned())),
+                                &file.source_name,
+                                value.name.range,
+                            ));
+                        }
+                        for parameter in &value.parameters {
+                            self.require_name_case(
+                                &parameter.name,
+                                NameCase::LowerSnake,
+                                &file.source_name,
+                            );
+                        }
+                        self.require_block_names(&value.body, &file.source_name);
+                    }
+                    Declaration::Fixture(value) => {
+                        self.require_name_case(
+                            &value.name,
+                            NameCase::LowerSnake,
+                            &file.source_name,
+                        );
+                        if let Some(clock) = &value.clock {
+                            self.require_expression_names(clock, &file.source_name);
+                        }
+                        if let Some(configuration) = &value.configuration {
+                            for item in configuration {
+                                self.require_name_case(
+                                    &item.name,
+                                    NameCase::LowerSnake,
+                                    &file.source_name,
+                                );
+                                self.require_expression_names(&item.value, &file.source_name);
+                            }
+                        }
+                    }
+                    Declaration::Test(value) => {
+                        self.require_block_names(&value.body, &file.source_name);
+                    }
+                    Declaration::Route(value) => {
+                        self.require_field_names(&value.path_fields, &file.source_name);
+                        if let Some(run) = &value.run {
+                            self.require_expression_names(
+                                &Expression::Invocation(run.clone()),
+                                &file.source_name,
+                            );
+                        }
+                        if let Some(action) = &value.inline_action {
+                            self.require_block_names(&action.body, &file.source_name);
+                        }
+                    }
+                    Declaration::Locales(_) => {}
+                }
+                if let Some(name) = declaration_name(declaration) {
+                    if is_standard_namespace(&name.text) {
+                        self.diagnostics.push(with_span(
+                            Diagnostic::error("SEM_STANDARD_NAMESPACE_RESERVED")
+                                .with_fact(DiagnosticFact::Name(name.text.clone())),
+                            &file.source_name,
+                            name.range,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    fn require_field_names(&mut self, fields: &[jadpo_syntax::FieldDeclaration], source: &str) {
+        for field in fields {
+            self.require_name_case(&field.name, NameCase::LowerSnake, source);
+            if let Some(reference) = &field.reference {
+                if let Some(relationship) = &reference.relationship {
+                    self.require_name_case(relationship, NameCase::LowerSnake, source);
+                }
+            }
+        }
+    }
+
+    fn require_block_names(&mut self, block: &Block, source: &str) {
+        for statement in &block.statements {
+            match statement {
+                Statement::Binding(statement) => {
+                    self.require_name_case(&statement.name, NameCase::LowerSnake, source);
+                    self.require_expression_names(&statement.value, source);
+                }
+                Statement::Assignment(statement) => {
+                    self.require_expression_names(&statement.value, source);
+                }
+                Statement::Return(statement) => {
+                    self.require_expression_names(&statement.value, source);
+                }
+                Statement::Reject(statement) => {
+                    for field in &statement.values {
+                        self.require_expression_names(&field.value, source);
+                    }
+                }
+                Statement::If(statement) => {
+                    self.require_expression_names(&statement.condition, source);
+                    self.require_block_names(&statement.then_block, source);
+                    if let Some(block) = &statement.else_block {
+                        self.require_block_names(block, source);
+                    }
+                }
+                Statement::Match(statement) => {
+                    self.require_expression_names(&statement.subject, source);
+                    for arm in &statement.arms {
+                        match &arm.pattern {
+                            jadpo_syntax::MatchPattern::Variant(pattern) => {
+                                for binding in &pattern.bindings {
+                                    self.require_name_case(binding, NameCase::LowerSnake, source);
+                                }
+                            }
+                            jadpo_syntax::MatchPattern::OptionalSome(pattern) => {
+                                self.require_name_case(
+                                    &pattern.binding,
+                                    NameCase::LowerSnake,
+                                    source,
+                                );
+                            }
+                            _ => {}
+                        }
+                        self.require_block_names(&arm.body, source);
+                    }
+                }
+                Statement::Assert(statement) => {
+                    self.require_expression_names(&statement.condition, source);
+                }
+                Statement::AdvanceClock(statement) => {
+                    self.require_expression_names(&statement.duration, source);
+                }
+                Statement::Unsupported(_) => {}
+            }
+        }
+    }
+
+    fn require_expression_names(&mut self, expression: &Expression, source: &str) {
+        match expression {
+            Expression::Literal(_) | Expression::Name(_) | Expression::Missing(_) => {}
+            Expression::Invocation(value) => {
+                for argument in &value.arguments {
+                    self.require_expression_names(argument, source);
+                }
+                for argument in &value.named_arguments {
+                    self.require_expression_names(&argument.value, source);
+                }
+            }
+            Expression::TestCall(value) => {
+                for argument in &value.invocation.arguments {
+                    self.require_expression_names(argument, source);
+                }
+                for argument in &value.invocation.named_arguments {
+                    self.require_expression_names(&argument.value, source);
+                }
+            }
+            Expression::Object(value) => {
+                for field in &value.fields {
+                    self.require_expression_names(&field.value, source);
+                }
+            }
+            Expression::Construction(value) => {
+                for field in &value.fields {
+                    self.require_expression_names(&field.value, source);
+                }
+            }
+            Expression::Create(value) => {
+                for field in &value.fields {
+                    self.require_expression_names(&field.value, source);
+                }
+                for conflict in &value.conflicts {
+                    for field in &conflict.rejection.values {
+                        self.require_expression_names(&field.value, source);
+                    }
+                }
+            }
+            Expression::Query(value) => {
+                self.require_expression_names(&value.value, source);
+                if let Some(pagination) = &value.pagination {
+                    self.require_expression_names(&pagination.limit, source);
+                    self.require_expression_names(&pagination.offset, source);
+                }
+                for include in &value.includes {
+                    self.require_expression_names(&include.pagination.limit, source);
+                    self.require_expression_names(&include.pagination.offset, source);
+                }
+                if let Some(missing) = &value.missing {
+                    for field in &missing.values {
+                        self.require_expression_names(&field.value, source);
+                    }
+                }
+            }
+            Expression::Update(value) => {
+                self.require_expression_names(&value.value, source);
+                for field in &value.changes {
+                    self.require_expression_names(&field.value, source);
+                }
+                for change in &value.conditional_changes {
+                    self.require_expression_names(&change.change.value, source);
+                }
+                for rejection in value
+                    .empty
+                    .iter()
+                    .chain(std::iter::once(&value.missing))
+                    .chain(value.conflicts.iter().map(|conflict| &conflict.rejection))
+                {
+                    for field in &rejection.values {
+                        self.require_expression_names(&field.value, source);
+                    }
+                }
+            }
+            Expression::Delete(value) => {
+                self.require_expression_names(&value.value, source);
+                for rejection in std::iter::once(&value.missing)
+                    .chain(value.conflicts.iter().map(|conflict| &conflict.rejection))
+                {
+                    for field in &rejection.values {
+                        self.require_expression_names(&field.value, source);
+                    }
+                }
+            }
+            Expression::Attempt(value) => self.require_expression_names(&value.value, source),
+            Expression::OutcomeMatch(value) => {
+                self.require_expression_names(&value.subject, source);
+                for arm in &value.arms {
+                    if let jadpo_syntax::OutcomeMatchPattern::Success(binding) = &arm.pattern {
+                        self.require_name_case(binding, NameCase::LowerSnake, source);
+                    }
+                    match &arm.body {
+                        jadpo_syntax::OutcomeMatchArmBody::Value(value) => {
+                            self.require_expression_names(value, source)
+                        }
+                        jadpo_syntax::OutcomeMatchArmBody::Reject(value) => {
+                            for field in &value.values {
+                                self.require_expression_names(&field.value, source);
+                            }
+                        }
+                        jadpo_syntax::OutcomeMatchArmBody::Propagate(_) => {}
+                    }
+                }
+            }
+            Expression::Unary(value) => self.require_expression_names(&value.value, source),
+            Expression::Binary(value) => {
+                self.require_expression_names(&value.left, source);
+                self.require_expression_names(&value.right, source);
+            }
+            Expression::Grouped(value) => self.require_expression_names(&value.value, source),
+        }
+    }
+
+    fn require_name_case(&mut self, name: &jadpo_syntax::Name, expected: NameCase, source: &str) {
+        if expected.accepts(&name.text) {
+            return;
+        }
+        let diagnostic = Diagnostic::error("SEM_NAME_CASE")
+            .with_fact(DiagnosticFact::Name(name.text.clone()))
+            .with_fact(DiagnosticFact::Expected(expected.description().to_owned()))
+            .with_fact(DiagnosticFact::SuggestedName(expected.convert(&name.text)));
+        self.diagnostics
+            .push(with_span(diagnostic, source, name.range));
+    }
+
     fn add_prelude(&mut self) {
         for name in [
-            "Bool", "Bytes", "Date", "DateTime", "Decimal", "Duration", "Int", "List", "Map",
-            "Object", "Set", "Text", "Time", "Unit", "Uuid",
+            "Bool",
+            "Bytes",
+            "Decimal",
+            "Duration",
+            "Int",
+            "List",
+            "Map",
+            "Object",
+            "Set",
+            "Text",
+            "Unit",
+            "Uuid",
+            "Instant",
+            "CalendarDate",
+            "Time",
+            "Zone",
+            "Locale",
+            "PresentationText",
+            "InstantRange",
+            "LocalOverlap",
+            "LocalGap",
+            "InvalidDay",
+            "Weekday",
+            "TimeFormat",
+            "FriendlyTimeFormat",
         ] {
             self.add_node(PendingNode {
                 kind: NodeKind::PreludeType,
                 name: name.to_owned(),
+                source: "<prelude>".to_owned(),
+                range: TextRange::new(0, 0),
+            });
+        }
+        for (owner, variants) in [
+            ("LocalOverlap", &["reject", "earlier", "later"][..]),
+            (
+                "LocalGap",
+                &["reject", "shift_forward", "shift_backward"][..],
+            ),
+            ("InvalidDay", &["reject", "last_valid_day"][..]),
+            (
+                "Weekday",
+                &[
+                    "monday",
+                    "tuesday",
+                    "wednesday",
+                    "thursday",
+                    "friday",
+                    "saturday",
+                    "sunday",
+                ][..],
+            ),
+            (
+                "TimeFormat",
+                &[
+                    "date_full",
+                    "date_long",
+                    "date_medium",
+                    "date_short",
+                    "time_full",
+                    "time_long",
+                    "time_medium",
+                    "time_short",
+                    "date_time_full",
+                    "date_time_long",
+                    "date_time_medium",
+                    "date_time_short",
+                ][..],
+            ),
+            ("FriendlyTimeFormat", &["conversational"][..]),
+        ] {
+            for variant in variants {
+                self.add_node(PendingNode {
+                    kind: NodeKind::StandardValue,
+                    name: format!("{owner}.{variant}"),
+                    source: "<prelude>".to_owned(),
+                    range: TextRange::new(0, 0),
+                });
+            }
+        }
+        for zone in include_str!("../../../data/iana-zones-2026c.txt").lines() {
+            self.add_node(PendingNode {
+                kind: NodeKind::StandardValue,
+                name: format!("Zone.{}", standard_variant_name(zone)),
+                source: "<prelude>".to_owned(),
+                range: TextRange::new(0, 0),
+            });
+        }
+        self.add_node(PendingNode {
+            kind: NodeKind::StandardNamespace,
+            name: "temporal".to_owned(),
+            source: "<prelude>".to_owned(),
+            range: TextRange::new(0, 0),
+        });
+        self.add_node(PendingNode {
+            kind: NodeKind::StandardNamespace,
+            name: "collection".to_owned(),
+            source: "<prelude>".to_owned(),
+            range: TextRange::new(0, 0),
+        });
+        for name in [
+            "in_zone",
+            "resolve",
+            "add_elapsed",
+            "between",
+            "add_days",
+            "add_weeks",
+            "add_months",
+            "add_years",
+            "add_local_days",
+            "add_local_weeks",
+            "add_local_months",
+            "add_local_years",
+            "day_bounds",
+            "week_bounds",
+            "month_bounds",
+            "year_bounds",
+            "calendar_date",
+            "year",
+            "month",
+            "day",
+            "weekday",
+            "hour",
+            "minute",
+            "second",
+            "millisecond",
+            "offset",
+            "zone",
+            "same_zone",
+            "same_local",
+            "format",
+            "format_friendly",
+        ] {
+            self.add_node(PendingNode {
+                kind: NodeKind::StandardFunction,
+                name: format!("temporal.{name}"),
                 source: "<prelude>".to_owned(),
                 range: TextRange::new(0, 0),
             });
@@ -519,6 +1254,18 @@ impl GraphBuilder {
                 continue;
             };
             let name = name_expression(&module.path);
+            if module
+                .path
+                .first()
+                .is_some_and(|segment| is_standard_namespace(&segment.text))
+            {
+                self.diagnostics.push(with_span(
+                    Diagnostic::error("MOD_STANDARD_NAMESPACE_RESERVED")
+                        .with_fact(DiagnosticFact::Name(name.clone())),
+                    &file.source_name,
+                    module.range,
+                ));
+            }
             if let Some(previous) = files_by_module.get(&name) {
                 self.diagnostics.push(with_span(
                     Diagnostic::error("MOD_DUPLICATE_MODULE")
@@ -552,6 +1299,19 @@ impl GraphBuilder {
             let mut imports = Vec::new();
             for import in &file.file.imports {
                 let target_name = name_expression(&import.module);
+                if import
+                    .module
+                    .first()
+                    .is_some_and(|segment| is_standard_namespace(&segment.text))
+                {
+                    self.diagnostics.push(with_span(
+                        Diagnostic::error("MOD_STANDARD_NAMESPACE_IMPORT")
+                            .with_fact(DiagnosticFact::Name(target_name)),
+                        &file.source_name,
+                        import.range,
+                    ));
+                    continue;
+                }
                 if target_name == module_name {
                     self.diagnostics.push(with_span(
                         Diagnostic::error("MOD_SELF_IMPORT"),
@@ -700,6 +1460,508 @@ impl GraphBuilder {
     fn collect_file(&mut self, file: &ParsedSyntax) {
         for declaration in &file.file.declarations {
             match declaration {
+                Declaration::Locales(declaration) => {
+                    if self.locales {
+                        self.diagnostics.push(with_span(
+                            Diagnostic::error("SEM_MULTIPLE_LOCALE_DECLARATIONS"),
+                            &file.source_name,
+                            declaration.range,
+                        ));
+                        self.add_node(PendingNode {
+                            kind: NodeKind::Locales,
+                            name: format!("locales#{}", declaration.range.start),
+                            source: file.source_name.clone(),
+                            range: declaration.range,
+                        });
+                    } else {
+                        self.locales = true;
+                        self.add_node(PendingNode {
+                            kind: NodeKind::Locales,
+                            name: "locales".to_owned(),
+                            source: file.source_name.clone(),
+                            range: declaration.range,
+                        });
+                        let mut emitted = BTreeSet::new();
+                        for locale in &declaration.supported {
+                            let tag = locale.text.trim_matches('"');
+                            let name = format!("Locale.{}", standard_variant_name(tag));
+                            if emitted.insert(name.clone()) {
+                                self.add_node(PendingNode {
+                                    kind: NodeKind::StandardValue,
+                                    name,
+                                    source: file.source_name.clone(),
+                                    range: locale.range,
+                                });
+                            }
+                        }
+                    }
+                }
+                Declaration::Application(declaration) => {
+                    if self.application.is_some() {
+                        self.diagnostics.push(with_span(
+                            Diagnostic::error("SEM_MULTIPLE_APPLICATIONS"),
+                            &file.source_name,
+                            declaration.name.range,
+                        ));
+                    } else {
+                        self.application = Some(declaration.name.text.clone());
+                    }
+                    self.add_authored_node(
+                        NodeKind::Application,
+                        &declaration.name.text,
+                        &file.source_name,
+                        declaration.name.range,
+                    );
+                    let principal_reference = &declaration.authentication.principal;
+                    if principal_reference.nullable
+                        || !principal_reference.arguments.is_empty()
+                        || principal_reference.path.len() != 1
+                    {
+                        self.diagnostics.push(with_span(
+                            Diagnostic::error("SEM_APPLICATION_PRINCIPAL_SHAPE"),
+                            &file.source_name,
+                            principal_reference.range,
+                        ));
+                    } else {
+                        self.references.push(PendingReference {
+                            refined: None,
+                            target: name_expression(&principal_reference.path),
+                            expected: ReferenceKind::Principal,
+                            usage: ReferenceUsage::ApplicationPrincipal,
+                            source: file.source_name.clone(),
+                            range: principal_reference.range,
+                        });
+                    }
+                    let revocation = &declaration.authentication.revocation;
+                    match (revocation.mode, revocation.maximum_delay.as_ref()) {
+                        (jadpo_syntax::RevocationMode::Bounded, None) => {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_REVOCATION_DELAY_REQUIRED"),
+                                &file.source_name,
+                                revocation.range,
+                            ));
+                        }
+                        (jadpo_syntax::RevocationMode::Immediate, Some(delay)) => {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_REVOCATION_DELAY_FORBIDDEN"),
+                                &file.source_name,
+                                delay.range,
+                            ));
+                        }
+                        (_, Some(delay)) if !positive_duration(&delay.text) => {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_REVOCATION_DELAY_INVALID"),
+                                &file.source_name,
+                                delay.range,
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+                Declaration::AuthenticationStrategy(declaration) => {
+                    if !self
+                        .authentication_strategies
+                        .insert(declaration.name.text.clone())
+                    {
+                        self.diagnostics.push(with_span(
+                            Diagnostic::error("SEM_AUTH_STRATEGY_DUPLICATE"),
+                            &file.source_name,
+                            declaration.name.range,
+                        ));
+                        continue;
+                    }
+                    let strategy_name = format!("authentication.{}", declaration.name.text);
+                    self.add_authored_node(
+                        NodeKind::AuthenticationStrategy,
+                        &strategy_name,
+                        &file.source_name,
+                        declaration.name.range,
+                    );
+
+                    if declaration.validators.is_empty() {
+                        self.diagnostics.push(with_span(
+                            Diagnostic::error("SEM_AUTH_VALIDATOR_REQUIRED"),
+                            &file.source_name,
+                            declaration.range,
+                        ));
+                    }
+                    let mut validators = BTreeSet::new();
+                    for validator in &declaration.validators {
+                        if !validators.insert(validator.name.text.as_str()) {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_AUTH_VALIDATOR_DUPLICATE"),
+                                &file.source_name,
+                                validator.name.range,
+                            ));
+                            continue;
+                        }
+                        if matches!(
+                            validator.mode.text.as_str(),
+                            "signed" | "opaque" | "api_key" | "jwt"
+                        ) {
+                            self.add_authored_node(
+                                NodeKind::CredentialValidation,
+                                &format!(
+                                    "{strategy_name}.validator.{}.{}",
+                                    validator.name.text, validator.mode.text
+                                ),
+                                &file.source_name,
+                                validator.range,
+                            );
+                        } else {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_AUTH_VALIDATION_MODE_UNKNOWN"),
+                                &file.source_name,
+                                validator.mode.range,
+                            ));
+                        }
+
+                        if matches!(validator.principal.text.as_str(), "user" | "service") {
+                            self.authentication_principals.push((
+                                validator.principal.text.clone(),
+                                file.source_name.clone(),
+                                validator.principal.range,
+                            ));
+                        } else {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_AUTH_PRINCIPAL_VARIANT_UNKNOWN"),
+                                &file.source_name,
+                                validator.principal.range,
+                            ));
+                        }
+                    }
+
+                    let mut claim_targets = BTreeSet::new();
+                    for mapping in &declaration.claims {
+                        let target = name_expression(&mapping.target.path);
+                        if !claim_targets.insert(target.clone()) {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_AUTH_MAPPING_DUPLICATE"),
+                                &file.source_name,
+                                mapping.target.range,
+                            ));
+                            continue;
+                        }
+                        if mapping.target.path.len() != 3
+                            || !matches!(mapping.target.path[1].text.as_str(), "user" | "service")
+                        {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_AUTH_MAPPING_TARGET_INVALID"),
+                                &file.source_name,
+                                mapping.target.range,
+                            ));
+                            continue;
+                        }
+                        self.add_authored_node(
+                            NodeKind::CredentialClaimMapping,
+                            &format!("{strategy_name}.claim.{}.{}", mapping.source.text, target),
+                            &file.source_name,
+                            mapping.range,
+                        );
+                        self.references.push(PendingReference {
+                            refined: None,
+                            target,
+                            expected: ReferenceKind::AuthenticationField,
+                            usage: ReferenceUsage::AuthenticationMapping,
+                            source: file.source_name.clone(),
+                            range: mapping.target.range,
+                        });
+                    }
+
+                    let mut resolution_variants = BTreeSet::new();
+                    for resolution in &declaration.resolutions {
+                        if !matches!(resolution.principal.text.as_str(), "user" | "service") {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_AUTH_PRINCIPAL_VARIANT_UNKNOWN"),
+                                &file.source_name,
+                                resolution.principal.range,
+                            ));
+                            continue;
+                        }
+                        if !resolution_variants.insert(resolution.principal.text.as_str()) {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_AUTH_RESOLUTION_DUPLICATE"),
+                                &file.source_name,
+                                resolution.principal.range,
+                            ));
+                            continue;
+                        }
+                        let resolution_name =
+                            format!("{strategy_name}.resolution.{}", resolution.principal.text);
+                        self.add_authored_node(
+                            NodeKind::PrincipalResolution,
+                            &resolution_name,
+                            &file.source_name,
+                            resolution.range,
+                        );
+                        let authority = name_expression(&resolution.authority.path);
+                        if resolution.authority.path.len() != 2 {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_AUTH_RESOLUTION_AUTHORITY_INVALID"),
+                                &file.source_name,
+                                resolution.authority.range,
+                            ));
+                        } else {
+                            self.authentication_resolutions
+                                .push(PendingAuthenticationResolution {
+                                    resolution: resolution_name.clone(),
+                                    authority: authority.clone(),
+                                });
+                            self.references.push(PendingReference {
+                                refined: None,
+                                target: authority,
+                                expected: ReferenceKind::AuthenticationField,
+                                usage: ReferenceUsage::AuthenticationAuthority,
+                                source: file.source_name.clone(),
+                                range: resolution.authority.range,
+                            });
+                        }
+                        if resolution.mappings.is_empty() {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_AUTH_MAPPING_REQUIRED"),
+                                &file.source_name,
+                                resolution.range,
+                            ));
+                        }
+                        let authority_root = resolution
+                            .authority
+                            .path
+                            .first()
+                            .map(|name| name.text.as_str())
+                            .unwrap_or_default();
+                        let mut targets = BTreeSet::new();
+                        for mapping in &resolution.mappings {
+                            let target = name_expression(&mapping.target.path);
+                            if !targets.insert(target.clone()) {
+                                self.diagnostics.push(with_span(
+                                    Diagnostic::error("SEM_AUTH_MAPPING_DUPLICATE"),
+                                    &file.source_name,
+                                    mapping.target.range,
+                                ));
+                                continue;
+                            }
+                            if mapping.target.path.len() != 3
+                                || mapping.target.path[1].text != resolution.principal.text
+                            {
+                                self.diagnostics.push(with_span(
+                                    Diagnostic::error("SEM_AUTH_MAPPING_TARGET_INVALID"),
+                                    &file.source_name,
+                                    mapping.target.range,
+                                ));
+                                continue;
+                            }
+                            self.add_authored_node(
+                                NodeKind::PrincipalMapping,
+                                &format!("{resolution_name}.{}.{}", mapping.source.text, target),
+                                &file.source_name,
+                                mapping.range,
+                            );
+                            for (reference_target, range) in [
+                                (
+                                    format!("{authority_root}.{}", mapping.source.text),
+                                    mapping.source.range,
+                                ),
+                                (target, mapping.target.range),
+                            ] {
+                                self.references.push(PendingReference {
+                                    refined: None,
+                                    target: reference_target,
+                                    expected: ReferenceKind::AuthenticationField,
+                                    usage: ReferenceUsage::AuthenticationMapping,
+                                    source: file.source_name.clone(),
+                                    range,
+                                });
+                            }
+                        }
+                        self.references.push(PendingReference {
+                            refined: None,
+                            target: resolution.inactive.text.clone(),
+                            expected: ReferenceKind::Failure,
+                            usage: ReferenceUsage::AuthenticationMapping,
+                            source: file.source_name.clone(),
+                            range: resolution.inactive.range,
+                        });
+                    }
+
+                    let (slot_key, slot_name, slot_range) = match &declaration.transport.location {
+                        jadpo_syntax::CredentialLocation::Cookie(location) => {
+                            let cookie = unquote_string(&location.text);
+                            (
+                                format!("cookie:{cookie}"),
+                                format!("{strategy_name}.cookie.{cookie}"),
+                                location.range,
+                            )
+                        }
+                        jadpo_syntax::CredentialLocation::Bearer(location) => {
+                            if location.text != "authorization_header" {
+                                self.diagnostics.push(with_span(
+                                    Diagnostic::error("SEM_AUTH_BEARER_LOCATION_FORBIDDEN"),
+                                    &file.source_name,
+                                    location.range,
+                                ));
+                            }
+                            (
+                                format!("bearer:{}", location.text),
+                                format!("{strategy_name}.bearer.{}", location.text),
+                                location.range,
+                            )
+                        }
+                    };
+                    if self
+                        .credential_slots
+                        .insert(slot_key, (declaration.name.text.clone(), slot_range))
+                        .is_some()
+                    {
+                        self.diagnostics.push(with_span(
+                            Diagnostic::error("SEM_AUTH_CREDENTIAL_SLOT_DUPLICATE"),
+                            &file.source_name,
+                            slot_range,
+                        ));
+                    } else {
+                        self.add_authored_node(
+                            NodeKind::CredentialSlot,
+                            &slot_name,
+                            &file.source_name,
+                            slot_range,
+                        );
+                    }
+                }
+                Declaration::Principal(declaration) => {
+                    if self.principal.is_some() {
+                        self.diagnostics.push(with_span(
+                            Diagnostic::error("SEM_MULTIPLE_PRINCIPALS"),
+                            &file.source_name,
+                            declaration.name.range,
+                        ));
+                    } else {
+                        self.principal = Some(declaration.name.text.clone());
+                    }
+                    self.add_authored_node(
+                        NodeKind::Principal,
+                        &declaration.name.text,
+                        &file.source_name,
+                        declaration.name.range,
+                    );
+                    let mut variants = BTreeSet::new();
+                    for variant in &declaration.variants {
+                        let variant_name =
+                            format!("{}.{}", declaration.name.text, variant.kind.as_str());
+                        if !variants.insert(variant.kind.as_str()) {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_PRINCIPAL_VARIANT_DUPLICATE"),
+                                &file.source_name,
+                                variant.name.range,
+                            ));
+                            continue;
+                        }
+                        self.add_authored_node(
+                            NodeKind::PrincipalVariant,
+                            &variant_name,
+                            &file.source_name,
+                            variant.name.range,
+                        );
+                        for field in &variant.fields {
+                            if !field.persistence.is_empty() || field.reference.is_some() {
+                                self.diagnostics.push(with_span(
+                                    Diagnostic::error("DATA_MODIFIER_NON_ENTITY"),
+                                    &file.source_name,
+                                    field.range,
+                                ));
+                            }
+                            let field_name = format!("{variant_name}.{}", field.name.text);
+                            self.add_authored_node(
+                                NodeKind::Field,
+                                &field_name,
+                                &file.source_name,
+                                field.name.range,
+                            );
+                            self.add_type_reference(
+                                Some(field_name),
+                                &field.field_type,
+                                &file.source_name,
+                                ReferenceUsage::Field,
+                            );
+                        }
+                    }
+                    if !variants.contains("user") || !variants.contains("service") {
+                        self.diagnostics.push(with_span(
+                            Diagnostic::error("SEM_PRINCIPAL_VARIANT_REQUIRED"),
+                            &file.source_name,
+                            declaration.range,
+                        ));
+                    }
+                }
+                Declaration::Config(declaration) => {
+                    if self.configuration.is_some() {
+                        self.diagnostics.push(with_span(
+                            Diagnostic::error("CONFIG_MULTIPLE_DECLARATIONS"),
+                            &file.source_name,
+                            declaration.name.range,
+                        ));
+                    } else {
+                        self.configuration = Some(declaration.name.text.clone());
+                    }
+                    self.add_authored_node(
+                        NodeKind::Configuration,
+                        &declaration.name.text,
+                        &file.source_name,
+                        declaration.name.range,
+                    );
+                    for field in &declaration.fields {
+                        let field_name = format!("{}.{}", declaration.name.text, field.name.text);
+                        self.add_authored_node(
+                            NodeKind::ConfigurationField,
+                            &field_name,
+                            &file.source_name,
+                            field.name.range,
+                        );
+                        self.add_type_reference(
+                            Some(field_name),
+                            &field.field_type,
+                            &file.source_name,
+                            ReferenceUsage::ConfigurationField,
+                        );
+                        let Some(binding) = &field.binding else {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("CONFIG_BINDING_REQUIRED"),
+                                &file.source_name,
+                                field.range,
+                            ));
+                            continue;
+                        };
+                        let binding_name = unquote_string(&binding.text);
+                        if binding_name.is_empty() {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("CONFIG_BINDING_EMPTY"),
+                                &file.source_name,
+                                binding.range,
+                            ));
+                        } else if !valid_configuration_binding(&binding_name) {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("CONFIG_BINDING_INVALID"),
+                                &file.source_name,
+                                binding.range,
+                            ));
+                        } else if self
+                            .configuration_bindings
+                            .insert(binding_name, (file.source_name.clone(), binding.range))
+                            .is_some()
+                        {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("CONFIG_DUPLICATE_BINDING"),
+                                &file.source_name,
+                                binding.range,
+                            ));
+                        }
+                        if field.secret && field.default.is_some() {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("CONFIG_SECRET_DEFAULT"),
+                                &file.source_name,
+                                field.default.as_ref().expect("default exists").range,
+                            ));
+                        }
+                    }
+                }
                 Declaration::Type(declaration) => {
                     self.add_authored_node(
                         NodeKind::Type,
@@ -768,6 +2030,14 @@ impl GraphBuilder {
                         &file.source_name,
                         declaration.name.range,
                     );
+                    if declaration.kind == RecordKind::Entity {
+                        self.add_authored_node(
+                            NodeKind::EntityReference,
+                            &format!("{}.Ref", declaration.name.text),
+                            &file.source_name,
+                            declaration.name.range,
+                        );
+                    }
                     let mut identity_field = None;
                     for field in &declaration.fields {
                         if declaration.kind != RecordKind::Entity
@@ -781,14 +2051,6 @@ impl GraphBuilder {
                             ));
                         }
                         if field.persistence.contains(&PersistenceModifier::Identity) {
-                            if field.field_type.nullable {
-                                let diagnostic = Diagnostic::error("DATA_IDENTITY_NULLABLE");
-                                self.diagnostics.push(with_span(
-                                    diagnostic,
-                                    &file.source_name,
-                                    field.range,
-                                ));
-                            }
                             if let Some(_previous) = identity_field {
                                 let diagnostic = Diagnostic::error("DATA_MULTIPLE_IDENTITIES");
                                 self.diagnostics.push(with_span(
@@ -884,7 +2146,7 @@ impl GraphBuilder {
                                 ));
                                 continue;
                             }
-                            let Some(field) = fields.get(field_name.text.as_str()) else {
+                            let Some(_field) = fields.get(field_name.text.as_str()) else {
                                 self.diagnostics.push(with_span(
                                     Diagnostic::error("DATA_CONSTRAINT_UNKNOWN_FIELD"),
                                     &file.source_name,
@@ -892,13 +2154,6 @@ impl GraphBuilder {
                                 ));
                                 continue;
                             };
-                            if field.field_type.nullable {
-                                self.diagnostics.push(with_span(
-                                    Diagnostic::error("DATA_CONSTRAINT_NULLABLE_FIELD"),
-                                    &file.source_name,
-                                    field_name.range,
-                                ));
-                            }
                         }
                         let mut shape = constraint
                             .fields
@@ -956,6 +2211,7 @@ impl GraphBuilder {
                     let kind = match declaration.kind {
                         CallableKind::Function => NodeKind::Function,
                         CallableKind::Action => NodeKind::Action,
+                        CallableKind::Query => NodeKind::Query,
                     };
                     let callable_name = declaration.name.text.clone();
                     self.add_authored_node(
@@ -990,6 +2246,30 @@ impl GraphBuilder {
                     }
                     self.collect_block_calls(&callable_name, &declaration.body, &file.source_name);
                 }
+                Declaration::Fixture(declaration) => {
+                    self.add_authored_node(
+                        NodeKind::Fixture,
+                        &declaration.name.text,
+                        &file.source_name,
+                        declaration.name.range,
+                    );
+                    if let Some(clock) = &declaration.clock {
+                        self.collect_expression_calls(
+                            &format!("fixture:{}", declaration.name.text),
+                            clock,
+                            &file.source_name,
+                        );
+                    }
+                    if let Some(configuration) = &declaration.configuration {
+                        for item in configuration {
+                            self.collect_expression_calls(
+                                &format!("fixture:{}", declaration.name.text),
+                                &item.value,
+                                &file.source_name,
+                            );
+                        }
+                    }
+                }
                 Declaration::Test(declaration) => {
                     let name = format!("test:{}", declaration.name.text);
                     self.add_authored_node(
@@ -998,6 +2278,16 @@ impl GraphBuilder {
                         &file.source_name,
                         declaration.name.range,
                     );
+                    if let Some(fixture) = &declaration.fixture {
+                        self.references.push(PendingReference {
+                            refined: None,
+                            target: fixture.text.clone(),
+                            expected: ReferenceKind::Fixture,
+                            usage: ReferenceUsage::TestFixture,
+                            source: file.source_name.clone(),
+                            range: fixture.range,
+                        });
+                    }
                     self.collect_block_calls(&name, &declaration.body, &file.source_name);
                 }
                 Declaration::Route(declaration) => {
@@ -1030,11 +2320,14 @@ impl GraphBuilder {
                     }
                     if let Some(run) = &declaration.run {
                         self.calls.push(PendingCall {
-                            caller: route_name,
+                            caller: route_name.clone(),
                             callee: name_expression(&run.callee.path),
                             source: file.source_name.clone(),
                             range: run.callee.range,
                         });
+                    }
+                    if let Some(action) = &declaration.inline_action {
+                        self.collect_block_calls(&route_name, &action.body, &file.source_name);
                     }
                 }
             }
@@ -1098,7 +2391,7 @@ impl GraphBuilder {
                     continue;
                 };
 
-                if target_field.field_type.nullable
+                if self.reference_is_nullable(&target_field.field_type)
                     || (!target_field
                         .persistence
                         .contains(&PersistenceModifier::Identity)
@@ -1124,7 +2417,7 @@ impl GraphBuilder {
                 }
 
                 if reference.on_delete == ReferenceDeleteAction::SetNull
-                    && !field.field_type.nullable
+                    && !self.reference_is_nullable(&field.field_type)
                 {
                     let diagnostic = Diagnostic::error("DATA_RELATIONSHIP_SET_NULL_REQUIRED");
                     self.diagnostics
@@ -1263,6 +2556,9 @@ impl GraphBuilder {
     }
 
     fn add_authored_node(&mut self, kind: NodeKind, name: &str, source: &str, range: TextRange) {
+        if is_standard_namespace(name) {
+            return;
+        }
         self.add_node(PendingNode {
             kind,
             name: name.to_owned(),
@@ -1278,6 +2574,16 @@ impl GraphBuilder {
         source: &str,
         usage: ReferenceUsage,
     ) {
+        if reference.nullable {
+            if let Some(name) = &refined {
+                self.nullable_types.insert(name.clone());
+            }
+            self.nullable_references.push((
+                name_expression(&reference.path),
+                source.to_owned(),
+                reference.range,
+            ));
+        }
         self.references.push(PendingReference {
             refined,
             target: name_expression(&reference.path),
@@ -1295,6 +2601,14 @@ impl GraphBuilder {
         for statement in &block.statements {
             match statement {
                 Statement::Binding(statement) => {
+                    if let Some(annotation) = &statement.annotation {
+                        self.add_type_reference(
+                            None,
+                            annotation,
+                            source,
+                            ReferenceUsage::LocalAnnotation,
+                        );
+                    }
                     self.collect_expression_calls(caller, &statement.value, source)
                 }
                 Statement::Assignment(statement) => {
@@ -1324,6 +2638,9 @@ impl GraphBuilder {
                 Statement::Assert(statement) => {
                     self.collect_expression_calls(caller, &statement.condition, source)
                 }
+                Statement::AdvanceClock(statement) => {
+                    self.collect_expression_calls(caller, &statement.duration, source)
+                }
                 Statement::Unsupported(_) => {}
             }
         }
@@ -1341,9 +2658,31 @@ impl GraphBuilder {
                 for argument in &invocation.arguments {
                     self.collect_expression_calls(caller, argument, source);
                 }
+                for argument in &invocation.named_arguments {
+                    self.collect_expression_calls(caller, &argument.value, source);
+                }
+            }
+            Expression::TestCall(call) => {
+                self.calls.push(PendingCall {
+                    caller: caller.to_owned(),
+                    callee: name_expression(&call.invocation.callee.path),
+                    source: source.to_owned(),
+                    range: call.invocation.callee.range,
+                });
+                for argument in &call.invocation.arguments {
+                    self.collect_expression_calls(caller, argument, source);
+                }
+                for argument in &call.invocation.named_arguments {
+                    self.collect_expression_calls(caller, &argument.value, source);
+                }
             }
             Expression::Construction(construction) => {
                 for field in &construction.fields {
+                    self.collect_expression_calls(caller, &field.value, source);
+                }
+            }
+            Expression::Object(object) => {
+                for field in &object.fields {
                     self.collect_expression_calls(caller, &field.value, source);
                 }
             }
@@ -1413,11 +2752,118 @@ impl GraphBuilder {
             Expression::Attempt(attempt) => {
                 self.collect_expression_calls(caller, &attempt.value, source)
             }
+            Expression::OutcomeMatch(outcome) => {
+                self.collect_expression_calls(caller, &outcome.subject, source);
+                for arm in &outcome.arms {
+                    match &arm.body {
+                        jadpo_syntax::OutcomeMatchArmBody::Value(value) => {
+                            self.collect_expression_calls(caller, value, source)
+                        }
+                        jadpo_syntax::OutcomeMatchArmBody::Reject(rejection) => {
+                            for field in &rejection.values {
+                                self.collect_expression_calls(caller, &field.value, source);
+                            }
+                        }
+                        jadpo_syntax::OutcomeMatchArmBody::Propagate(_) => {}
+                    }
+                }
+            }
             Expression::Literal(_) | Expression::Name(_) | Expression::Missing(_) => {}
         }
     }
 
+    fn reference_is_nullable(&self, reference: &TypeReference) -> bool {
+        reference.nullable
+            || self
+                .nullable_types
+                .contains(&name_expression(&reference.path))
+    }
+
+    fn resolve_nullability(&mut self) {
+        // Resolve nullability to a fixed point so declaration order and chains of
+        // field refinements do not erase absence. The finite named graph bounds
+        // this walk even when another diagnostic rejects a refinement cycle.
+        loop {
+            let before = self.nullable_types.len();
+            for reference in &self.references {
+                if self.nullable_types.contains(&reference.target) {
+                    if let Some(refined) = &reference.refined {
+                        self.nullable_types.insert(refined.clone());
+                    }
+                }
+            }
+            if self.nullable_types.len() == before {
+                break;
+            }
+        }
+        for (target, source, range) in &self.nullable_references {
+            if self.nullable_types.contains(target) {
+                self.diagnostics.push(with_span(
+                    Diagnostic::error("TYPE_REDUNDANT_NULLABILITY")
+                        .with_fact(DiagnosticFact::Name(target.clone())),
+                    source,
+                    *range,
+                ));
+            }
+        }
+    }
+
+    fn validate_storage_nullability(&mut self, files: &[ParsedSyntax]) {
+        for file in files {
+            for declaration in &file.file.declarations {
+                let Declaration::Record(record) = declaration else {
+                    continue;
+                };
+                for field in &record.fields {
+                    if field.persistence.contains(&PersistenceModifier::Identity)
+                        && self.reference_is_nullable(&field.field_type)
+                    {
+                        self.diagnostics.push(with_span(
+                            Diagnostic::error("DATA_IDENTITY_NULLABLE"),
+                            &file.source_name,
+                            field.range,
+                        ));
+                    }
+                }
+                for constraint in &record.persistence_constraints {
+                    let mut seen = BTreeSet::new();
+                    for name in &constraint.fields {
+                        if !seen.insert(&name.text) {
+                            continue;
+                        }
+                        let Some(field) = record
+                            .fields
+                            .iter()
+                            .find(|field| field.name.text == name.text)
+                        else {
+                            continue;
+                        };
+                        if self.reference_is_nullable(&field.field_type) {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("DATA_CONSTRAINT_NULLABLE_FIELD"),
+                                &file.source_name,
+                                name.range,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn finish(mut self) -> SemanticGraph {
+        if let Some(principal) = &self.principal {
+            for (variant, source, range) in &self.authentication_principals {
+                self.references.push(PendingReference {
+                    refined: None,
+                    target: format!("{principal}.{variant}"),
+                    expected: ReferenceKind::PrincipalVariant,
+                    usage: ReferenceUsage::AuthenticationPrincipal,
+                    source: source.clone(),
+                    range: *range,
+                });
+            }
+        }
         let nodes = self
             .nodes
             .values()
@@ -1480,10 +2926,16 @@ impl GraphBuilder {
             let target_kind = kinds[&reference.target];
             let kind_matches = match reference.expected {
                 ReferenceKind::Type => target_kind.is_type(),
+                ReferenceKind::Principal => matches!(target_kind, NodeKind::Principal),
+                ReferenceKind::PrincipalVariant => {
+                    matches!(target_kind, NodeKind::PrincipalVariant)
+                }
+                ReferenceKind::AuthenticationField => matches!(target_kind, NodeKind::Field),
                 ReferenceKind::Failure => {
                     matches!(target_kind, NodeKind::Failure | NodeKind::StandardFailure)
                 }
                 ReferenceKind::StandardFailure => target_kind == NodeKind::StandardFailure,
+                ReferenceKind::Fixture => target_kind == NodeKind::Fixture,
             };
             if !kind_matches {
                 let mut diagnostic = Diagnostic::error("SEM_WRONG_NAME_KIND")
@@ -1521,7 +2973,38 @@ impl GraphBuilder {
             let Some(caller) = ids.get(&call.caller).copied() else {
                 continue;
             };
-            let Some(callee) = ids.get(&call.callee).copied() else {
+            let resolved_callee = if ids.contains_key(&call.callee) {
+                call.callee.clone()
+            } else {
+                let operation = call.callee.rsplit('.').next().unwrap_or(&call.callee);
+                let mut candidates = nodes
+                    .iter()
+                    .filter(|node| {
+                        matches!(
+                            node.kind,
+                            NodeKind::Function | NodeKind::Action | NodeKind::Query
+                        ) && node.name.ends_with(&format!(".{operation}"))
+                    })
+                    .map(|node| node.name.clone());
+                match (candidates.next(), candidates.next()) {
+                    (Some(candidate), None) => candidate,
+                    _ => call.callee.clone(),
+                }
+            };
+            let Some(callee) = ids.get(&resolved_callee).copied() else {
+                if let Some(namespace) = standard_operation_namespace(
+                    call.callee.rsplit('.').next().unwrap_or(&call.callee),
+                ) {
+                    let operation = call.callee.rsplit('.').next().unwrap_or(&call.callee);
+                    let diagnostic = Diagnostic::error("SEM_STANDARD_OPERATION_QUALIFICATION")
+                        .with_fact(DiagnosticFact::Name(call.callee.clone()))
+                        .with_fact(DiagnosticFact::SuggestedName(format!(
+                            "{namespace}.{operation}"
+                        )));
+                    self.diagnostics
+                        .push(with_span(diagnostic, &call.source, call.range));
+                    continue;
+                }
                 let mut diagnostic = Diagnostic::error("SEM_UNKNOWN_CALLEE")
                     .with_fact(DiagnosticFact::Name(call.callee.clone()))
                     .with_fact(DiagnosticFact::Expected("function or action".to_owned()))
@@ -1530,7 +3013,15 @@ impl GraphBuilder {
                     &call.callee,
                     nodes
                         .iter()
-                        .filter(|node| matches!(node.kind, NodeKind::Function | NodeKind::Action))
+                        .filter(|node| {
+                            matches!(
+                                node.kind,
+                                NodeKind::Function
+                                    | NodeKind::Action
+                                    | NodeKind::Query
+                                    | NodeKind::StandardFunction
+                            )
+                        })
                         .map(|node| node.name.as_str()),
                 ) {
                     diagnostic = diagnostic.with_fact(DiagnosticFact::SuggestedName(suggestion));
@@ -1542,15 +3033,18 @@ impl GraphBuilder {
             if let Some(diagnostic) = module_visibility_diagnostic(
                 &self.module_scopes,
                 &nodes[callee.0 as usize],
-                &call.callee,
+                &resolved_callee,
                 &call.source,
                 call.range,
             ) {
                 self.diagnostics.push(diagnostic);
                 continue;
             }
-            match kinds[&call.callee] {
-                NodeKind::Function | NodeKind::Action => calls.push(CallEdge { caller, callee }),
+            match kinds[&resolved_callee] {
+                NodeKind::Function
+                | NodeKind::Action
+                | NodeKind::Query
+                | NodeKind::StandardFunction => calls.push(CallEdge { caller, callee }),
                 kind if kind.is_type() => {}
                 actual => {
                     let diagnostic = Diagnostic::error("SEM_NOT_CALLABLE")
@@ -1567,12 +3061,26 @@ impl GraphBuilder {
         refinements.dedup();
         calls.sort_by_key(|edge| (edge.caller, edge.callee));
         calls.dedup();
+        let mut authentication_resolutions = self
+            .authentication_resolutions
+            .into_iter()
+            .filter_map(|edge| {
+                Some(AuthenticationResolutionEdge {
+                    resolution: *ids.get(&edge.resolution)?,
+                    authority: *ids.get(&edge.authority)?,
+                })
+            })
+            .collect::<Vec<_>>();
+        authentication_resolutions.sort_by_key(|edge| (edge.resolution, edge.authority));
+        authentication_resolutions.dedup();
 
         SemanticGraph {
             modules: self.modules,
             nodes,
             refinements,
+            nullable_types: self.nullable_types,
             calls,
+            authentication_resolutions,
             diagnostics: self.diagnostics,
         }
     }
@@ -1600,16 +3108,169 @@ fn module_visibility_diagnostic(
     ))
 }
 
+#[derive(Clone, Copy)]
+enum NameCase {
+    UpperCamel,
+    LowerSnake,
+}
+
+impl NameCase {
+    fn accepts(self, value: &str) -> bool {
+        match self {
+            Self::UpperCamel => {
+                value
+                    .bytes()
+                    .next()
+                    .is_some_and(|byte| byte.is_ascii_uppercase())
+                    && value.bytes().all(|byte| byte.is_ascii_alphanumeric())
+            }
+            Self::LowerSnake => {
+                value
+                    .bytes()
+                    .next()
+                    .is_some_and(|byte| byte.is_ascii_lowercase())
+                    && value.bytes().all(|byte| {
+                        byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'
+                    })
+                    && !value.ends_with('_')
+                    && !value.contains("__")
+            }
+        }
+    }
+
+    const fn description(self) -> &'static str {
+        match self {
+            Self::UpperCamel => "UpperCamelCase",
+            Self::LowerSnake => "lower_snake_case",
+        }
+    }
+
+    fn convert(self, value: &str) -> String {
+        let snake = to_lower_snake(value);
+        match self {
+            Self::LowerSnake => snake,
+            Self::UpperCamel => snake
+                .split('_')
+                .filter(|part| !part.is_empty())
+                .map(|part| {
+                    let mut characters = part.chars();
+                    characters.next().map_or_else(String::new, |first| {
+                        first.to_uppercase().chain(characters).collect()
+                    })
+                })
+                .collect(),
+        }
+    }
+}
+
+fn to_lower_snake(value: &str) -> String {
+    let mut output = String::new();
+    let mut previous_was_separator = true;
+    for character in value.chars() {
+        if character == '_' || character == '-' {
+            if !previous_was_separator && !output.is_empty() {
+                output.push('_');
+            }
+            previous_was_separator = true;
+            continue;
+        }
+        if character.is_ascii_uppercase() {
+            if !previous_was_separator && !output.is_empty() {
+                output.push('_');
+            }
+            output.push(character.to_ascii_lowercase());
+        } else if character.is_ascii_alphanumeric() {
+            output.push(character.to_ascii_lowercase());
+        }
+        previous_was_separator = false;
+    }
+    while output.ends_with('_') {
+        output.pop();
+    }
+    output
+}
+
+fn is_standard_namespace(value: &str) -> bool {
+    matches!(value, "temporal" | "collection")
+}
+
+fn standard_operation_namespace(value: &str) -> Option<&'static str> {
+    matches!(
+        value,
+        "in_zone"
+            | "resolve"
+            | "add_elapsed"
+            | "between"
+            | "add_days"
+            | "add_weeks"
+            | "add_months"
+            | "add_years"
+            | "add_local_days"
+            | "add_local_weeks"
+            | "add_local_months"
+            | "add_local_years"
+            | "day_bounds"
+            | "week_bounds"
+            | "month_bounds"
+            | "year_bounds"
+            | "calendar_date"
+            | "year"
+            | "month"
+            | "day"
+            | "weekday"
+            | "hour"
+            | "minute"
+            | "second"
+            | "millisecond"
+            | "offset"
+            | "zone"
+            | "same_zone"
+            | "same_local"
+            | "format"
+            | "format_friendly"
+    )
+    .then_some("temporal")
+}
+
 fn declaration_name(declaration: &Declaration) -> Option<&jadpo_syntax::Name> {
     match declaration {
+        Declaration::Application(declaration) => Some(&declaration.name),
+        Declaration::Locales(_) => None,
+        Declaration::AuthenticationStrategy(declaration) => Some(&declaration.name),
+        Declaration::Principal(declaration) => Some(&declaration.name),
+        Declaration::Config(declaration) => Some(&declaration.name),
         Declaration::Type(declaration) => Some(&declaration.name),
         Declaration::Enum(declaration) => Some(&declaration.name),
         Declaration::Record(declaration) => Some(&declaration.name),
         Declaration::Failure(declaration) => Some(&declaration.name),
         Declaration::Callable(declaration) => Some(&declaration.name),
+        Declaration::Fixture(declaration) => Some(&declaration.name),
         Declaration::Test(_) => None,
         Declaration::Route(_) => None,
     }
+}
+
+fn positive_duration(value: &str) -> bool {
+    value
+        .trim_end_matches(|character: char| character.is_ascii_alphabetic())
+        .parse::<f64>()
+        .is_ok_and(|value| value.is_finite() && value > 0.0)
+}
+
+fn unquote_string(value: &str) -> String {
+    value
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .unwrap_or(value)
+        .to_owned()
+}
+
+fn valid_configuration_binding(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    bytes
+        .next()
+        .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
 fn name_expression(path: &[jadpo_syntax::Name]) -> String {
@@ -1617,6 +3278,23 @@ fn name_expression(path: &[jadpo_syntax::Name]) -> String {
         .map(|name| name.text.as_str())
         .collect::<Vec<_>>()
         .join(".")
+}
+
+fn standard_variant_name(value: &str) -> String {
+    let mut result = String::with_capacity(value.len());
+    let mut separator = false;
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() {
+            if separator && !result.is_empty() {
+                result.push('_');
+            }
+            result.push(character.to_ascii_lowercase());
+            separator = false;
+        } else {
+            separator = true;
+        }
+    }
+    result
 }
 
 fn closest_semantic_name<'a>(
@@ -2076,5 +3754,124 @@ entity Profile {
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "DATA_INVERSE_OPTIONAL_NOT_UNIQUE"));
+    }
+
+    #[test]
+    fn validates_configuration_bindings_and_secret_defaults() {
+        let source = r#"
+config First {
+    first: Text { binding: "SHARED" }
+    without_binding: Text { secret: false }
+    empty_binding: Text { binding: "" }
+    invalid_binding: Text { binding: "BAD-NAME" }
+}
+config Second {
+    second: Text { binding: "SHARED" secret: true default: "unsafe" }
+}
+"#;
+        let parsed = parse(Path::new("bad-config.jadpo"), source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        let graph = build_semantic_graph(&[parsed]);
+        let codes = graph
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>();
+        assert!(codes.contains(&"CONFIG_MULTIPLE_DECLARATIONS"));
+        assert!(codes.contains(&"CONFIG_BINDING_REQUIRED"));
+        assert!(codes.contains(&"CONFIG_DUPLICATE_BINDING"));
+        assert!(codes.contains(&"CONFIG_BINDING_EMPTY"));
+        assert!(codes.contains(&"CONFIG_BINDING_INVALID"));
+        assert!(codes.contains(&"CONFIG_SECRET_DEFAULT"));
+    }
+
+    #[test]
+    fn indexes_the_application_and_closed_principal_contract() {
+        let source = r#"
+application TodoApplication {
+    authentication {
+        principal: Principal
+        revocation { mode: immediate }
+    }
+}
+principal Principal {
+    user { subject: Text }
+    service { subject: Text }
+}
+"#;
+        let parsed = parse(Path::new("authentication.jadpo"), source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        let graph = build_semantic_graph(&[parsed]);
+
+        assert!(graph.diagnostics.is_empty(), "{:#?}", graph.diagnostics);
+        assert_eq!(
+            graph
+                .node("TodoApplication")
+                .expect("application node")
+                .kind,
+            NodeKind::Application
+        );
+        assert_eq!(
+            graph.node("Principal").expect("principal node").kind,
+            NodeKind::Principal
+        );
+        assert_eq!(
+            graph.node("Principal.user").expect("user variant").kind,
+            NodeKind::PrincipalVariant
+        );
+        assert_eq!(
+            graph
+                .node("Principal.service")
+                .expect("service variant")
+                .kind,
+            NodeKind::PrincipalVariant
+        );
+    }
+
+    #[test]
+    fn indexes_authentication_strategies_slots_and_validation_modes() {
+        let source = r#"
+application TodoApplication {
+    authentication {
+        principal: Principal
+        revocation { mode: immediate }
+    }
+}
+principal Principal {
+    user { subject: Text }
+    service { subject: Text }
+}
+authentication api_bearer {
+    transport { bearer: authorization_header }
+    validators {
+        opaque_user { mode: opaque principal: user }
+        service_key { mode: api_key principal: service }
+    }
+}
+"#;
+        let parsed = parse(Path::new("authentication-strategy.jadpo"), source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        let graph = build_semantic_graph(&[parsed]);
+        assert!(graph.diagnostics.is_empty(), "{:#?}", graph.diagnostics);
+        for (name, kind) in [
+            (
+                "authentication.api_bearer",
+                NodeKind::AuthenticationStrategy,
+            ),
+            (
+                "authentication.api_bearer.bearer.authorization_header",
+                NodeKind::CredentialSlot,
+            ),
+            (
+                "authentication.api_bearer.validator.opaque_user.opaque",
+                NodeKind::CredentialValidation,
+            ),
+            (
+                "authentication.api_bearer.validator.service_key.api_key",
+                NodeKind::CredentialValidation,
+            ),
+        ] {
+            assert_eq!(graph.node(name).expect(name).kind, kind);
+        }
     }
 }

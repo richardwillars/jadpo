@@ -54,7 +54,7 @@ fn scaffold_files(name: &str) -> Vec<ScaffoldFile> {
         },
         ScaffoldFile {
             relative_path: ".gitignore",
-            contents: "build/\n.local/\n.env\n".to_owned(),
+            contents: "build/\n.local/\n.env\n.env.local\n".to_owned(),
         },
         ScaffoldFile {
             relative_path: "README.md",
@@ -120,7 +120,7 @@ mod tests {
         assert!(analyzed.semantics.diagnostics.is_empty());
         assert!(analyzed.typing.diagnostics.is_empty());
         assert!(analyzed.failures.diagnostics.is_empty());
-        assert_eq!(derive_artifacts(&project, &analyzed).len(), 9);
+        assert_eq!(derive_artifacts(&project, &analyzed).len(), 13);
         let application = files
             .iter()
             .find(|file| file.relative_path == "app.jadpo")

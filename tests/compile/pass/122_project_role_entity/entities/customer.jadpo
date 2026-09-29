@@ -1,0 +1,4 @@
+entity Customer {
+    id: Uuid
+    identity: id
+}

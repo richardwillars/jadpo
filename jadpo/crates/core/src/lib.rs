@@ -15,14 +15,24 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 mod artifacts;
+mod configuration;
+mod entity_model;
 mod formatter;
 mod index_advisor;
 mod language_service;
 mod migration_identity;
+mod policy;
 mod scaffold;
 mod target;
 
 pub use artifacts::{derive_artifacts, write_artifacts, GeneratedArtifact};
+pub use configuration::{
+    check_local_configuration, configuration_fields, local_configuration_environment,
+    set_local_configuration, ConfigurationField, LocalConfigurationState, LocalConfigurationStatus,
+};
+pub use entity_model::{
+    EntityContract, EntityModel, QueryContract, RepresentationContract, TransactionContract,
+};
 pub use formatter::format_source;
 pub use index_advisor::{
     accept_index_recommendation, index_recommendation_count, index_recommendations_json,
@@ -33,6 +43,10 @@ pub use migration_identity::{
     rename_schema_identity, snapshot_schema_identities, validate_schema_decisions,
     validate_schema_identities, write_schema_decision_template, write_schema_migration_plan,
     write_schema_migration_sql_review,
+};
+pub use policy::{
+    EntityPolicyContract, FieldPolicyContract, MembershipContract, OperationPolicyContract,
+    PolicyFieldRead, PolicyModel, PolicyObligation, PolicyRuleContract, RoleBindingContract,
 };
 pub use scaffold::{create_project, ScaffoldFile};
 pub use target::derive_target;
@@ -48,6 +62,8 @@ pub struct AnalyzedProject {
     pub semantics: SemanticGraph,
     pub typing: TypeCheckResult,
     pub failures: FailureCheckResult,
+    pub entity_model: EntityModel,
+    pub policy: PolicyModel,
 }
 
 impl ParsedProject {
@@ -174,14 +190,24 @@ pub fn analyze_sources(mut sources: Vec<SourceFile>) -> Result<AnalyzedProject, 
         return Err(Diagnostic::error("JADPO_EMPTY_PROJECT")
             .with_note("add a type, enum, record, failure, callable, or route declaration"));
     }
-    let semantics = build_semantic_graph(&syntax.sources);
+    let mut semantics = build_semantic_graph(&syntax.sources);
     let typing = check_types(&syntax.sources, &semantics);
     let failures = check_failures(&syntax.sources, &semantics);
+    let entity_model = entity_model::analyze_entity_model(&syntax.sources);
+    let policy = policy::analyze_policy(&syntax.sources, &typing);
+    semantics
+        .diagnostics
+        .extend(entity_model.diagnostics.iter().cloned());
+    semantics
+        .diagnostics
+        .extend(policy.diagnostics.iter().cloned());
     Ok(AnalyzedProject {
         syntax,
         semantics,
         typing,
         failures,
+        entity_model,
+        policy,
     })
 }
 
@@ -234,7 +260,15 @@ fn apply_persistence_declarations(sources: &mut [ParsedSyntax]) {
             Declaration::Enum(value) => Some((value.name.text.clone(), "enum type")),
             Declaration::Failure(value) => Some((value.name.text.clone(), "failure")),
             Declaration::Callable(value) => Some((value.name.text.clone(), "callable")),
-            Declaration::Record(_) | Declaration::Test(_) | Declaration::Route(_) => None,
+            Declaration::Application(_)
+            | Declaration::Locales(_)
+            | Declaration::AuthenticationStrategy(_)
+            | Declaration::Principal(_)
+            | Declaration::Config(_)
+            | Declaration::Record(_)
+            | Declaration::Fixture(_)
+            | Declaration::Test(_)
+            | Declaration::Route(_) => None,
         })
         .collect::<BTreeMap<_, _>>();
     let persistence = sources
@@ -415,7 +449,7 @@ mod tests {
         let fixtures = repository_root().join("tests/compile");
         let sources = discover_sources(&fixtures).expect("fixtures should be discoverable");
 
-        assert_eq!(sources.len(), 113);
+        assert_eq!(sources.len(), 180);
     }
 
     #[test]

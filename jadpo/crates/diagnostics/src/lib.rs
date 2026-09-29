@@ -485,6 +485,13 @@ impl CompilerDiagnostic {
                 "Use an object value before `.`, or remove the field access"
                     .clone_into(&mut self.recommended_next_step.title);
             }
+            "TYPE_REDUNDANT_NULLABILITY" => {
+                let Some(name) = name else { return };
+                self.message = format!("`{name}` already permits `none`");
+                self.reason = format!("`{name}` inherits nullability from its declared type. A second `?` does not create a distinct kind of absence.");
+                self.recommended_next_step.title =
+                    format!("Remove the redundant `?` after `{name}`");
+            }
             "TYPE_NULLABLE_SELECTION" => {
                 let (Some(received), Some(field)) = (received, field) else {
                     return;
@@ -948,10 +955,50 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "A match arm must use a pattern supported by the matched value, such as a variant, Boolean, nullable pattern, or wildcard.",
             "Replace this source with a supported match pattern",
         ),
+        "SYN_GENERATED_ON_REQUIRED" => (
+            "Generated field requires an `on` lifecycle role",
+            "Compiler-owned lifecycle timestamps are explicit. The generated block must state whether the value is set on creation or on creation and semantic change.",
+            "Add `on: create` or `on: create_or_change`",
+        ),
+        "SYN_GENERATED_ROLE_INVALID" => (
+            "Generated field lifecycle role is not supported",
+            "The initial lifecycle contract has exactly two roles so timestamp ownership and update behavior remain predictable.",
+            "Use `create` or `create_or_change`",
+        ),
+        "SYN_LOCALES_DEFAULT_REQUIRED" => (
+            "Locale declaration requires one default locale",
+            "Formatting fallback must be deterministic, so every locale set names one supported default BCP 47 locale.",
+            "Add `default: \"...\"` to the locales block",
+        ),
+        "SYN_LOCALES_SUPPORTED_REQUIRED" => (
+            "Locale declaration requires a supported locale list",
+            "The generated `Locale` enum is closed over an explicit list rather than accepting host locale strings.",
+            "Add `supported: [\"...\"]` to the locales block",
+        ),
+        "SYN_LOCALES_UNSUPPORTED_REQUIRED" => (
+            "Locale declaration requires an unsupported-locale policy",
+            "An application must decide whether an unsupported requested locale rejects or uses its declared default.",
+            "Add `unsupported: reject` or `unsupported: fallback_to_default`",
+        ),
+        "SYN_LOCALES_UNSUPPORTED_INVALID" => (
+            "Unsupported-locale policy is not recognised",
+            "Only rejection or deterministic fallback to the declared default has defined behavior.",
+            "Use `reject` or `fallback_to_default`",
+        ),
         "SYN_MUTATION_CONFLICT_REQUIRED" => (
             "Mutation requires a conflict failure binding",
             "Required create, update, and delete operations must map storage conflicts into an authored domain failure rather than exposing adapter errors.",
             "Add at least one `conflict:` failure binding",
+        ),
+        "SYN_NAMED_ARGUMENT_DUPLICATE" => (
+            "Named argument is repeated",
+            "Each named argument identifies one parameter or option. Repeating a name would make the selected value ambiguous.",
+            "Keep one value for this named argument",
+        ),
+        "SYN_POSITIONAL_AFTER_NAMED" => (
+            "Positional argument follows a named argument",
+            "Calls put positional values first and policy or option values after them by name. Mixing the order makes signatures harder to read and evolve safely.",
+            "Move positional arguments before every named argument",
         ),
         "SYN_ROUTE_EXPORT_INVALID" => (
             "Routes cannot be exported with `public`",
@@ -994,6 +1041,131 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
 
 fn semantic_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     let (summary, reason, next) = match code {
+        "SEM_NAME_CASE" => (
+            "`{name}` must use {expected}",
+            "This name's semantic owner determines one language-wide spelling. Type-like declarations use UpperCamelCase, while runtime names use lower_snake_case.",
+            "Rename it to `{suggestedName}`",
+        ),
+        "SEM_STANDARD_NAMESPACE_RESERVED" => (
+            "`{name}` is a compiler-owned standard namespace",
+            "Standard-library namespaces are always available without imports and cannot be declared, shadowed, opened, or aliased by application source.",
+            "Choose an application-owned declaration name",
+        ),
+        "SEM_STANDARD_OPERATION_RESERVED" => (
+            "`{name}` is reserved for a standard-library operation",
+            "A free callable cannot duplicate a compiler-owned operation because that would create qualified and unqualified spellings for the same concept.",
+            "Choose a domain-specific callable name and use the standard operation through its namespace",
+        ),
+        "SEM_STANDARD_OPERATION_QUALIFICATION" => (
+            "Standard-library operation requires its owning namespace",
+            "Standard operations have one canonical source spelling and cannot be called as free functions or receiver methods.",
+            "Use `{suggestedName}`",
+        ),
+        "SEM_MULTIPLE_APPLICATIONS" => (
+            "Project declares more than one application",
+            "One application declaration owns the project-wide authentication default and other application capabilities.",
+            "Keep one application declaration and combine its settings",
+        ),
+        "SEM_MULTIPLE_LOCALE_DECLARATIONS" => (
+            "Project declares more than one locale set",
+            "One closed locale declaration owns formatting support, fallback behavior, and the generated `Locale` enum for the whole application.",
+            "Keep one locales declaration and combine its supported values",
+        ),
+        "SEM_APPLICATION_PRINCIPAL_SHAPE" => (
+            "Application principal must name one declaration",
+            "The authentication default names the closed principal declaration directly; it cannot be nullable, generic, or a field path.",
+            "Use the plain name of the project principal declaration",
+        ),
+        "SEM_MULTIPLE_PRINCIPALS" => (
+            "Project declares more than one principal",
+            "Authentication strategies must converge on one closed provider-independent principal declaration.",
+            "Keep one principal declaration and combine its variants",
+        ),
+        "SEM_PRINCIPAL_VARIANT_DUPLICATE" => (
+            "Principal variant is declared more than once",
+            "The closed principal has exactly one user variant and one service variant.",
+            "Keep one declaration of this principal variant",
+        ),
+        "SEM_PRINCIPAL_VARIANT_REQUIRED" => (
+            "Principal is missing a required variant",
+            "The v0.1 principal contract is closed over both user and service identities, even when one client class is not configured yet.",
+            "Declare both the user and service principal variants",
+        ),
+        "SEM_REVOCATION_DELAY_REQUIRED" => (
+            "Bounded revocation requires a maximum delay",
+            "A bounded credential must state the longest interval before authority changes are guaranteed to take effect.",
+            "Add a positive duration as `maximum_delay`",
+        ),
+        "SEM_REVOCATION_DELAY_FORBIDDEN" => (
+            "Immediate revocation cannot declare a bounded delay",
+            "Immediate mode performs an authoritative check for each authenticated request and therefore has no bounded-delay contract.",
+            "Remove `maximum_delay` or select bounded revocation",
+        ),
+        "SEM_REVOCATION_DELAY_INVALID" => (
+            "Revocation delay must be positive",
+            "A zero or negative interval cannot express a meaningful bounded revocation guarantee.",
+            "Use a positive duration for `maximum_delay`",
+        ),
+        "SEM_AUTH_STRATEGY_DUPLICATE" => (
+            "Authentication strategy name is already in use",
+            "Each named authentication strategy identifies one credential transport, validation mode, and principal variant.",
+            "Rename or combine the duplicate authentication strategy",
+        ),
+        "SEM_AUTH_VALIDATOR_REQUIRED" => (
+            "Authentication strategy has no validators",
+            "A configured credential location must have at least one named validator that resolves to one principal variant.",
+            "Add a named validator to the authentication strategy",
+        ),
+        "SEM_AUTH_VALIDATOR_DUPLICATE" => (
+            "Authentication validator name is already in use",
+            "Validator names identify one validation mode and principal mapping within their authentication strategy.",
+            "Rename or combine the duplicate authentication validator",
+        ),
+        "SEM_AUTH_CREDENTIAL_SLOT_DUPLICATE" => (
+            "Credential location is configured more than once",
+            "A request credential must select at most one strategy. Reusing a cookie or bearer location would make selection ambiguous.",
+            "Give each authentication strategy one distinct credential location",
+        ),
+        "SEM_AUTH_BEARER_LOCATION_FORBIDDEN" => (
+            "Bearer credential location is not allowed",
+            "Bearer credentials are accepted only from the reserved authorization header and never from a path or query value.",
+            "Use `authorization_header` for the bearer transport",
+        ),
+        "SEM_AUTH_VALIDATION_MODE_UNKNOWN" => (
+            "Authentication validation mode is not supported",
+            "The initial authentication contract supports signed, opaque, API-key, and JWT validation with compiler-owned security policy.",
+            "Choose `signed`, `opaque`, `api_key`, or `jwt`",
+        ),
+        "SEM_AUTH_PRINCIPAL_VARIANT_UNKNOWN" => (
+            "Authentication strategy principal variant is not supported",
+            "Every strategy must resolve to exactly one variant of the closed provider-independent principal: user or service.",
+            "Choose the `user` or `service` principal variant",
+        ),
+        "SEM_AUTH_MAPPING_DUPLICATE" => (
+            "Authentication mapping writes the same principal field twice",
+            "Each principal field has one provenance. Competing claim or authority mappings would make identity construction ambiguous.",
+            "Keep one mapping for the principal field",
+        ),
+        "SEM_AUTH_MAPPING_TARGET_INVALID" => (
+            "Authentication mapping target is not a matching principal field",
+            "Authentication mappings may populate only a field of the declared closed user or service principal variant.",
+            "Map to a field such as `Principal.user.subject`",
+        ),
+        "SEM_AUTH_MAPPING_REQUIRED" => (
+            "Principal resolution has no field mappings",
+            "Authoritative resolution must construct the declared principal variant from explicit validated authority fields.",
+            "Add at least one authority-to-principal field mapping",
+        ),
+        "SEM_AUTH_RESOLUTION_DUPLICATE" => (
+            "Principal variant has more than one resolution declaration",
+            "Each strategy has one unambiguous authoritative resolution path for each principal variant it can produce.",
+            "Combine the duplicate principal resolution declarations",
+        ),
+        "SEM_AUTH_RESOLUTION_AUTHORITY_INVALID" => (
+            "Principal resolution authority must name one entity field",
+            "Authoritative resolution starts from one inventoried entity field such as `User.authentication_subject`.",
+            "Name the entity field that resolves this principal",
+        ),
         "SEM_DUPLICATE_DECLARATION" => (
             "A name is defined more than once",
             "Every visible name must identify one thing. Two declarations with the same name would make later references ambiguous.",
@@ -1028,8 +1200,305 @@ fn semantic_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     })
 }
 
+fn configuration_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "CONFIG_EXPECTED_FIELD" => (
+            "Expected a configuration field",
+            "A configuration body contains structured `name: Type { ... }` fields only.",
+            "Add a typed configuration field or remove the invalid item",
+        ),
+        "CONFIG_UNKNOWN_OPTION" => (
+            "Configuration option is not supported",
+            "A v0.1 configuration field accepts only `binding`, `secret`, and `default` options.",
+            "Correct the option name or remove it",
+        ),
+        "CONFIG_DUPLICATE_OPTION" => (
+            "Configuration option is repeated",
+            "Each structured configuration option has exactly one value.",
+            "Keep one occurrence of the option",
+        ),
+        "CONFIG_DEFAULT_LITERAL_REQUIRED" => (
+            "Configuration default requires a literal",
+            "Source defaults must be deterministic checked literals rather than runtime expressions.",
+            "Provide a string, number, Boolean, or duration literal",
+        ),
+        "CONFIG_MULTIPLE_DECLARATIONS" => (
+            "Application declares configuration more than once",
+            "One closed configuration declaration owns every application binding.",
+            "Combine the fields into one configuration declaration",
+        ),
+        "CONFIG_BINDING_REQUIRED" => (
+            "Configuration field has no deployment binding",
+            "Every field needs one explicit stable environment binding beside its type.",
+            "Add `binding: \"NAME\"` to the field options",
+        ),
+        "CONFIG_BINDING_EMPTY" => (
+            "Configuration binding is empty",
+            "An empty binding cannot identify a local or deployment environment value.",
+            "Use a non-empty stable environment binding name",
+        ),
+        "CONFIG_BINDING_INVALID" => (
+            "Configuration binding is not a valid environment name",
+            "Bindings use portable environment identifiers beginning with a letter or underscore and containing only letters, digits, and underscores.",
+            "Replace the binding with a portable environment name",
+        ),
+        "CONFIG_DUPLICATE_BINDING" => (
+            "Configuration binding is used by more than one field",
+            "A binding must resolve to one typed field so decoding and diagnostics stay unambiguous.",
+            "Give each field a distinct binding name",
+        ),
+        "CONFIG_SECRET_DEFAULT" => (
+            "Secret configuration cannot have a source default",
+            "Embedding a secret fallback in authored source would expose it in review and generated artifacts.",
+            "Remove the default and supply the secret through the local or deployment environment",
+        ),
+        "CONFIG_SECRET_FLOW" => (
+            "Secret configuration reaches an ordinary value boundary",
+            "Secret-classified values may flow only into compiler-owned declared secret sinks, never ordinary returns, arguments, records, output, or diagnostics.",
+            "Keep the secret inside its generated adapter boundary",
+        ),
+        "CONFIG_FIXTURE_DUPLICATE" => (
+            "Fixture supplies a configuration field more than once",
+            "A typed test fixture must provide one unambiguous value for each configured field.",
+            "Keep one value for the repeated fixture field",
+        ),
+        "CONFIG_FIXTURE_SECRET_REQUIRED" => (
+            "Secret fixture value must use the secret boundary",
+            "Secret configuration is marked explicitly in fixture source so generated reports and traces can redact it before values enter the harness.",
+            "Wrap the fixture value in `secret(...)`",
+        ),
+        "CONFIG_FIXTURE_SECRET_UNEXPECTED" => (
+            "Ordinary configuration cannot use the secret fixture boundary",
+            "The fixture classification must match the configuration declaration so test behavior cannot change a field's information-flow contract.",
+            "Remove `secret(...)` or classify the declared configuration field as secret",
+        ),
+        "CONFIG_FIXTURE_VALUE_INVALID" => (
+            "Fixture configuration value violates its declared type",
+            "Harness-provided configuration passes the same nominal validation as deployment configuration before application behavior can read it.",
+            "Supply a value that satisfies the configured field type",
+        ),
+        "CONFIG_FIXTURE_VALUE_MISSING" => (
+            "Fixture omits required configuration",
+            "Tests receive configuration only from their typed fixture; every field without a checked source default must be supplied explicitly.",
+            "Add the missing field to the fixture's `config` block",
+        ),
+        "CONFIG_DEFAULT_TYPE" => (
+            "Configuration default has the wrong type",
+            "The literal representation does not match the field's declared type.",
+            "Use a literal matching the field type or remove the default",
+        ),
+        "CONFIG_TYPE_UNSUPPORTED" => (
+            "Configuration field type cannot be decoded from one environment value",
+            "v0.1 configuration supports named scalar types; structured collections and records need a separately designed source contract.",
+            "Use a supported named scalar type or move the structured data behind an adapter",
+        ),
+        "CONFIG_DEFAULT_INVALID" => (
+            "Configuration default violates its type constraints",
+            "Defaults pass the same nominal constraints as values supplied at startup.",
+            "Change the default so it satisfies the declared constraints",
+        ),
+        "CONFIG_FIELD_UNKNOWN" => (
+            "Configuration field is not declared",
+            "Local configuration commands accept the authored field name rather than an arbitrary environment key.",
+            "Use a field declared in the application's configuration block",
+        ),
+        "CONFIG_VALUE_MISSING" => (
+            "Required local configuration is missing",
+            "The field has no `.env.local` value and no checked source default, so the service cannot start safely.",
+            "Run `jadpo config set <field>` or edit `.env.local` locally",
+        ),
+        "CONFIG_VALUE_INVALID" => (
+            "Local configuration value is invalid",
+            "The supplied value could not be decoded into the field's declared type and constraints.",
+            "Enter a value that satisfies the declared field type",
+        ),
+        "CONFIG_LOCAL_CHECK_FAILED" => (
+            "Local configuration is incomplete or invalid",
+            "At least one declared field is missing or failed validation; no value has been printed.",
+            "Configure the reported fields and run `jadpo config check` again",
+        ),
+        "CONFIG_LOCAL_READ_FAILED" => (
+            "Local configuration could not be read",
+            "Jadpo could not safely read `.env.local` from the project directory.",
+            "Restore project read access and retry",
+        ),
+        "CONFIG_LOCAL_INVALID_ENCODING" => (
+            "Local configuration is not UTF-8 text",
+            "Jadpo preserves `.env.local` structurally and cannot safely update an unknown byte encoding.",
+            "Convert `.env.local` to UTF-8 without sharing its values",
+        ),
+        "CONFIG_LOCAL_SYNTAX" => (
+            "Local configuration syntax is invalid",
+            "Jadpo found an invalid or duplicate assignment and refused to guess which value should win.",
+            "Correct the `.env.local` assignment structure and retry",
+        ),
+        "CONFIG_LOCAL_CHANGED" => (
+            "Local configuration changed during the update",
+            "Another process modified `.env.local`, so Jadpo refused to overwrite the newer contents.",
+            "Run the configuration command again against the latest file",
+        ),
+        "CONFIG_LOCAL_WRITE_FAILED" => (
+            "Local configuration could not be saved",
+            "The atomic owner-only `.env.local` update could not be completed.",
+            "Restore project write access and retry",
+        ),
+        "CONFIG_LOCAL_UNSAFE_TARGET" => (
+            "Local configuration target is unsafe",
+            "`.env.local` is a symbolic link or non-file target, so updating it could write outside the project.",
+            "Replace it with a regular project-local file and retry",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
+fn policy_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "POLICY_MEMBERSHIP_DUPLICATE" => (
+            "Entity declares membership more than once",
+            "One membership declaration must identify the authoritative scope, member, and qualified role fields without competing bindings.",
+            "Combine the role binding into one membership declaration",
+        ),
+        "POLICY_DECLARATION_DUPLICATE" => (
+            "Protected item declares policy more than once",
+            "An entity or exceptional field has one role-first policy matrix so permission sources cannot drift.",
+            "Combine the rules into one policy block",
+        ),
+        "POLICY_MEMBERSHIP_SCOPE_REQUIRED" => (
+            "Membership has no scope field",
+            "A scoped role fact must identify the authoritative resource or tenant that bounds it.",
+            "Add `scope: <field>` to the membership declaration",
+        ),
+        "POLICY_MEMBERSHIP_MEMBER_REQUIRED" => (
+            "Membership has no member field",
+            "A membership must identify the user or service principal that receives its role fact.",
+            "Add `member: <field>` to the membership declaration",
+        ),
+        "POLICY_MEMBERSHIP_ROLE_REQUIRED" => (
+            "Membership has no role field",
+            "A membership must name the closed enum field containing its qualified scoped role.",
+            "Add `role: <field>` to the membership declaration",
+        ),
+        "POLICY_SCOPE_DUPLICATE" => (
+            "Policy selects scope more than once",
+            "A protected entity needs one unambiguous scope path for each scoped role namespace.",
+            "Keep one explicit scope selection",
+        ),
+        "POLICY_EFFECT_DUPLICATE" => (
+            "Policy effect is repeated",
+            "Each subject-to-effect grant has one canonical entry in its role-first matrix.",
+            "Remove the repeated effect",
+        ),
+        "POLICY_EFFECT_UNKNOWN" => (
+            "Policy effect is not supported",
+            "Entity policy uses only `create`, `read`, `update`, and `delete`; independently protected non-entity operations use `invoke`.",
+            "Use the semantic effect derived from the protected operation",
+        ),
+        "POLICY_BINDING_DUPLICATE" => (
+            "Field declares more than one role binding",
+            "A direct principal relationship establishes at most one fixed qualified role fact.",
+            "Keep one qualified field role",
+        ),
+        "POLICY_BINDING_MUTABLE" => (
+            "Role-binding field cannot be mutable",
+            "Changing a role source changes future authority and requires a separately reviewed transfer operation.",
+            "Declare the role-binding field immutable",
+        ),
+        "POLICY_BINDING_INVALID" => (
+            "Role binding is not authoritative or type-compatible",
+            "A role fact must come from a checked principal reference or persistent membership with compatible scope, member, and closed role-enum fields.",
+            "Correct the binding fields and use a qualified declared role",
+        ),
+        "POLICY_ROLE_FIELD_UPDATE_FORBIDDEN" => (
+            "Role-binding field is writable by an ordinary update",
+            "Ownership, tenant scope, and membership role fields cannot change through general update permission.",
+            "Make the field immutable or design a named reviewed transfer operation",
+        ),
+        "POLICY_ROLE_FIELD_CREATE_FORBIDDEN" => (
+            "Role-binding field is not derived from the authenticated principal",
+            "A caller-controlled owner relationship could manufacture authority even when its identifier has the correct declared type.",
+            "Construct the role-binding field from the matching typed `principal` identity",
+        ),
+        "POLICY_ROLE_UNBOUND" => (
+            "Policy role has no authoritative binding",
+            "Declaring a role enum does not grant authority; the compiler needs a direct principal relationship or persistent membership source for its scope.",
+            "Add an authoritative direct or membership role binding",
+        ),
+        "POLICY_SCOPE_MISSING" => (
+            "Protected entity has no path to the role scope",
+            "A scoped role can authorize only rows connected to its authoritative resource or tenant scope.",
+            "Add the missing typed scope relationship or correct the explicit scope field",
+        ),
+        "POLICY_SCOPE_AMBIGUOUS" => (
+            "Protected entity has more than one possible role scope",
+            "Choosing a scope by field name, order, route parameter, or caller input could authorize the wrong tenant.",
+            "Add one explicit `scope:` selection to the entity policy",
+        ),
+        "POLICY_FIELD_WIDENS_ENTITY" => (
+            "Field policy would widen entity permission",
+            "Exceptional field policy is an additional narrowing gate and cannot grant a role or effect absent from the containing entity policy.",
+            "Narrow the field rule or deliberately review the entity-level grant",
+        ),
+        "POLICY_SUBJECT_DUPLICATE" => (
+            "Policy subject is repeated",
+            "One canonical role-first entry prevents grants for the same qualified subject from being split or drifting.",
+            "Combine the effects into one subject entry",
+        ),
+        "POLICY_OPERATION_UNKNOWN" => (
+            "Policy exception names an unknown entity operation",
+            "A named exception can replace inherited permissions only for one checked operation owned by the protected entity.",
+            "Correct the operation name or remove the unused exception",
+        ),
+        "POLICY_OPERATION_EFFECT_MISMATCH" => (
+            "Policy exception names an effect the operation does not perform",
+            "Operation exceptions are checked against the derived persistence graph and cannot invent or omit reached entity effects.",
+            "Match the exception to the operation's derived effects",
+        ),
+        "POLICY_INVOKE_CONTEXT" => (
+            "Invoke policy is attached to the wrong kind of declaration",
+            "Only a non-entity action or query can own a local `invoke` policy; entity matrices use create, read, update, and delete.",
+            "Move the invoke rule into the independently protected operation or use the entity's derived effect",
+        ),
+        "POLICY_EFFECT_UNGRANTED" => (
+            "Reachable entity effect has no policy grant",
+            "Policy is default-deny: every derived create, read, update, or delete effect needs at least one permitted authoritative subject.",
+            "Declare the intended qualified role or access subject at the entity policy",
+        ),
+        "POLICY_PUBLIC_GRANT_MISSING" => (
+            "Public route reaches an entity without public permission",
+            "`auth: none` removes authentication only at the transport boundary; protected entity access also requires an explicit `Access.public` grant.",
+            "Protect the route or deliberately grant `Access.public` for the reached effect",
+        ),
+        "POLICY_OUTPUT_FIELD_UNPROVED" => (
+            "Operation output exposes a field to a broader role set",
+            "A narrowing field policy must admit every subject that can reach the operation output; output serialization never removes a forbidden field silently.",
+            "Return a projection without the field or narrow the named operation to subjects allowed to read it",
+        ),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 fn failure_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     let (summary, reason, next) = match code {
+        "EFFECT_AUTHORED_ASYNC" => (
+            "Authored `async` is not part of Jadpo",
+            "Actions may suspend internally, but the compiler derives target-level scheduling without changing the authored callable contract.",
+            "Remove `async`; declare a function or action with its ordinary Jadpo signature",
+        ),
+        "EFFECT_AUTHORED_AWAIT" => (
+            "Authored `await` is not part of Jadpo",
+            "Every ordinary action call completes before the next statement, so the compiler inserts any target-level suspension mechanism internally.",
+            "Remove `await` and keep the ordinary call expression",
+        ),
         "EFFECT_FUNCTION_CALLS_ACTION" => (
             "Function cannot call an action",
             "Functions are deterministic and effect-free. Calling an action would allow persistence or other effects to escape through a function boundary.",
@@ -1040,6 +1509,16 @@ fn failure_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Create, query, update, and delete expressions access stored state and are permitted only inside actions; functions remain pure and deterministic.",
             "Move the persistence expression into an action",
         ),
+        "EFFECT_QUERY_MUTATION" => (
+            "Query cannot mutate an entity",
+            "Named queries are read-only operations. Entity-owned actions are the only declarations allowed to create, update, or delete entity state.",
+            "Move the mutation into an action owned by the entity",
+        ),
+        "EFFECT_QUERY_CALLS_ACTION" => (
+            "Query cannot call an action",
+            "Calling an action would let a read-only query perform a mutation or another effect through its call graph.",
+            "Call another query or pure function, or move this orchestration into an action",
+        ),
         "FAIL_ATTEMPT_REQUIRED" => (
             "This operation can fail and requires `attempt`",
             "`attempt` makes it clear that a declared failure may leave the current function or action.",
@@ -1049,6 +1528,56 @@ fn failure_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Failure field is both public and internal",
             "The same field cannot be returned to callers and hidden from them at the same time.",
             "Keep the field in either `public` or `internal`, not both",
+        ),
+        "FAIL_OUTCOME_DUPLICATE_ARM" => (
+            "Outcome match repeats a failure arm",
+            "Each declared failure must have exactly one explicit handling decision in an outcome match.",
+            "Keep one arm for this failure",
+        ),
+        "FAIL_OUTCOME_INFALLIBLE" => (
+            "Outcome match requires a fallible call",
+            "An infallible call has no failure outcome to handle and should be used as an ordinary expression.",
+            "Remove the outcome match and use the call directly",
+        ),
+        "FAIL_OUTCOME_MISSING_ARM" => (
+            "Outcome match does not handle every failure",
+            "Every failure declared by the called function or action needs one explicit recovery, mapping, or propagation arm.",
+            "Add an arm for the missing failure",
+        ),
+        "FAIL_OUTCOME_PATTERN_INVALID" => (
+            "Outcome match arm has an invalid pattern",
+            "Outcome matches accept only `success(value)` and exact `failure FailureName` patterns.",
+            "Replace the pattern with `success(value)` or an exact failure arm",
+        ),
+        "FAIL_OUTCOME_SUCCESS_DUPLICATE" => (
+            "Outcome match repeats its success arm",
+            "An outcome has one successful value, so exactly one success arm is allowed.",
+            "Keep one `success(value)` arm",
+        ),
+        "FAIL_OUTCOME_SUCCESS_MISSING" => (
+            "Outcome match has no success arm",
+            "Every outcome match must decide what value to produce when the call succeeds.",
+            "Add one `success(value)` arm",
+        ),
+        "FAIL_OUTCOME_SUBJECT_REQUIRED" => (
+            "Outcome match requires one direct call",
+            "The compiler needs the called function or action's exact failure surface to check exhaustive outcome arms.",
+            "Match a direct fallible function or action call",
+        ),
+        "FAIL_OUTCOME_SUCCESS_VALUE_REQUIRED" => (
+            "Success arm must produce a value",
+            "The success arm defines the successful value of the whole outcome expression; it cannot reject or propagate.",
+            "Return a compatible value from the success arm",
+        ),
+        "FAIL_OUTCOME_UNKNOWN_ARM" => (
+            "Outcome arm names a failure the call cannot produce",
+            "Failure arms must exactly match the called function or action's declared failure surface.",
+            "Remove the arm or use a failure declared by the call",
+        ),
+        "FAIL_OUTCOME_WILDCARD" => (
+            "Outcome failure wildcard is not allowed",
+            "Exact failure arms force a new decision when a called function or action gains another failure.",
+            "Replace the wildcard with one exact arm for each declared failure",
         ),
         "FAIL_DUPLICATE_CODE" => (
             "Failure code is already in use",
@@ -1182,6 +1711,111 @@ fn route_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
 
 fn data_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     let (summary, reason, next) = match code {
+        "DATA_ATOMIC_DOMAIN_MISMATCH" => (
+            "Atomic action spans incompatible transaction domains",
+            "One atomic boundary can include only participants that share a compiler-supported transaction and recovery domain.",
+            "Use one transaction domain or choose an explicit durable workflow",
+        ),
+        "DATA_CONSISTENCY_INVALID" => (
+            "Consistency disposition is not recognised",
+            "A multi-entity action must select a supported atomic or durable-workflow contract explicitly.",
+            "Use `atomic` or `durable_workflow`",
+        ),
+        "DATA_CONSISTENCY_REQUIRED" => (
+            "Multi-entity action needs an explicit consistency disposition",
+            "Calling mutations owned by more than one entity must not silently widen or split transaction boundaries.",
+            "Declare `consistency: atomic` or `consistency: durable_workflow`",
+        ),
+        "DATA_DELIVERY_MODE_INVALID" => (
+            "Derived representation delivery mode is not supported",
+            "A derived store must use durable delivery so an authority change cannot be committed without a replayable update obligation.",
+            "Use `delivery: durable`",
+        ),
+        "DATA_ENTITY_NOT_PERSISTENT" => (
+            "Entity has no persistence capability",
+            "Entity identity does not imply storage. Create, query, update, and delete require an explicit persistence capability.",
+            "Add an accepted persistence capability or remove the storage operation",
+        ),
+        "DATA_FRESHNESS_INVALID" => (
+            "Query freshness requirement is not recognised",
+            "Queries must choose one of the accepted authority, read-your-writes, bounded-staleness, or eventual guarantees.",
+            "Use a supported freshness requirement",
+        ),
+        "DATA_IDENTITY_FIELD_UNKNOWN" => (
+            "Entity identity names an unknown field",
+            "An entity reference is derived from one field declared in the same authoritative entity dossier.",
+            "Correct the identity field name or add the missing field",
+        ),
+        "DATA_MUTATION_GUARD_INVALID" => (
+            "Mutation guard is not recognised",
+            "A value-receiver mutation must establish current authority state by reloading it or checking a revision.",
+            "Use `guard: reload` or `guard: revision`",
+        ),
+        "DATA_MUTATION_OWNER_REQUIRED" => (
+            "Entity mutation is outside its owning action",
+            "Only an action owned by an entity may directly create, update, or delete that entity, so invariants and policy cannot be bypassed.",
+            "Move the mutation into an action declared by the affected entity",
+        ),
+        "DATA_PERSISTENCE_ROLE_INVALID" => (
+            "Persistence role is not recognised",
+            "The initial entity model gives each mutable fact one declared authority; derived stores use cache or projection declarations.",
+            "Use `role: authority`",
+        ),
+        "DATA_PERSISTENCE_ROLE_REQUIRED" => (
+            "Persistence capability needs an authority role",
+            "A stored entity must say which store owns its mutable facts rather than implying multiple writable copies.",
+            "Add `role: authority`",
+        ),
+        "DATA_PERSISTENCE_STORE_REQUIRED" => (
+            "Persistence capability needs a store",
+            "The compiler needs a named transaction domain for schema, mutation, and consistency planning.",
+            "Add `store: <name>`",
+        ),
+        "DATA_PROJECT_ROLE_INVALID" => (
+            "Source file does not match its project role",
+            "Recognised entity, value, query, workflow, and route directories have bounded declaration roles so authority and effects remain reviewable.",
+            "Move the declaration to its recognised role or correct the file contents",
+        ),
+        "DATA_QUERY_FRESHNESS_REQUIRED" => (
+            "Named query needs a freshness requirement",
+            "The compiler cannot choose a potentially stale representation without knowing the weakest observation contract the caller permits.",
+            "Declare the query's freshness requirement",
+        ),
+        "DATA_RAW_QUERY_OUTSIDE_NAMED_QUERY" => (
+            "Raw query expression is outside a named query",
+            "Routes, actions, workflows, jobs, and functions call named queries so every read shape, policy, index, and freshness contract is inventoried.",
+            "Move the read into a named entity or top-level query",
+        ),
+        "DATA_RECEIVER_KIND_INVALID" => (
+            "Entity operation receiver is not recognised",
+            "An entity operation explicitly requires either its stable reference or a complete immutable value snapshot.",
+            "Use `self: ref` or `self: value`",
+        ),
+        "DATA_REPRESENTATION_AUTHORITY_INVALID" => (
+            "Derived representation has an invalid authority link",
+            "A cache or projection must derive from the entity's one authority and cannot name that same store as another representation.",
+            "Point `from` at the authority and use a distinct derived store",
+        ),
+        "DATA_REPRESENTATION_DUPLICATE" => (
+            "Derived representation name is repeated",
+            "Each cache or projection has one stable identity for delivery, replay, watermarks, and reconciliation.",
+            "Keep one representation with this name or rename it",
+        ),
+        "DATA_REPRESENTATION_SETTING_INVALID" => (
+            "Derived representation setting is not recognised",
+            "Cache and projection declarations accept only their bounded store, authority, strategy, and delivery contract settings.",
+            "Use a supported representation setting",
+        ),
+        "DATA_REPRESENTATION_SETTING_REQUIRED" => (
+            "Derived representation is missing a required setting",
+            "A generated projection contract needs its store, authority source, and durable delivery mode to be explicit.",
+            "Add the missing representation setting",
+        ),
+        "DATA_VALUE_RECEIVER_GUARD_REQUIRED" => (
+            "Value-receiver mutation needs a stale-write guard",
+            "A complete entity value is an immutable observation and cannot overwrite newer authority state without a reload or checked revision.",
+            "Add `guard: reload` or `guard: revision`",
+        ),
         "DATA_COMPOUND_CONSTRAINT_FIELDS" => (
             "Compound constraint needs at least two fields",
             "A compound identity, uniqueness rule, or index joins multiple fields. A rule for one field belongs directly on that field.",
@@ -1278,10 +1912,180 @@ fn data_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
 
 fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     let (summary, reason, next) = match code {
+        "TYPE_AUTH_ADAPTER_SETTING" => (
+            "Authentication adapter setting is invalid",
+            "First-party validators accept unique secret, previous_secret, audience and origin settings. Keys must reference secret textual configuration; audience and origin must be non-secret text literals or configuration references.",
+            "Use declared secret configuration for keys and non-secret text for audience and origin",
+        ),
+        "TYPE_AUTH_RESERVED_ROUTE_INPUT" => (
+            "Credential transport cannot be ordinary route input",
+            "Configured authentication cookies and authorization headers belong exclusively to the generated authentication boundary; accepting the same name as application input would create a second untrusted credential path.",
+            "Remove the reserved credential field from the route input",
+        ),
+        "TYPE_AUTH_PRINCIPAL_INPUT" => (
+            "A principal cannot come from request input",
+            "The authenticated principal is constructed by the compiler-owned credential and authority pipeline. Request bodies and paths cannot assert an identity.",
+            "Remove the principal type from the route input",
+        ),
+        "TYPE_AUTH_PUBLIC_PRINCIPAL" => (
+            "Public behavior requires an authenticated principal",
+            "An `auth: none` route never creates a principal, so it cannot directly or transitively reach behavior that reads one.",
+            "Keep the route authenticated or remove the principal-dependent behavior",
+        ),
+        "TYPE_AUTH_PRINCIPAL_OUTPUT" => (
+            "Principal values cannot cross an ordinary output boundary",
+            "A principal contains authentication identity and provenance owned by the security boundary. Public outputs must project an explicitly declared non-principal value.",
+            "Return a reviewed output projection instead of the principal",
+        ),
+        "TYPE_AUTH_PRINCIPAL_FAILURE_CONTEXT" => (
+            "Principal values cannot enter failure context",
+            "Failure context may be logged or disclosed according to its classification. Carrying the principal object would risk exposing authentication identity or provenance.",
+            "Store only the specific non-secret identifier required by the failure",
+        ),
+        "TYPE_AUTH_CLAIM_UNKNOWN" => (
+            "Authentication claim is not in the constrained identity schema",
+            "Provider and credential data is untrusted. Only the compiler-owned subject and authentication-strength claims may enter the intermediate identity contract.",
+            "Map an allowlisted claim or obtain the field from authority resolution",
+        ),
+        "TYPE_AUTH_CLAIM_AUTHORITATIVE_FIELD" => (
+            "Credential claim cannot populate an authoritative principal field",
+            "Credential claims may carry authentication facts such as subject or authentication strength, but application identity fields come from authoritative resolution.",
+            "Populate this principal field from an authority entity resolution",
+        ),
+        "TYPE_AUTH_AUTHORITY_NOT_UNIQUE" => (
+            "Principal resolution authority is not unique",
+            "An authentication identity must resolve to at most one authoritative entity row; a non-key field could construct ambiguous principals.",
+            "Resolve through an identity or unique entity field",
+        ),
+        "TYPE_AUTH_AUTHORITY_NOT_PERSISTENT" => (
+            "Principal authority is not a persistent entity",
+            "Authentication resolution must query an authoritative stored entity. A transient value or non-persistent entity cannot prove current identity or lifecycle state.",
+            "Resolve the principal through a persistent authority entity",
+        ),
+        "TYPE_AUTH_INACTIVE_FAILURE_KIND" => (
+            "Inactive-principal failure has the wrong category",
+            "A valid credential for a disabled user or service is an explicit application rejection, not absence, conflict, or an internal fault.",
+            "Declare the inactive failure with `kind: Rejected`",
+        ),
+        "TYPE_AUTH_RESOLUTION_REQUIRED" => (
+            "Authentication validator has no authority resolution",
+            "Every configured user or service validator needs one checked authority path so immediate and fresh-authority requests can resolve exactly one active principal.",
+            "Add one resolution for this principal variant",
+        ),
+        "TYPE_AUTH_MAPPING_MISMATCH" => (
+            "Authority field does not match the principal field type",
+            "Principal construction keeps separately declared types distinct; resolution cannot copy an incompatible authority value into a principal field.",
+            "Map a compatible authoritative field to this principal field",
+        ),
+        "TYPE_AUTH_RESOLUTION_INCOMPLETE" => (
+            "Principal resolution does not construct every required field",
+            "A strategy must produce one complete closed principal variant rather than a partial identity with missing authoritative fields.",
+            "Map every required principal field from a validated claim or authority field",
+        ),
         "TYPE_ARGUMENT_COUNT" => (
             "Call has the wrong number of arguments",
             "A function or action invocation must supply exactly one value for each declared parameter in declaration order.",
             "Add or remove arguments to match the function or action parameters",
+        ),
+        "TYPE_NAMED_ARGUMENT_UNSUPPORTED" => (
+            "This callable does not accept named arguments",
+            "Named arguments are reserved for compiler-owned standard-library options whose names and policies are checked as part of the language contract.",
+            "Pass this callable's declared parameters in order without names",
+        ),
+        "TYPE_CLOCK_CONTEXT" => (
+            "The operation clock is unavailable in this context",
+            "`clock.now` is an effect owned by actions and boundary operations. Pure functions and named queries stay deterministic by receiving an `Instant` parameter.",
+            "Move the clock read into an action, or pass an `Instant` into this callable",
+        ),
+        "TYPE_TEST_CLOCK_CONTEXT" => (
+            "Test clock control is unavailable in application behavior",
+            "Advancing time is a compiler-owned test-harness operation. Allowing it in functions, actions, queries, or routes would make production behavior depend on a test capability.",
+            "Move `advance clock` into an authored test",
+        ),
+        "TYPE_TEST_CALL_CONTEXT" => (
+            "Callable boundary invocation is available only in tests",
+            "`call` starts a fresh compiler-owned operation with fixture capabilities and records callable-boundary evidence. Application behavior uses an ordinary checked invocation instead.",
+            "Use an ordinary invocation here, or move this boundary test into a `test` declaration",
+        ),
+        "TYPE_GENERATED_FIELD_ASSIGNMENT" => (
+            "Compiler-generated field cannot be assigned",
+            "A lifecycle field has one owner: the compiler supplies the stable operation time on creation or semantic change, so authored code cannot override it.",
+            "Remove the generated field from this assignment",
+        ),
+        "TYPE_FIELD_UPDATE_FORBIDDEN" => (
+            "Field cannot be changed by an ordinary update",
+            "Identity, immutable, scope, membership, and direct role-binding fields have compiler-owned write rules so an update cannot move a record or manufacture authority.",
+            "Remove the field from the update or use a separately reviewed transfer operation when that capability is available",
+        ),
+        "TYPE_GENERATED_FIELD_CONTEXT" => (
+            "Generated lifecycle role requires a persistent entity field",
+            "Lifecycle timestamps describe database creation and change events and therefore have no defined meaning on transient input, output, or value objects.",
+            "Move this field to a persistent entity or remove its generated block",
+        ),
+        "TYPE_GENERATED_FIELD_INPUT" => (
+            "Generated lifecycle field cannot be accepted from input",
+            "Copying a generated field through an input or patch would let callers choose a compiler-owned timestamp.",
+            "Remove the generated field from the input or patch type",
+        ),
+        "TYPE_GENERATED_FIELD_TYPE" => (
+            "Generated lifecycle field must be a required `Instant`",
+            "Creation and change timestamps are always present absolute timeline values. Nullable, optional, date-only, and resolved display values cannot represent that role.",
+            "Declare this field as required `Instant`",
+        ),
+        "TYPE_LOCALE_DEFAULT_UNSUPPORTED" => (
+            "Default locale is not in the supported locale set",
+            "Fallback can only select a locale whose data and generated enum value are part of the application contract.",
+            "Add the default locale to `supported`, or choose a supported default",
+        ),
+        "TYPE_LOCALE_DUPLICATE" => (
+            "Supported locale is repeated",
+            "Each canonical BCP 47 locale creates one generated enum value and may appear only once.",
+            "Keep one occurrence of this locale",
+        ),
+        "TYPE_LOCALE_INVALID" => (
+            "Locale is not a valid supported BCP 47 tag",
+            "Locale values use canonical language tags such as `en-GB`; arbitrary display names and host-specific locale strings are not portable.",
+            "Use a valid BCP 47 language tag",
+        ),
+        "TYPE_PRESENTATION_TEXT_PERSISTENCE" => (
+            "Human-formatted time text cannot be persisted as authority",
+            "`PresentationText` is locale-specific output. Persisting it instead of the underlying `Instant`, `CalendarDate`, or resolved `Time` would lose authoritative temporal meaning.",
+            "Persist the typed temporal value and format it only at the presentation boundary",
+        ),
+        "TYPE_TEMPORAL_CLOCK_INVALID" => (
+            "Clock text is not in the strict temporal format",
+            "Local clock input must use `HH:MM` with optional seconds and milliseconds before it can be resolved with a date and zone.",
+            "Use a clock value such as `09:30` or `09:30:15.250`",
+        ),
+        "TYPE_TEMPORAL_FORMAT_CHOICE" => (
+            "Temporal formatting needs exactly one format choice",
+            "Absolute formatting uses either one named style or one structured component object; supplying both or neither would make output policy unclear.",
+            "Supply exactly one of `style:` or `components:`",
+        ),
+        "TYPE_TEMPORAL_FORMAT_COMPONENT_DUPLICATE" => (
+            "Temporal format component is repeated",
+            "Each structured component controls one part of the formatted value and may be specified once.",
+            "Keep one value for this format component",
+        ),
+        "TYPE_TEMPORAL_FORMAT_COMPONENT_INVALID" => (
+            "Temporal format component value is not supported",
+            "Structured formatting uses a closed, portable set of checked component values rather than host-specific formatter options.",
+            "Choose one of the supported values for this component",
+        ),
+        "TYPE_TEMPORAL_FORMAT_COMPONENTS_EMPTY" => (
+            "Temporal component format is empty",
+            "A structured format must select at least one date, time, or zone component to produce meaningful presentation text.",
+            "Add at least one supported format component",
+        ),
+        "TYPE_TEMPORAL_FORMAT_REQUIRES_TIME" => (
+            "Formatting an instant requires an explicit zone",
+            "An `Instant` has no human-local calendar representation. It must become a resolved `Time` before locale formatting can choose dates, hours, or zone names.",
+            "Call `temporal.in_zone` before formatting this instant",
+        ),
+        "TYPE_TEMPORAL_LOCALES_REQUIRED" => (
+            "Temporal formatting requires an application locale declaration",
+            "A closed supported locale set prevents deployment hosts from silently accepting arbitrary locale strings or changing fallback behavior.",
+            "Add one project-level `locales` declaration",
         ),
         "TYPE_ARITHMETIC_OPERAND" => (
             "Arithmetic requires numbers",
@@ -1352,6 +2156,11 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "This type cannot be constructed with `{ ... }`",
             "Braces construct an object, failure context, or enum variant. A scalar named type uses parentheses instead.",
             "Use an object type with braces, or construct a scalar type with parentheses",
+        ),
+        "TYPE_REDUNDANT_NULLABILITY" => (
+            "This type already permits `none`",
+            "Field references inherit nullability from their declared type. Adding another `?` does not create a distinct kind of absence.",
+            "Remove the redundant `?`; the referenced type remains nullable",
         ),
         "TYPE_NULLABLE_SELECTION" => (
             "Value may be `none`, so its field cannot be read yet",
@@ -1766,6 +2575,16 @@ fn module_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Once any source uses explicit modules, every source file must declare its module so cross-file visibility is deterministic.",
             "Add a module declaration to this file",
         ),
+        "MOD_STANDARD_NAMESPACE_IMPORT" => (
+            "Standard-library namespace cannot be imported",
+            "Compiler-owned namespaces are already in scope and must remain qualified; selective imports would create a second unqualified call form.",
+            "Remove this import and call the operation through its standard namespace",
+        ),
+        "MOD_STANDARD_NAMESPACE_RESERVED" => (
+            "Module name conflicts with a standard-library namespace",
+            "The first module segment cannot be `temporal`, `collection`, or another compiler-owned namespace because authored modules are not runtime namespace objects.",
+            "Choose an application-owned lower_snake_case module name",
+        ),
         "MOD_PRIVATE_IMPORT" => (
             "Imported declaration is private to its module",
             "The target declaration exists but is not listed as public by its owning module, so another module cannot select it.",
@@ -1986,8 +2805,13 @@ fn toolchain_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED" => (
             "Protected route `{route}` cannot be generated yet",
-            "The current target runtime can generate explicitly public `auth: none` routes, but no accepted authentication provider boundary exists for `{route}`, so generation stops rather than weakening access control.",
-            "Choose and implement the authentication boundary for `{route}`",
+            "The application's selected authentication adapters, configuration or principal mapping are not fully supported by the generated runtime for `{route}`. Generation stops rather than weakening access control.",
+            "Complete the supported authentication adapter configuration and principal mapping for `{route}`",
+        ),
+        "JADPO_TARGET_DURABLE_WORKFLOW_NOT_IMPLEMENTED" => (
+            "Durable workflow target execution is not implemented",
+            "The compiler can check and audit the accepted durable-workflow disposition, but persisted step state, compensation, reconciliation, and operator intervention still require their parked runtime contract.",
+            "Keep the checked workflow contract and wait for the durable-workflow runtime decision",
         ),
         "JADPO_TARGET_DEPENDENCY_MANIFEST" => (
             "Generated target attempted to add a dependency manifest",
@@ -1998,6 +2822,11 @@ fn toolchain_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Generated target imports an external module",
             "Generated TypeScript may use the Bun runtime and compiler-emitted relative modules only; undeclared external packages would make the output non-hermetic.",
             "Replace the import with supported runtime functionality or a generated relative module",
+        ),
+        "JADPO_TARGET_STORE_NOT_IMPLEMENTED" => (
+            "Authority store target adapter is not implemented",
+            "The current executable target supports the `primary` PostgreSQL or SQLite authority domain; physical adapters for other named authority stores remain parked.",
+            "Use `store: primary` for this target or wait for the named adapter contract",
         ),
         _ => return None,
     };
@@ -2010,6 +2839,36 @@ fn toolchain_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
 
 fn cli_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     let (summary, reason, next) = match code {
+        "TEST_NO_TESTS" => (
+            "Project has no executable tests",
+            "The project builds, but it declares no tests for the test command to execute.",
+            "Add a test declaration and run `jadpo test` again",
+        ),
+        "TEST_RUNTIME_START_FAILED" => (
+            "Test runtime could not start",
+            "Jadpo built the tests but could not launch the Bun executable.",
+            "Make Bun available on PATH and run `jadpo test` again",
+        ),
+        "TEST_FAILED" => (
+            "Test run failed",
+            "The generated test process exited unsuccessfully; its report identifies the failing test or startup error.",
+            "Inspect the test report, correct the failure, and run `jadpo test` again",
+        ),
+        "CLI_CONFIG_ARGUMENTS" => (
+            "Config command has invalid arguments",
+            "`config` accepts `set <field>` or `check` from inside the current project.",
+            "Use `jadpo config set <field>` or `jadpo config check`",
+        ),
+        "CLI_CONFIG_TTY_REQUIRED" => (
+            "Configuration entry requires an interactive terminal",
+            "Secret-safe prompting cannot read from a pipe, command argument, or captured agent stream.",
+            "Run the command yourself in an interactive terminal",
+        ),
+        "CLI_CONFIG_PROMPT_FAILED" => (
+            "Secure configuration prompt failed",
+            "Jadpo could not read the terminal value or safely control terminal echo.",
+            "Restore terminal access and run the command again",
+        ),
         "CLI_CHECK_ARGUMENTS" => (
             "Check command has invalid arguments",
             "`check` accepts one project path plus the optional supported diagnostic presentation flags.",
@@ -2035,6 +2894,21 @@ fn cli_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "The runtime process stayed alive but its local `/health` endpoint did not report readiness within the bounded startup window.",
             "Inspect the runtime startup output and verify the configured port is available",
         ),
+        "CLI_DEV_ROLLBACK_CLEANUP_FAILED" => (
+            "Previous runtime revision could not be cleaned up",
+            "The replacement runtime became ready, but its temporary last-known-good artifact backup could not be removed.",
+            "Remove the reported `.jadpo-runtime-backup` directory after confirming the ready runtime is healthy",
+        ),
+        "CLI_DEV_ROLLBACK_PREPARE_FAILED" => (
+            "Last-known-good runtime revision could not be preserved",
+            "The dev supervisor could not move the current checked build aside before compiling a replacement, so it refused to risk losing rollback continuity.",
+            "Restore project-directory write access and let dev retry the edit",
+        ),
+        "CLI_DEV_ROLLBACK_RESTORE_FAILED" => (
+            "Last-known-good runtime revision could not be restored",
+            "A replacement runtime failed readiness and the dev supervisor could not atomically restore the preserved checked build.",
+            "Stop dev, restore the `.jadpo-runtime-backup` directory as `build`, and restart the session",
+        ),
         "CLI_DEV_RUNTIME_EXITED" => (
             "Generated runtime exited unexpectedly",
             "The dev supervisor observed the Bun process terminate before or after readiness, so it can no longer serve the checked build.",
@@ -2059,6 +2933,11 @@ fn cli_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Incident command has invalid arguments",
             "Local enrichment requires exactly the checked project and one secret-safe runtime event JSON file.",
             "Use `jadpo incident <project> <event-json-file>`",
+        ),
+        "CLI_SIGNAL_HANDLER_FAILED" => (
+            "Shutdown handler could not be installed",
+            "The watch or dev command cannot guarantee structured interruption and child-process cleanup without the platform signal handler.",
+            "Stop any existing watcher in this process and start a fresh watch or dev command",
         ),
         "CLI_INCIDENT_INVALID" => (
             "Runtime event is not a valid enrichment input",
@@ -2409,7 +3288,7 @@ fn migration_sql_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "MIG_SQL_LITERAL_INVALID" => (
             "Backfill literal is invalid for the field type",
-            "The reviewed literal cannot be parsed as the target Text, UUID, DateTime, Int, Decimal, or Boolean value without changing its meaning.",
+            "The reviewed literal cannot be parsed as the target Text, UUID, Instant, CalendarDate, Int, Decimal, or Boolean value without changing its meaning.",
             "Provide a valid typed literal for the target field",
         ),
         "MIG_SQL_PREDICATE_UNSUPPORTED" => (
@@ -2510,12 +3389,15 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "RUNTIME" => "runtime",
         "TEST" => "test",
         "JADPO" => "toolchain",
+        "CONFIG" => "configuration",
         other => other,
     }
     .to_ascii_lowercase();
     let rule_id = format!("{category}.{}", remainder.to_ascii_lowercase());
     let authored = syntax_catalogue_copy(code)
         .or_else(|| semantic_catalogue_copy(code))
+        .or_else(|| configuration_catalogue_copy(code))
+        .or_else(|| policy_catalogue_copy(code))
         .or_else(|| failure_catalogue_copy(code))
         .or_else(|| route_catalogue_copy(code))
         .or_else(|| data_catalogue_copy(code))
@@ -2532,6 +3414,8 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     let human_owned = matches!(
         code,
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
+            | "JADPO_TARGET_DURABLE_WORKFLOW_NOT_IMPLEMENTED"
+            | "JADPO_TARGET_STORE_NOT_IMPLEMENTED"
             | "ROUTE_AUTH_VALUE_INVALID"
             | "MIG_DECISION_UNRESOLVED"
             | "MIG_DECISION_MISSING"
@@ -2554,6 +3438,12 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
                 "ROUTE_AUTH_VALUE_INVALID" => "Choose the authentication boundary for `{route}`",
                 "JADPO_TARGET_AUTH_NOT_IMPLEMENTED" => {
                     "Choose and implement the authentication boundary"
+                }
+                "JADPO_TARGET_DURABLE_WORKFLOW_NOT_IMPLEMENTED" => {
+                    "Resolve the durable-workflow runtime contract"
+                }
+                "JADPO_TARGET_STORE_NOT_IMPLEMENTED" => {
+                    "Resolve the named authority-store adapter contract"
                 }
                 _ => "Request the named human-owned decision",
             }
@@ -2693,6 +3583,16 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             "EFFECT_FUNCTION_PERSISTENCE" => vec!["callable"],
             "FAIL_ATTEMPT_REQUIRED" => vec!["usage", "operation"],
             "FAIL_CONTEXT_FIELD_OVERLAP" => vec!["failure", "field"],
+            "FAIL_OUTCOME_DUPLICATE_ARM"
+            | "FAIL_OUTCOME_MISSING_ARM"
+            | "FAIL_OUTCOME_UNKNOWN_ARM" => vec!["operation", "failure"],
+            "FAIL_OUTCOME_INFALLIBLE"
+            | "FAIL_OUTCOME_PATTERN_INVALID"
+            | "FAIL_OUTCOME_SUCCESS_DUPLICATE"
+            | "FAIL_OUTCOME_SUCCESS_MISSING"
+            | "FAIL_OUTCOME_SUCCESS_VALUE_REQUIRED"
+            | "FAIL_OUTCOME_SUBJECT_REQUIRED"
+            | "FAIL_OUTCOME_WILDCARD" => vec!["operation"],
             "FAIL_DUPLICATE_CODE" => vec!["failure", "otherFailure", "codeValue"],
             "FAIL_DUPLICATE_CONTEXT_FIELD" | "FAIL_UNKNOWN_CONTEXT_FIELD" => {
                 vec!["failure", "field"]
@@ -2712,8 +3612,16 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             }
             "CLI_INCIDENT_REVISION_MISMATCH" => vec!["eventRevision", "localRevision"],
             "JADPO_TARGET_AUTH_NOT_IMPLEMENTED" => vec!["route"],
+            "JADPO_TARGET_DURABLE_WORKFLOW_NOT_IMPLEMENTED" => vec!["callable"],
+            "JADPO_TARGET_STORE_NOT_IMPLEMENTED" => vec!["name"],
             "ROUTE_AUTH_VALUE_INVALID" => vec!["route", "found"],
             "SEM_DUPLICATE_DECLARATION" => vec!["name"],
+            "SEM_NAME_CASE" => vec!["name", "expected", "suggestedName"],
+            "SEM_STANDARD_NAMESPACE_RESERVED" | "SEM_STANDARD_OPERATION_RESERVED" => {
+                vec!["name"]
+            }
+            "SEM_STANDARD_OPERATION_QUALIFICATION" => vec!["name", "suggestedName"],
+            "MOD_STANDARD_NAMESPACE_IMPORT" | "MOD_STANDARD_NAMESPACE_RESERVED" => vec!["name"],
             "SEM_UNKNOWN_NAME" | "SEM_WRONG_NAME_KIND" => vec![
                 "name",
                 "expected",
@@ -2729,6 +3637,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
                 vec!["name", "expectedCount", "receivedCount"]
             }
             "TYPE_CONSTRUCTOR_INPUT" => vec!["name", "expected", "received"],
+            "TYPE_REDUNDANT_NULLABILITY" => vec!["name"],
             "TYPE_MISSING_FIELD" | "TYPE_MISSING_VARIANT_FIELD" => {
                 vec!["subject", "field"]
             }
@@ -3641,6 +4550,7 @@ mod tests {
             "TYPE_MISMATCH",
             "TYPE_MISSING_FIELD",
             "TYPE_MISSING_VARIANT_FIELD",
+            "TYPE_NAMED_ARGUMENT_UNSUPPORTED",
             "TYPE_NOT_RECORD",
             "TYPE_NULLABLE_SELECTION",
             "TYPE_ORDERING_OPERAND",

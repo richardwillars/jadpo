@@ -2,8 +2,9 @@ use crate::{checked_source_revision, AnalyzedProject};
 use jadpo_diagnostics::{catalogue_manifest_json, catalogue_reference_markdown, Diagnostic};
 use jadpo_semantic::checked_manifest_json;
 use jadpo_syntax::{
-    CallableKind, Constraint, ConstraintKind, Declaration, EnumDeclaration, FieldDeclaration,
-    HttpMethod, LiteralKind, RecordDeclaration, RecordKind, TypeDeclaration, TypeReference,
+    CallableKind, ConfigDeclaration, Constraint, ConstraintKind, Declaration, EnumDeclaration,
+    FailureDeclaration, FieldDeclaration, HttpMethod, LiteralKind, PersistenceModifier,
+    RecordDeclaration, RecordKind, TypeDeclaration, TypeReference,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -21,11 +22,15 @@ pub struct GeneratedArtifact {
 pub fn derive_artifacts(project_path: &Path, project: &AnalyzedProject) -> Vec<GeneratedArtifact> {
     let model = ArtifactModel::new(project);
     let metadata = normalized_manifest(project_path, project);
-    vec![
+    let mut outputs = vec![
         artifact("app.meta.json", metadata),
         artifact("inventory/routes.json", model.routes_json()),
         artifact("inventory/callables.json", model.callables_json()),
         artifact("audit/failures.json", model.failure_audit_json()),
+        artifact("audit/entities.json", model.entity_audit_json()),
+        artifact("audit/transactions.json", model.transaction_audit_json()),
+        artifact("audit/configuration.json", model.configuration_audit_json()),
+        artifact("audit/policy.json", model.policy_audit_json()),
         artifact("validators/plan.json", model.validator_plan_json()),
         artifact(
             "compatibility/public-failure-codes.json",
@@ -34,7 +39,19 @@ pub fn derive_artifacts(project_path: &Path, project: &AnalyzedProject) -> Vec<G
         artifact("openapi/openapi.json", model.openapi_json()),
         artifact("diagnostics/catalogue.json", catalogue_manifest_json()),
         artifact("diagnostics/reference.md", catalogue_reference_markdown()),
-    ]
+    ];
+    if project.syntax.sources.iter().any(|s| {
+        s.file
+            .declarations
+            .iter()
+            .any(|d| matches!(d, Declaration::AuthenticationStrategy(_)))
+    }) {
+        outputs.push(artifact(
+            "audit/authentication.json",
+            model.authentication_audit_json(project_path),
+        ));
+    }
+    outputs
 }
 
 fn normalized_manifest(project_path: &Path, project: &AnalyzedProject) -> String {
@@ -159,8 +176,11 @@ struct ArtifactModel<'project> {
     types: BTreeMap<String, &'project TypeDeclaration>,
     enums: BTreeMap<String, &'project EnumDeclaration>,
     records: BTreeMap<String, &'project RecordDeclaration>,
+    fields: BTreeMap<String, &'project FieldDeclaration>,
+    failure_declarations: BTreeMap<String, &'project FailureDeclaration>,
     routes: Vec<RouteModel>,
     callables: Vec<CallableModel>,
+    configurations: Vec<&'project ConfigDeclaration>,
 }
 
 #[derive(Clone)]
@@ -169,6 +189,7 @@ struct RouteModel {
     method: &'static str,
     path: String,
     public: bool,
+    fresh_authority: bool,
     path_fields: Vec<(String, String)>,
     input: Option<String>,
     output: Option<String>,
@@ -183,6 +204,7 @@ struct CallableModel {
     parameters: Vec<(String, String)>,
     output: String,
     failures: Vec<String>,
+    may_suspend: bool,
 }
 
 impl<'project> ArtifactModel<'project> {
@@ -190,19 +212,40 @@ impl<'project> ArtifactModel<'project> {
         let mut types = BTreeMap::new();
         let mut enums = BTreeMap::new();
         let mut records = BTreeMap::new();
+        let mut fields = BTreeMap::new();
+        let mut failure_declarations = BTreeMap::new();
         let mut routes = Vec::new();
         let mut callables = Vec::new();
+        let mut configurations = Vec::new();
 
         for source in &project.syntax.sources {
             for declaration in &source.file.declarations {
                 match declaration {
+                    Declaration::Config(declaration) => configurations.push(declaration),
                     Declaration::Type(declaration) => {
                         types.insert(declaration.name.text.clone(), declaration);
                     }
                     Declaration::Enum(declaration) => {
+                        for variant in &declaration.variants {
+                            for field in &variant.fields {
+                                fields.insert(
+                                    format!(
+                                        "{}.{}.{}",
+                                        declaration.name.text, variant.name.text, field.name.text
+                                    ),
+                                    field,
+                                );
+                            }
+                        }
                         enums.insert(declaration.name.text.clone(), declaration);
                     }
                     Declaration::Record(declaration) => {
+                        for field in &declaration.fields {
+                            fields.insert(
+                                format!("{}.{}", declaration.name.text, field.name.text),
+                                field,
+                            );
+                        }
                         records.insert(declaration.name.text.clone(), declaration);
                     }
                     Declaration::Callable(declaration) => {
@@ -217,6 +260,7 @@ impl<'project> ArtifactModel<'project> {
                             kind: match declaration.kind {
                                 CallableKind::Function => "function",
                                 CallableKind::Action => "action",
+                                CallableKind::Query => "query",
                             },
                             parameters: declaration
                                 .parameters
@@ -230,6 +274,12 @@ impl<'project> ArtifactModel<'project> {
                                 .collect(),
                             output: type_name(&declaration.return_type),
                             failures,
+                            may_suspend: project
+                                .failures
+                                .callables
+                                .iter()
+                                .find(|callable| callable.callable == declaration.name.text)
+                                .is_some_and(|callable| callable.may_suspend),
                         });
                     }
                     Declaration::Route(declaration) => {
@@ -239,6 +289,7 @@ impl<'project> ArtifactModel<'project> {
                             method,
                             path: declaration.path.clone(),
                             public: declaration.public,
+                            fresh_authority: declaration.fresh_authority,
                             path_fields: declaration
                                 .path_fields
                                 .iter()
@@ -263,7 +314,29 @@ impl<'project> ArtifactModel<'project> {
                             },
                         });
                     }
-                    Declaration::Failure(_) | Declaration::Test(_) => {}
+                    Declaration::Failure(declaration) => {
+                        failure_declarations.insert(declaration.name.text.clone(), declaration);
+                        for (scope, declarations) in [
+                            ("public", &declaration.public_fields),
+                            ("internal", &declaration.internal_fields),
+                        ] {
+                            for field in declarations {
+                                fields.insert(
+                                    format!(
+                                        "{}.{}.{}",
+                                        declaration.name.text, scope, field.name.text
+                                    ),
+                                    field,
+                                );
+                            }
+                        }
+                    }
+                    Declaration::Application(_)
+                    | Declaration::Locales(_)
+                    | Declaration::AuthenticationStrategy(_)
+                    | Declaration::Principal(_)
+                    | Declaration::Fixture(_)
+                    | Declaration::Test(_) => {}
                 }
             }
         }
@@ -275,9 +348,150 @@ impl<'project> ArtifactModel<'project> {
             types,
             enums,
             records,
+            fields,
+            failure_declarations,
             routes,
             callables,
+            configurations,
         }
+    }
+
+    fn configuration_audit_json(&self) -> String {
+        let fields = self
+            .configurations
+            .iter()
+            .flat_map(|configuration| {
+                configuration.fields.iter().map(|field| {
+                    let binding = field
+                        .binding
+                        .as_ref()
+                        .map(|binding| json_string(unquote(&binding.text)))
+                        .unwrap_or_else(|| "null".to_owned());
+                    format!(
+                        "{{\"configuration\":{},\"name\":{},\"type\":{},\"binding\":{binding},\"secret\":{},\"required\":{},\"lifecycle\":\"startup\",\"source_default\":{}}}",
+                        json_string(&configuration.name.text),
+                        json_string(&field.name.text),
+                        json_string(&type_name(&field.field_type)),
+                        field.secret,
+                        field.default.is_none(),
+                        field.default.as_ref().map_or("false", |_| "true"),
+                    )
+                })
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("{{\"schema_version\":1,\"fields\":[{fields}]}}")
+    }
+
+    fn policy_audit_json(&self) -> String {
+        let bindings = self.project.policy.bindings.iter().map(|binding| {
+            format!(
+                "{{\"kind\":\"direct\",\"entity\":{},\"field\":{},\"role\":{},\"scope\":{},\"principal\":{},\"authoritative\":true}}",
+                json_string(&binding.entity),
+                json_string(&binding.field),
+                json_string(&binding.role),
+                json_string(&binding.scope),
+                json_string(&binding.principal),
+            )
+        });
+        let memberships = self.project.policy.memberships.iter().map(|membership| {
+            format!(
+                "{{\"kind\":\"membership\",\"entity\":{},\"scope_field\":{},\"scope\":{},\"member_field\":{},\"principal\":{},\"role_field\":{},\"role_type\":{},\"authoritative\":true}}",
+                json_string(&membership.entity),
+                membership
+                    .scope_field
+                    .as_ref()
+                    .map_or_else(|| "null".to_owned(), |field| json_string(field)),
+                json_string(&membership.scope),
+                json_string(&membership.member_field),
+                json_string(&membership.principal),
+                json_string(&membership.role_field),
+                json_string(&membership.role_type),
+            )
+        });
+        let entities = self.project.policy.entities.iter().map(|entity| {
+            let rules = entity.rules.iter().map(|rule| {
+                format!(
+                    "{{\"subject\":{},\"effects\":{}}}",
+                    json_string(&rule.subject),
+                    json_string_array(rule.effects.iter().map(String::as_str)),
+                )
+            });
+            let fields = entity.fields.iter().map(|field| {
+                let rules = field.rules.iter().map(|rule| {
+                    format!(
+                        "{{\"subject\":{},\"effects\":{}}}",
+                        json_string(&rule.subject),
+                        json_string_array(rule.effects.iter().map(String::as_str)),
+                    )
+                });
+                format!(
+                    "{{\"field\":{},\"mode\":\"narrowing\",\"rules\":{}}}",
+                    json_string(&field.field),
+                    json_array(rules),
+                )
+            });
+            let mut effect_first = BTreeMap::<&str, Vec<&str>>::new();
+            for rule in &entity.rules {
+                for effect in &rule.effects {
+                    effect_first
+                        .entry(effect)
+                        .or_default()
+                        .push(&rule.subject);
+                }
+            }
+            let effect_first = effect_first.into_iter().map(|(effect, subjects)| {
+                format!(
+                    "{{\"effect\":{},\"subjects\":{}}}",
+                    json_string(effect),
+                    json_string_array(subjects),
+                )
+            });
+            format!(
+                "{{\"entity\":{},\"default\":\"deny\",\"scope\":{},\"scope_field\":{},\"role_first\":{},\"effect_first\":{},\"fields\":{}}}",
+                json_string(&entity.entity),
+                json_optional_string(entity.scope.as_deref()),
+                json_optional_string(entity.scope_field.as_deref()),
+                json_array(rules),
+                json_array(effect_first),
+                json_array(fields),
+            )
+        });
+        let operations = self.project.policy.operations.iter().map(|operation| {
+            let obligations = operation.obligations.iter().map(|obligation| {
+                format!(
+                    "{{\"entity\":{},\"effect\":{},\"subjects\":{},\"policy_source\":{},\"judgement\":{}}}",
+                    json_string(&obligation.entity),
+                    json_string(&obligation.effect),
+                    json_string_array(obligation.subjects.iter().map(String::as_str)),
+                    json_string(obligation.source),
+                    json_string(if obligation.subjects.is_empty() { "rejected" } else { "proved" }),
+                )
+            });
+            let field_reads = operation.field_reads.iter().map(|read| {
+                format!(
+                    "{{\"entity\":{},\"field\":{},\"subjects\":{},\"source\":{},\"judgement\":\"proved\"}}",
+                    json_string(&read.entity),
+                    json_string(&read.field),
+                    json_string_array(read.subjects.iter().map(String::as_str)),
+                    json_string(read.source),
+                )
+            });
+            format!(
+                "{{\"operation\":{},\"obligations\":{},\"restricted_field_reads\":{}}}",
+                json_string(&operation.operation),
+                json_array(obligations),
+                json_array(field_reads),
+            )
+        });
+        format!(
+            "{{\"schema_version\":1,\"active\":{},\"bindings\":{},\"memberships\":{},\"entities\":{},\"operations\":{}}}",
+            self.project.policy.active,
+            json_array(bindings),
+            json_array(memberships),
+            json_array(entities),
+            json_array(operations),
+        )
     }
 
     fn routes_json(&self) -> String {
@@ -298,7 +512,13 @@ impl<'project> ArtifactModel<'project> {
                     json_string(&route.key),
                     json_string(route.method),
                     json_string(&route.path),
-                    json_string(if route.public { "none" } else { "authenticated_default" }),
+                    json_string(if route.public {
+                        "none"
+                    } else if route.fresh_authority {
+                        "fresh_authority"
+                    } else {
+                        "authenticated_default"
+                    }),
                     json_array(path_fields),
                     json_optional_string(route.input.as_deref()),
                     json_optional_string(route.output.as_deref()),
@@ -327,16 +547,17 @@ impl<'project> ArtifactModel<'project> {
                 )
             });
             format!(
-                "{{\"name\":{},\"kind\":{},\"parameters\":{},\"output\":{},\"failures\":{}}}",
+                "{{\"name\":{},\"kind\":{},\"parameters\":{},\"output\":{},\"failures\":{},\"execution\":{{\"may_suspend\":{},\"completion\":\"before_caller_continues\"}}}}",
                 json_string(&callable.name),
                 json_string(callable.kind),
                 json_array(parameters),
                 json_string(&callable.output),
-                json_string_array(callable.failures.iter().map(String::as_str))
+                json_string_array(callable.failures.iter().map(String::as_str)),
+                callable.may_suspend
             )
         });
         format!(
-            "{{\"schema_version\":1,\"callables\":{}}}",
+            "{{\"schema_version\":2,\"callables\":{}}}",
             json_array(callables)
         )
     }
@@ -368,6 +589,69 @@ impl<'project> ArtifactModel<'project> {
         )
     }
 
+    fn entity_audit_json(&self) -> String {
+        let entities = self.project.entity_model.entities.iter().map(|entity| {
+            let representations = entity.representations.iter().map(|representation| {
+                format!(
+                    "{{\"kind\":{},\"name\":{},\"store\":{},\"from_authority\":{},\"strategy\":{},\"required_delivery\":\"durable\",\"change_record\":\"same_local_commit\",\"ordering\":\"per_entity_revision\",\"change_id\":\"unique\",\"delivery_runtime\":\"adapter_pending\",\"replay\":false,\"rebuild\":false,\"watermark\":false,\"reconciliation\":false}}",
+                    json_string(representation.kind),
+                    json_string(&representation.name),
+                    json_string(&representation.store),
+                    json_string(&representation.authority),
+                    json_optional_string(representation.strategy.as_deref())
+                )
+            });
+            format!(
+                "{{\"name\":{},\"identity\":{},\"persistent\":{},\"authority_store\":{},\"reference\":{},\"operations\":{},\"representations\":{}}}",
+                json_string(&entity.name),
+                json_string(&entity.identity),
+                entity.persistent,
+                json_optional_string(entity.authority_store.as_deref()),
+                json_string(&format!("{}.Ref", entity.name)),
+                json_string_array(entity.operations.iter().map(String::as_str)),
+                json_array(representations)
+            )
+        });
+        let queries = self.project.entity_model.queries.iter().map(|query| {
+            format!(
+                "{{\"name\":{},\"owner\":{},\"read_only\":true,\"freshness\":{},\"plan\":{},\"reads\":{},\"predicate_fields\":{},\"policy_source\":\"authority\"}}",
+                json_string(&query.name),
+                json_optional_string(query.owner.as_deref()),
+                json_string(query.freshness),
+                json_string(query.plan),
+                json_string_array(query.reads.iter().map(String::as_str)),
+                json_string_array(query.predicate_fields.iter().map(String::as_str))
+            )
+        });
+        format!(
+            "{{\"schema_version\":1,\"model\":\"DATA-007/CONSISTENCY-001\",\"entities\":{},\"queries\":{}}}",
+            json_array(entities),
+            json_array(queries)
+        )
+    }
+
+    fn transaction_audit_json(&self) -> String {
+        let actions = self.project.entity_model.transactions.iter().map(|transaction| {
+            format!(
+                "{{\"action\":{},\"mutation_owners\":{},\"disposition\":{},\"domain\":{},\"nested_actions\":{},\"handled_failure\":{},\"commit\":\"outer_success\",\"rollback\":\"propagated_failure\",\"postgres\":{{\"isolation\":{},\"concurrency\":{},\"deadlock_order\":\"stable_entity_identity\"}},\"sqlite\":{{\"isolation\":{},\"concurrency\":\"single_immediate_writer\"}},\"retry\":{}}}",
+                json_string(&transaction.action),
+                json_string_array(transaction.owners.iter().map(String::as_str)),
+                json_string(transaction.disposition),
+                json_optional_string(transaction.domain.as_deref()),
+                json_string(transaction.nested),
+                json_string(transaction.handled_failure),
+                json_string(transaction.postgres_isolation),
+                json_string(transaction.postgres_concurrency),
+                json_string(transaction.sqlite_isolation),
+                json_string(transaction.retry)
+            )
+        });
+        format!(
+            "{{\"schema_version\":1,\"model\":\"TX-001\",\"actions\":{}}}",
+            json_array(actions)
+        )
+    }
+
     fn validator_plan_json(&self) -> String {
         let named_types = self.types.iter().map(|(name, declaration)| {
             format!(
@@ -378,12 +662,15 @@ impl<'project> ArtifactModel<'project> {
             )
         });
         let records = self.records.iter().map(|(name, declaration)| {
-            let fields = declaration.fields.iter().map(field_plan_json);
+            let fields = declaration
+                .fields
+                .iter()
+                .map(|field| field_plan_json(field, self.reference_is_nullable(&field.field_type)));
             format!(
                 "{{\"name\":{},\"kind\":{},\"persistent\":{},\"closed_shape\":true,\"fields\":{}}}",
                 json_string(name),
                 json_string(record_kind(declaration.kind)),
-                declaration.kind == RecordKind::Entity,
+                declaration.is_persistent_entity(),
                 json_array(fields)
             )
         });
@@ -392,7 +679,9 @@ impl<'project> ArtifactModel<'project> {
                 format!(
                     "{{\"name\":{},\"fields\":{}}}",
                     json_string(&variant.name.text),
-                    json_array(variant.fields.iter().map(field_plan_json))
+                    json_array(variant.fields.iter().map(|field| {
+                        field_plan_json(field, self.reference_is_nullable(&field.field_type))
+                    }))
                 )
             });
             format!(
@@ -445,8 +734,83 @@ impl<'project> ArtifactModel<'project> {
         )
     }
 
+    fn authentication_strategies(&self) -> Vec<&jadpo_syntax::AuthenticationStrategyDeclaration> {
+        self.project
+            .syntax
+            .sources
+            .iter()
+            .flat_map(|s| &s.file.declarations)
+            .filter_map(|d| match d {
+                Declaration::AuthenticationStrategy(a) => Some(a),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn authentication_audit_json(&self, project_path: &Path) -> String {
+        let supported =
+            crate::target::first_party_authentication_supported(project_path, self.project);
+        let strategies = self.authentication_strategies().into_iter().map(|strategy| {
+            let (transport, location) = match &strategy.transport.location {
+                jadpo_syntax::CredentialLocation::Cookie(cookie) => ("cookie", cookie.text.trim_matches('"')),
+                jadpo_syntax::CredentialLocation::Bearer(_) => ("bearer", "authorization"),
+            };
+            let validators = strategy.validators.iter().map(|v| format!("{{\"name\":{},\"mode\":{},\"principal\":{},\"settings\":{}}}", json_string(&v.name.text), json_string(&v.mode.text), json_string(&v.principal.text), json_array(v.settings.iter().map(|s| json_string(&s.name.text)))));
+            let resolutions = strategy.resolutions.iter().map(|r| format!("{{\"authority\":{},\"inactive_failure\":{}}}", json_string(&r.authority.path.iter().map(|n| n.text.as_str()).collect::<Vec<_>>().join(".")), json_string(&r.inactive.text)));
+            format!("{{\"name\":{},\"transport\":{},\"location\":{},\"validators\":{},\"resolutions\":{},\"source_range\":{{\"start\":{},\"end\":{}}}}}", json_string(&strategy.name.text), json_string(transport), json_string(location), json_array(validators), json_array(resolutions), strategy.range.start, strategy.range.end)
+        });
+        let revocation = self
+            .project
+            .syntax
+            .sources
+            .iter()
+            .flat_map(|s| &s.file.declarations)
+            .find_map(|d| match d {
+                Declaration::Application(a) => Some(format!(
+                    "{{\"mode\":{},\"maximum_delay\":{}}}",
+                    json_string(
+                        if a.authentication.revocation.mode
+                            == jadpo_syntax::RevocationMode::Immediate
+                        {
+                            "immediate"
+                        } else {
+                            "bounded"
+                        }
+                    ),
+                    json_optional_string(
+                        a.authentication
+                            .revocation
+                            .maximum_delay
+                            .as_ref()
+                            .map(|d| d.text.as_str())
+                    )
+                )),
+                _ => None,
+            })
+            .unwrap_or("null".to_owned());
+        format!("{{\"schema_version\":1,\"runtime\":{},\"revocation\":{},\"strategies\":{},\"routes\":{},\"credential_selection\":\"exactly_one\",\"verification\":\"runtime_validation\",\"package_dependencies\":[],\"csrf\":\"cookie_mutations_require_configured_origin_and_session_bound_header\",\"unsupported\":[\"service_credentials\",\"jwt\",\"profile_bearing_principals\",\"public_login_endpoints\"],\"assurance\":\"exploratory; not an independent security review\"}}", json_string(if supported { "first_party" } else { "adapter_pending" }), revocation, json_array(strategies), self.routes_json())
+    }
+
     fn openapi_json(&self) -> String {
-        let paths = self.routes.iter().map(|route| {
+        let strategies = self.authentication_strategies();
+        let security_schemes = strategies
+            .iter()
+            .map(|strategy| {
+                let scheme = match &strategy.transport.location {
+                    jadpo_syntax::CredentialLocation::Cookie(cookie) => format!(
+                        "{{\"type\":\"apiKey\",\"in\":\"cookie\",\"name\":{}}}",
+                        json_string(cookie.text.trim_matches('"'))
+                    ),
+                    jadpo_syntax::CredentialLocation::Bearer(_) => {
+                        "{\"type\":\"http\",\"scheme\":\"bearer\"}".to_owned()
+                    }
+                };
+                format!("{}:{}", json_string(&strategy.name.text), scheme)
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        let mut paths = BTreeMap::<String, Vec<String>>::new();
+        for route in &self.routes {
             let mut responses = Vec::new();
             if let Some(output) = &route.output {
                 responses.push(format!(
@@ -454,15 +818,32 @@ impl<'project> ArtifactModel<'project> {
                     self.openapi_type_schema(output)
                 ));
             }
+            let mut failure_groups = BTreeMap::<u16, Vec<&str>>::new();
             for failure in self.route_failures(&route.key) {
-                let failure_schema = format!(
-                    "{{\"$ref\":{}}}",
-                    json_string(&format!("#/components/schemas/{}", failure.name))
-                );
+                failure_groups
+                    .entry(failure.http_status)
+                    .or_default()
+                    .push(failure.name);
+            }
+            for (status, names) in failure_groups {
+                let references = names
+                    .iter()
+                    .map(|name| {
+                        format!(
+                            "{{\"$ref\":{}}}",
+                            json_string(&format!("#/components/schemas/{name}"))
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let failure_schema = if references.len() == 1 {
+                    references[0].clone()
+                } else {
+                    format!("{{\"oneOf\":{}}}", json_array(references))
+                };
                 responses.push(format!(
                     "{}:{{\"description\":{},\"content\":{{\"application/json\":{{\"schema\":{}}}}}}}",
-                    json_string(&failure.http_status.to_string()),
-                    json_string(failure.name),
+                    json_string(&status.to_string()),
+                    json_string(&names.join(" or ")),
                     failure_schema
                 ));
             }
@@ -483,16 +864,27 @@ impl<'project> ArtifactModel<'project> {
                     self.openapi_type_schema(field_type)
                 )
             }));
-            format!(
-                "{}:{{{}:{{\"operationId\":{},\"parameters\":{},\"requestBody\":{},\"responses\":{{{}}}}}}}",
-                json_string(&route.path),
+            let security = if route.public {
+                "[]".to_owned()
+            } else {
+                json_array(
+                    strategies
+                        .iter()
+                        .map(|s| format!("{{{}:[]}}", json_string(&s.name.text))),
+                )
+            };
+            let operation = format!(
+                "{}:{{\"operationId\":{},\"parameters\":{},\"requestBody\":{},\"responses\":{{{}}},\"security\":{},\"x-jadpo-fresh-authority\":{}}}",
                 json_string(&route.method.to_ascii_lowercase()),
                 json_string(route.callable.as_deref().unwrap_or(&route.key)),
                 parameters,
                 request_body,
-                responses.join(",")
-            )
-        });
+                responses.join(","),
+                security,
+                route.fresh_authority
+            );
+            paths.entry(route.path.clone()).or_default().push(operation);
+        }
 
         let mut schemas = Vec::new();
         for (name, declaration) in &self.types {
@@ -520,6 +912,14 @@ impl<'project> ArtifactModel<'project> {
                 self.openapi_record_schema(declaration)
             ));
         }
+        for name in self.public_field_schema_names() {
+            let field = self.fields[&name];
+            schemas.push(format!(
+                "{}:{}",
+                json_string(&name),
+                self.openapi_field_schema(field)
+            ));
+        }
         for contract in &self.project.failures.contracts {
             schemas.push(format!(
                 "{}:{}",
@@ -529,10 +929,14 @@ impl<'project> ArtifactModel<'project> {
         }
         schemas.sort();
 
-        let components = format!("{{\"schemas\":{{{}}}}}", schemas.join(","));
+        let components = format!(
+            "{{\"schemas\":{{{}}},\"securitySchemes\":{{{}}}}}",
+            schemas.join(","),
+            security_schemes
+        );
         format!(
             "{{\"openapi\":\"3.1.0\",\"info\":{{\"title\":\"Application API\",\"version\":\"0.0.0\"}},\"paths\":{{{}}},\"components\":{}}}",
-            paths.collect::<Vec<_>>().join(","), components
+            paths.iter().map(|(path, operations)| format!("{}:{{{}}}", json_string(path), operations.join(","))).collect::<Vec<_>>().join(","), components
         )
     }
 
@@ -557,10 +961,78 @@ impl<'project> ArtifactModel<'project> {
             .collect()
     }
 
+    fn openapi_field_schema(&self, field: &FieldDeclaration) -> String {
+        let parent = self.openapi_type_schema(&type_name(&field.field_type));
+        let constraints = openapi_constraint_parts(&field.constraints);
+        if constraints.is_empty() {
+            parent
+        } else {
+            format!("{{\"allOf\":[{parent},{{{}}}]}}", constraints.join(","))
+        }
+    }
+
+    fn public_field_schema_names(&self) -> BTreeSet<String> {
+        let is_internal = |name: &str| {
+            self.failure_declarations
+                .keys()
+                .any(|failure| name.starts_with(&format!("{failure}.internal.")))
+        };
+        let mut names = self
+            .fields
+            .keys()
+            .filter(|name| !is_internal(name) && !name.starts_with("__jadpo_"))
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for declaration in self.types.values() {
+            self.collect_field_schema_names(&type_name(&declaration.parent), &mut names);
+        }
+        for route in &self.routes {
+            for reference in route
+                .input
+                .iter()
+                .chain(route.output.iter())
+                .chain(route.path_fields.iter().map(|(_, reference)| reference))
+            {
+                self.collect_field_schema_names(reference, &mut names);
+            }
+        }
+        // Include internal value contracts only when a public declaration
+        // explicitly references them. Follow chains to keep every $ref valid.
+        loop {
+            let before = names.len();
+            for name in names.clone() {
+                if let Some(field) = self.fields.get(&name) {
+                    self.collect_field_schema_names(&type_name(&field.field_type), &mut names);
+                }
+            }
+            if names.len() == before {
+                return names;
+            }
+        }
+    }
+
+    fn collect_field_schema_names(&self, name: &str, output: &mut BTreeSet<String>) {
+        let base = name.trim_end_matches('?');
+        if self.fields.contains_key(base) && !base.starts_with("__jadpo_") {
+            output.insert(base.to_owned());
+        }
+        if let Some((_, arguments)) = base.split_once('<') {
+            if let Some(arguments) = arguments.strip_suffix('>') {
+                for argument in split_generic_arguments(arguments) {
+                    self.collect_field_schema_names(argument, output);
+                }
+            }
+        }
+    }
+
     fn openapi_scalar_schema(&self, declaration: &TypeDeclaration) -> String {
-        let mut properties = scalar_schema_parts(&type_name(&declaration.parent));
-        properties.extend(openapi_constraint_parts(&declaration.constraints));
-        format!("{{{}}}", properties.join(","))
+        let parent = self.openapi_type_schema(&type_name(&declaration.parent));
+        let constraints = openapi_constraint_parts(&declaration.constraints);
+        if constraints.is_empty() {
+            parent
+        } else {
+            format!("{{\"allOf\":[{parent},{{{}}}]}}", constraints.join(","))
+        }
     }
 
     fn openapi_enum_schema(&self, declaration: &EnumDeclaration) -> String {
@@ -578,7 +1050,7 @@ impl<'project> ArtifactModel<'project> {
                     format!(
                         "{}:{}",
                         json_string(&field.name.text),
-                        self.openapi_type_schema(&type_name(&field.field_type))
+                        self.openapi_field_schema(field)
                     )
                 }))
                 .collect::<Vec<_>>()
@@ -617,7 +1089,7 @@ impl<'project> ArtifactModel<'project> {
             format!(
                 "{}:{}",
                 json_string(&field.name.text),
-                self.openapi_type_schema(&type_name(&field.field_type))
+                self.openapi_field_schema(field)
             )
         });
         let required = declaration
@@ -647,10 +1119,35 @@ impl<'project> ArtifactModel<'project> {
                 json_string(message)
             ));
             required.push("message");
+        } else {
+            error_properties.push("\"message\":{\"type\":\"string\"}".to_owned());
+            required.push("message");
         }
-        for field in &contract.public_fields {
-            error_properties.push(format!("{}:{{}}", json_string(field)));
-            required.push(field);
+        if !contract.public_fields.is_empty() {
+            let declaration = self
+                .failure_declarations
+                .get(&contract.name)
+                .expect("checked failure contract has its authored declaration");
+            let properties = declaration
+                .public_fields
+                .iter()
+                .map(|field| {
+                    format!(
+                        "{}:{}",
+                        json_string(&field.name.text),
+                        self.openapi_field_schema(field)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            let names = json_string_array(
+                declaration
+                    .public_fields
+                    .iter()
+                    .map(|field| field.name.text.as_str()),
+            );
+            error_properties.push(format!("\"details\":{{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{{{properties}}},\"required\":{names}}}"));
+            required.push("details");
         }
         error_properties.sort();
         required.sort();
@@ -663,8 +1160,43 @@ impl<'project> ArtifactModel<'project> {
 
     fn openapi_type_schema(&self, name: &str) -> String {
         let base = name.trim_end_matches('?');
-        let nullable = base.len() != name.len();
-        let schema = if let Some(item) = base
+        let nullable =
+            base.len() != name.len() || self.project.semantics.nullable_types.contains(base);
+        let schema = if let Some(field) = self
+            .fields
+            .get(base)
+            .filter(|_| base.starts_with("__jadpo_"))
+        {
+            self.openapi_field_schema(field)
+        } else if self.fields.contains_key(base) {
+            format!(
+                "{{\"$ref\":{}}}",
+                json_string(&format!("#/components/schemas/{base}"))
+            )
+        } else if let Some(record) = base
+            .strip_suffix(".Ref")
+            .and_then(|owner| self.records.get(owner))
+        {
+            let identity = record
+                .dossier
+                .as_ref()
+                .map(|dossier| dossier.identity.text.as_str())
+                .or_else(|| {
+                    record
+                        .fields
+                        .iter()
+                        .find(|field| field.persistence.contains(&PersistenceModifier::Identity))
+                        .map(|field| field.name.text.as_str())
+                });
+            identity
+                .and_then(|identity| {
+                    record
+                        .fields
+                        .iter()
+                        .find(|field| field.name.text == identity)
+                })
+                .map_or_else(|| "{}".to_owned(), |field| self.openapi_field_schema(field))
+        } else if let Some(item) = base
             .strip_prefix("List<")
             .and_then(|value| value.strip_suffix('>'))
         {
@@ -715,6 +1247,18 @@ impl<'project> ArtifactModel<'project> {
         }
     }
 
+    fn reference_is_nullable(&self, reference: &TypeReference) -> bool {
+        reference.nullable
+            || self.project.semantics.nullable_types.contains(
+                &reference
+                    .path
+                    .iter()
+                    .map(|part| part.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("."),
+            )
+    }
+
     fn schema_declaration(&self, name: &str) -> String {
         if matches!(name, "Email" | "Url" | "IpAddress") {
             return name.to_owned();
@@ -755,13 +1299,13 @@ struct RouteFailureView<'a> {
     http_status: u16,
 }
 
-fn field_plan_json(field: &FieldDeclaration) -> String {
+fn field_plan_json(field: &FieldDeclaration, nullable: bool) -> String {
     format!(
         "{{\"name\":{},\"type\":{},\"optional\":{},\"nullable\":{},\"constraints\":{}}}",
         json_string(&field.name.text),
         json_string(&type_name(&field.field_type)),
         field.optional,
-        field.field_type.nullable,
+        nullable,
         constraints_json(&field.constraints)
     )
 }
@@ -812,18 +1356,21 @@ fn scalar_schema_parts(name: &str) -> Vec<String> {
             "\"type\":\"string\"".to_owned(),
             "\"format\":\"uuid\"".to_owned(),
         ],
-        "DateTime" => vec![
+        "Instant" => vec![
             "\"type\":\"string\"".to_owned(),
             "\"format\":\"date-time\"".to_owned(),
         ],
-        "Date" => vec![
+        "CalendarDate" => vec![
             "\"type\":\"string\"".to_owned(),
             "\"format\":\"date\"".to_owned(),
         ],
         "Time" => vec![
-            "\"type\":\"string\"".to_owned(),
-            "\"format\":\"time\"".to_owned(),
+            "\"type\":\"object\"".to_owned(),
+            "\"additionalProperties\":false".to_owned(),
+            "\"required\":[\"instant\",\"zone\"]".to_owned(),
+            "\"properties\":{\"instant\":{\"type\":\"string\",\"format\":\"date-time\"},\"zone\":{\"type\":\"string\"}}".to_owned(),
         ],
+        "Zone" | "Locale" | "PresentationText" => vec!["\"type\":\"string\"".to_owned()],
         "Duration" => vec![
             "\"type\":\"string\"".to_owned(),
             "\"format\":\"duration\"".to_owned(),
@@ -992,6 +1539,10 @@ mod tests {
                 "inventory/routes.json",
                 "inventory/callables.json",
                 "audit/failures.json",
+                "audit/entities.json",
+                "audit/transactions.json",
+                "audit/configuration.json",
+                "audit/policy.json",
                 "validators/plan.json",
                 "compatibility/public-failure-codes.json",
                 "openapi/openapi.json",
@@ -1021,6 +1572,18 @@ mod tests {
         assert!(artifact(&artifacts, "openapi/openapi.json").contains(
             "\"DeliveryState\":{\"type\":\"string\",\"enum\":[\"pending\",\"sent\",\"failed\"]}"
         ));
+    }
+
+    #[test]
+    fn exposes_proved_restricted_field_reads_in_policy_audit() {
+        let fixture = repository_root().join("tests/compile/pass/134_policy_safe_projection.jadpo");
+        let analyzed = analyze_project(&fixture).expect("policy fixture should be analyzable");
+        let artifacts = derive_artifacts(&fixture, &analyzed);
+        let policy = artifact(&artifacts, "audit/policy.json");
+
+        assert!(policy.contains("\"operation\":\"PrivateNote.read_private_label\""));
+        assert!(policy.contains("\"restricted_field_reads\":[{\"entity\":\"PrivateNote\",\"field\":\"private_label\",\"subjects\":[\"NoteRole.owner\"]"));
+        assert!(policy.contains("\"judgement\":\"proved\""));
     }
 
     #[test]

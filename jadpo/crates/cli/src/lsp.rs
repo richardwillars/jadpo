@@ -4,7 +4,11 @@ use jadpo_core::{
     LanguageSymbol,
 };
 use jadpo_diagnostics::{diagnostic_help_url, Diagnostic, RepairKind, Severity, TextEdit};
-use jadpo_syntax::{Declaration, SourceFile, TextRange, TokenKind, TypeReference};
+use jadpo_syntax::{
+    Block, CallableDeclaration, CallableKind, Declaration, Expression, HttpMethod,
+    OutcomeMatchArmBody, OutcomeMatchExpression, OutcomeMatchPattern, SourceFile, Statement,
+    TextRange, TokenKind, TypeReference,
+};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -13,10 +17,47 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 const KEYWORDS: &[&str] = &[
-    "type", "persist", "failure", "function", "action", "test", "route", "module", "import", "var",
-    "mut", "return", "reject", "attempt", "if", "else", "match", "assert", "some", "none", "true",
-    "false", "and", "or", "not", "kind", "fails", "auth", "path", "input", "output", "run",
-    "create", "query", "update", "delete",
+    "type",
+    "config",
+    "persist",
+    "failure",
+    "function",
+    "action",
+    "test",
+    "route",
+    "module",
+    "import",
+    "var",
+    "mut",
+    "return",
+    "reject",
+    "attempt",
+    "async",
+    "await",
+    "if",
+    "else",
+    "match",
+    "success",
+    "propagate",
+    "assert",
+    "some",
+    "none",
+    "true",
+    "false",
+    "and",
+    "or",
+    "not",
+    "kind",
+    "fails",
+    "auth",
+    "path",
+    "input",
+    "output",
+    "run",
+    "create",
+    "query",
+    "update",
+    "delete",
 ];
 
 const PRELUDE_TYPES: &[&str] = &[
@@ -26,9 +67,13 @@ const PRELUDE_TYPES: &[&str] = &[
     "Text",
     "Bytes",
     "Uuid",
-    "Date",
     "Time",
-    "DateTime",
+    "Instant",
+    "CalendarDate",
+    "Zone",
+    "Locale",
+    "PresentationText",
+    "InstantRange",
     "Duration",
     "Unit",
     "Object",
@@ -187,6 +232,9 @@ impl Server {
                 self.respond_analysis(writer, id, |project, index| {
                     let (source, offset) = request_offset(project, &params)?;
                     let symbol = index.symbol_at(&source, offset)?;
+                    if symbol.source.starts_with('<') {
+                        return None;
+                    }
                     Some(location(project, &symbol.source, symbol.range))
                 })?;
             }
@@ -214,6 +262,10 @@ impl Server {
                     let (source, offset) = request_offset(project, &params)?;
                     let symbol = index.symbol_at(&source, offset);
                     let inferred = index.inferred_type_at(project, &source, offset);
+                    let inline_action = symbol
+                        .is_none()
+                        .then(|| inline_action_outcome_markdown(project, &source, offset))
+                        .flatten();
                     let guided = frontend_diagnostics(project)
                         .into_iter()
                         .find(|diagnostic| {
@@ -223,12 +275,39 @@ impl Server {
                                     && offset <= primary.end
                             })
                         });
-                    if symbol.is_none() && inferred.is_none() && guided.is_none() {
+                    if symbol.is_none()
+                        && inferred.is_none()
+                        && guided.is_none()
+                        && inline_action.is_none()
+                    {
                         return None;
                     }
                     let mut lines = Vec::new();
+                    if let Some(inline_action) = inline_action {
+                        lines.push(inline_action);
+                    }
                     if let Some(symbol) = symbol {
-                        lines.push(format!("```jadpo\n{}\n```", symbol.detail));
+                        if symbol.kind == "standard_function" {
+                            if let Some(signature) = standard_callable_signature(&symbol.key) {
+                                lines.push(format!(
+                                    "```jadpo\n{}\n```\n\nJadpo standard-library operation.",
+                                    standard_signature_label(&symbol.key, &signature)
+                                ));
+                            }
+                        } else if matches!(symbol.kind.as_str(), "function" | "action") {
+                            if let Some(outcome) = callable_outcome_markdown(project, symbol) {
+                                lines.push(outcome);
+                                if let Some(call_site) =
+                                    call_site_outcome_markdown(project, &source, offset)
+                                {
+                                    lines.push(call_site);
+                                }
+                            } else {
+                                lines.push(format!("```jadpo\n{}\n```", symbol.detail));
+                            }
+                        } else {
+                            lines.push(format!("```jadpo\n{}\n```", symbol.detail));
+                        }
                     }
                     if let Some(inferred) = inferred {
                         lines.push(format!("Inferred type: `{inferred}`"));
@@ -259,7 +338,8 @@ impl Server {
                             .into_iter()
                             .chain(index.symbols.iter().filter(|symbol| {
                                 !symbol.key.starts_with("local:")
-                                    && !symbol.source.starts_with('<')
+                                    && (!symbol.source.starts_with('<')
+                                        || symbol.kind == "standard_namespace")
                                     && symbol.container.is_none()
                             }))
                             .collect::<Vec<_>>()
@@ -304,6 +384,9 @@ impl Server {
                 self.respond_analysis(writer, id, |project, index| {
                     let (source, offset) = request_offset(project, &params)?;
                     let symbol = index.symbol_at(&source, offset)?;
+                    if symbol.source.starts_with('<') || symbol.kind.starts_with("standard_") {
+                        return None;
+                    }
                     let occurrence = index.occurrences_for(&symbol.key).find(|occurrence| {
                         same_source(&occurrence.source, &source)
                             && occurrence.range.start <= offset
@@ -328,14 +411,18 @@ impl Server {
                     self.respond_analysis(writer, id, |project, index| {
                         let (source, offset) = request_offset(project, &params)?;
                         let symbol = index.symbol_at(&source, offset)?;
+                        if symbol.source.starts_with('<') || symbol.kind.starts_with("standard_") {
+                            return None;
+                        }
                         let collision = symbol.container.as_ref().map_or_else(
                             || new_name.to_owned(),
                             |container| format!("{container}.{new_name}"),
                         );
-                        if !symbol.key.starts_with("local:")
-                            && index
-                                .symbol(&collision)
-                                .is_some_and(|candidate| candidate.key != symbol.key)
+                        if index.local_rename_conflicts(&symbol.key, new_name)
+                            || (!symbol.key.starts_with("local:")
+                                && index
+                                    .symbol(&collision)
+                                    .is_some_and(|candidate| candidate.key != symbol.key))
                         {
                             return None;
                         }
@@ -797,8 +884,17 @@ fn completion_container(
             return Some(base.to_owned());
         }
     }
-    let symbol = symbol?;
-    (!symbol.key.starts_with("local:")).then(|| symbol.key.clone())
+    if let Some(symbol) = symbol {
+        if !symbol.key.starts_with("local:") {
+            return Some(symbol.key.clone());
+        }
+    }
+    let candidate = before[..dot.0]
+        .trim_end()
+        .rsplit(|character: char| !(character == '_' || character.is_ascii_alphanumeric()))
+        .next()?;
+    (PRELUDE_TYPES.contains(&candidate) || index.symbol(candidate).is_some())
+        .then(|| candidate.to_owned())
 }
 
 fn signature_help(
@@ -833,29 +929,34 @@ fn signature_help(
     let open_index = open_index?;
     let callee = significant.get(open_index.checked_sub(1)?)?;
     let symbol = index.symbol_at(source_name, callee.range.start)?;
+    if symbol.kind == "standard_function" {
+        let signature = standard_callable_signature(&symbol.key)?;
+        let active_parameter = active_signature_parameter(&significant, open_index)
+            .min(signature.parameters.len().saturating_sub(1));
+        let parameters = signature
+            .parameters
+            .iter()
+            .map(|(name, parameter_type)| format!("{name}: {parameter_type}"))
+            .collect::<Vec<_>>();
+        let label = standard_signature_label(&symbol.key, &signature);
+        return Some(json!({
+            "signatures": [{
+                "label": label,
+                "documentation": {
+                    "kind": "markdown",
+                    "value": "Jadpo standard-library operation. Named options are shown after positional inputs."
+                },
+                "parameters": parameters.into_iter().map(|label| json!({ "label": label })).collect::<Vec<_>>()
+            }],
+            "activeSignature": 0,
+            "activeParameter": active_parameter
+        }));
+    }
     if !matches!(symbol.kind.as_str(), "function" | "action") {
         return None;
     }
-    let callable = project.syntax.sources.iter().find_map(|source| {
-        source.file.declarations.iter().find_map(|declaration| {
-            let Declaration::Callable(callable) = declaration else {
-                return None;
-            };
-            (callable.name.text == symbol.name).then_some(callable)
-        })
-    })?;
-    let mut nested = 0usize;
-    let mut active_parameter = 0usize;
-    for token in significant.iter().skip(open_index + 1) {
-        match token.kind {
-            TokenKind::LeftParen | TokenKind::LeftBrace | TokenKind::LeftAngle => nested += 1,
-            TokenKind::RightParen | TokenKind::RightBrace | TokenKind::RightAngle => {
-                nested = nested.saturating_sub(1)
-            }
-            TokenKind::Comma if nested == 0 => active_parameter += 1,
-            _ => {}
-        }
-    }
+    let callable = callable_declaration(project, &symbol.name)?;
+    let active_parameter = active_signature_parameter(&significant, open_index);
     let parameters = callable
         .parameters
         .iter()
@@ -876,11 +977,528 @@ fn signature_help(
     Some(json!({
         "signatures": [{
             "label": label,
+            "documentation": {
+                "kind": "markdown",
+                "value": callable_outcome_markdown(project, symbol).unwrap_or_default()
+            },
             "parameters": parameters.into_iter().map(|label| json!({ "label": label })).collect::<Vec<_>>()
         }],
         "activeSignature": 0,
         "activeParameter": active_parameter.min(callable.parameters.len().saturating_sub(1))
     }))
+}
+
+fn active_signature_parameter(significant: &[&jadpo_syntax::Token], open_index: usize) -> usize {
+    let mut nested = 0usize;
+    let mut active_parameter = 0usize;
+    for token in significant.iter().skip(open_index + 1) {
+        match token.kind {
+            TokenKind::LeftParen | TokenKind::LeftBrace | TokenKind::LeftAngle => nested += 1,
+            TokenKind::RightParen | TokenKind::RightBrace | TokenKind::RightAngle => {
+                nested = nested.saturating_sub(1)
+            }
+            TokenKind::Comma if nested == 0 => active_parameter += 1,
+            _ => {}
+        }
+    }
+    active_parameter
+}
+
+struct StandardCallableSignature {
+    parameters: &'static [(&'static str, &'static str)],
+    return_type: &'static str,
+}
+
+fn standard_signature_label(key: &str, signature: &StandardCallableSignature) -> String {
+    let parameters = signature
+        .parameters
+        .iter()
+        .map(|(name, parameter_type)| format!("{name}: {parameter_type}"))
+        .collect::<Vec<_>>();
+    format!(
+        "{key}({}) -> {}",
+        parameters.join(", "),
+        signature.return_type
+    )
+}
+
+fn standard_callable_signature(key: &str) -> Option<StandardCallableSignature> {
+    let signature = match key {
+        "temporal.in_zone" => (&[("instant", "Instant"), ("zone", "Zone")][..], "Time"),
+        "temporal.resolve" => (
+            &[
+                ("date", "CalendarDate"),
+                ("at", "Text"),
+                ("zone", "Zone"),
+                ("overlap", "LocalOverlap"),
+                ("gap", "LocalGap"),
+            ][..],
+            "Time",
+        ),
+        "temporal.add_elapsed" => (
+            &[("value", "Instant | Time"), ("duration", "Duration")][..],
+            "Instant | Time",
+        ),
+        "temporal.between" => (
+            &[("start", "Instant | Time"), ("end", "Instant | Time")][..],
+            "Duration",
+        ),
+        "temporal.add_days" => (
+            &[("date", "CalendarDate"), ("days", "Int")][..],
+            "CalendarDate",
+        ),
+        "temporal.add_weeks" => (
+            &[("date", "CalendarDate"), ("weeks", "Int")][..],
+            "CalendarDate",
+        ),
+        "temporal.add_months" => (
+            &[
+                ("date", "CalendarDate"),
+                ("months", "Int"),
+                ("invalid_day", "InvalidDay"),
+            ][..],
+            "CalendarDate",
+        ),
+        "temporal.add_years" => (
+            &[
+                ("date", "CalendarDate"),
+                ("years", "Int"),
+                ("invalid_day", "InvalidDay"),
+            ][..],
+            "CalendarDate",
+        ),
+        "temporal.add_local_days" => (
+            &[
+                ("time", "Time"),
+                ("days", "Int"),
+                ("overlap", "LocalOverlap"),
+                ("gap", "LocalGap"),
+            ][..],
+            "Time",
+        ),
+        "temporal.add_local_weeks" => (
+            &[
+                ("time", "Time"),
+                ("weeks", "Int"),
+                ("overlap", "LocalOverlap"),
+                ("gap", "LocalGap"),
+            ][..],
+            "Time",
+        ),
+        "temporal.add_local_months" => (
+            &[
+                ("time", "Time"),
+                ("months", "Int"),
+                ("invalid_day", "InvalidDay"),
+                ("overlap", "LocalOverlap"),
+                ("gap", "LocalGap"),
+            ][..],
+            "Time",
+        ),
+        "temporal.add_local_years" => (
+            &[
+                ("time", "Time"),
+                ("years", "Int"),
+                ("invalid_day", "InvalidDay"),
+                ("overlap", "LocalOverlap"),
+                ("gap", "LocalGap"),
+            ][..],
+            "Time",
+        ),
+        "temporal.day_bounds" => (
+            &[("date", "CalendarDate"), ("zone", "Zone")][..],
+            "InstantRange",
+        ),
+        "temporal.week_bounds" => (
+            &[
+                ("date", "CalendarDate"),
+                ("zone", "Zone"),
+                ("starts_on", "Weekday"),
+            ][..],
+            "InstantRange",
+        ),
+        "temporal.month_bounds" => (
+            &[("date", "CalendarDate"), ("zone", "Zone")][..],
+            "InstantRange",
+        ),
+        "temporal.year_bounds" => (
+            &[("date", "CalendarDate"), ("zone", "Zone")][..],
+            "InstantRange",
+        ),
+        "temporal.calendar_date" => (&[("time", "Time")][..], "CalendarDate"),
+        "temporal.year"
+        | "temporal.month"
+        | "temporal.day"
+        | "temporal.hour"
+        | "temporal.minute"
+        | "temporal.second"
+        | "temporal.millisecond" => (&[("time", "Time")][..], "Int"),
+        "temporal.weekday" => (&[("time", "Time")][..], "Weekday"),
+        "temporal.offset" => (&[("time", "Time")][..], "Duration"),
+        "temporal.zone" => (&[("time", "Time")][..], "Zone"),
+        "temporal.same_zone" | "temporal.same_local" => {
+            (&[("left", "Time"), ("right", "Time")][..], "Bool")
+        }
+        "temporal.format" => (
+            &[
+                ("value", "Time | CalendarDate"),
+                ("locale", "Locale"),
+                ("style_or_components", "TimeFormat | Object"),
+            ][..],
+            "PresentationText",
+        ),
+        "temporal.format_friendly" => (
+            &[
+                ("time", "Time"),
+                ("relative_to", "Instant"),
+                ("locale", "Locale"),
+                ("profile", "FriendlyTimeFormat"),
+            ][..],
+            "PresentationText",
+        ),
+        _ => return None,
+    };
+    Some(StandardCallableSignature {
+        parameters: signature.0,
+        return_type: signature.1,
+    })
+}
+
+fn callable_declaration<'project>(
+    project: &'project AnalyzedProject,
+    name: &str,
+) -> Option<&'project CallableDeclaration> {
+    project.syntax.sources.iter().find_map(|source| {
+        source.file.declarations.iter().find_map(|declaration| {
+            let Declaration::Callable(callable) = declaration else {
+                return None;
+            };
+            (callable.name.text == name).then_some(callable)
+        })
+    })
+}
+
+fn callable_outcome_markdown(project: &AnalyzedProject, symbol: &LanguageSymbol) -> Option<String> {
+    let callable = callable_declaration(project, &symbol.name)?;
+    let outcome = project
+        .failures
+        .callables
+        .iter()
+        .find(|outcome| outcome.callable == symbol.name)?;
+    let parameters = callable
+        .parameters
+        .iter()
+        .map(|parameter| {
+            format!(
+                "{}: {}",
+                parameter.name.text,
+                display_type_reference(&parameter.parameter_type)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let signature = format!(
+        "{} {}({parameters}) -> {}",
+        match callable.kind {
+            CallableKind::Function => "function",
+            CallableKind::Action => "action",
+            CallableKind::Query => "query",
+        },
+        callable.name.text,
+        display_type_reference(&callable.return_type)
+    );
+    let failures = outcome_failures_markdown(project, &outcome.failures);
+    let execution = match callable.kind {
+        CallableKind::Function => "Pure and non-suspending; completes before the caller continues.",
+        CallableKind::Action if outcome.may_suspend => {
+            "May suspend internally; completes before the caller continues."
+        }
+        CallableKind::Action => {
+            "Does not suspend internally; completes before the caller continues."
+        }
+        CallableKind::Query => {
+            "Read-only and may suspend internally; completes before the caller continues."
+        }
+    };
+    Some(format!(
+        "```jadpo\n{signature}\n```\n\n**Success**\n\n`{}`\n\n**Failures**\n\n{failures}\n\n**Execution**\n\n{execution}",
+        display_type_reference(&callable.return_type)
+    ))
+}
+
+fn outcome_failures_markdown(project: &AnalyzedProject, failures: &[String]) -> String {
+    if failures.is_empty() {
+        "none".to_owned()
+    } else {
+        failures
+            .iter()
+            .map(|failure| {
+                let details = project
+                    .failures
+                    .contracts
+                    .iter()
+                    .find(|contract| contract.name == *failure)
+                    .map(|contract| {
+                        let summary = contract
+                            .message
+                            .as_deref()
+                            .map(|message| format!(" — {message}"))
+                            .unwrap_or_default();
+                        format!("`{failure}` · {}{summary}", contract.kind)
+                    })
+                    .unwrap_or_else(|| format!("`{failure}` · operational"));
+                format!("- {details}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+fn inline_action_outcome_markdown(
+    project: &AnalyzedProject,
+    source_name: &str,
+    offset: usize,
+) -> Option<String> {
+    let route = project.syntax.sources.iter().find_map(|source| {
+        if !same_source(&source.source_name, source_name) {
+            return None;
+        }
+        source.file.declarations.iter().find_map(|declaration| {
+            let Declaration::Route(route) = declaration else {
+                return None;
+            };
+            route.inline_action.as_ref().and_then(|action| {
+                (action.range.start <= offset && offset < action.range.end).then_some(route)
+            })
+        })
+    })?;
+    let method = match route.method {
+        HttpMethod::Get => "GET",
+        HttpMethod::Post => "POST",
+        HttpMethod::Put => "PUT",
+        HttpMethod::Patch => "PATCH",
+        HttpMethod::Delete => "DELETE",
+    };
+    let name = format!("{method} {} inline action", route.path);
+    let outcome = project
+        .failures
+        .callables
+        .iter()
+        .find(|outcome| outcome.callable == name)?;
+    let success = route
+        .output
+        .as_ref()
+        .map_or_else(|| "Unit".to_owned(), display_type_reference);
+    let failures = outcome_failures_markdown(project, &outcome.failures);
+    let execution = if outcome.may_suspend {
+        "May suspend internally; completes before the route continues."
+    } else {
+        "Does not suspend internally; completes before the route continues."
+    };
+    Some(format!(
+        "```jadpo\naction {method} {} inline -> {success}\n```\n\n**Success**\n\n`{success}`\n\n**Failures**\n\n{failures}\n\n**Execution**\n\n{execution}",
+        route.path
+    ))
+}
+
+fn call_is_attempted(project: &AnalyzedProject, source_name: &str, offset: usize) -> bool {
+    let Some(source) = project
+        .syntax
+        .sources
+        .iter()
+        .find(|source| same_source(&source.source_name, source_name))
+    else {
+        return false;
+    };
+    source
+        .tokens
+        .iter()
+        .filter(|token| !token.kind.is_trivia() && token.range.end <= offset)
+        .next_back()
+        .is_some_and(|token| token.kind == TokenKind::Attempt)
+}
+
+fn call_site_outcome_markdown(
+    project: &AnalyzedProject,
+    source_name: &str,
+    offset: usize,
+) -> Option<String> {
+    if call_is_attempted(project, source_name, offset) {
+        return Some("**Call-site outcome**\n\nPropagated by `attempt`.".to_owned());
+    }
+    let source = project
+        .syntax
+        .sources
+        .iter()
+        .find(|source| same_source(&source.source_name, source_name))?;
+    let outcome = source
+        .file
+        .declarations
+        .iter()
+        .find_map(|declaration| match declaration {
+            Declaration::Callable(callable) => find_outcome_at_in_block(&callable.body, offset),
+            Declaration::Test(test) => find_outcome_at_in_block(&test.body, offset),
+            Declaration::Route(route) => route
+                .inline_action
+                .as_ref()
+                .and_then(|action| find_outcome_at_in_block(&action.body, offset)),
+            Declaration::Application(_)
+            | Declaration::Locales(_)
+            | Declaration::AuthenticationStrategy(_)
+            | Declaration::Principal(_)
+            | Declaration::Config(_)
+            | Declaration::Type(_)
+            | Declaration::Enum(_)
+            | Declaration::Record(_)
+            | Declaration::Fixture(_)
+            | Declaration::Failure(_) => None,
+        })?;
+    let failures = outcome
+        .arms
+        .iter()
+        .filter_map(|arm| {
+            let OutcomeMatchPattern::Failure(failure) = &arm.pattern else {
+                return None;
+            };
+            let state = match &arm.body {
+                OutcomeMatchArmBody::Value(_) => "handled locally".to_owned(),
+                OutcomeMatchArmBody::Reject(rejection) => {
+                    format!("mapped to `{}`", rejection.failure.text)
+                }
+                OutcomeMatchArmBody::Propagate(_) => "propagated".to_owned(),
+            };
+            Some(format!("- `{}` — {state}", failure.text))
+        })
+        .collect::<Vec<_>>();
+    Some(format!(
+        "**Call-site outcome**\n\nSuccess continues with the matched value.\n\n{}",
+        failures.join("\n")
+    ))
+}
+
+fn find_outcome_at_in_block(block: &Block, offset: usize) -> Option<&OutcomeMatchExpression> {
+    block
+        .statements
+        .iter()
+        .find_map(|statement| match statement {
+            Statement::Binding(statement) => find_outcome_at(&statement.value, offset),
+            Statement::Assignment(statement) => find_outcome_at(&statement.value, offset),
+            Statement::Return(statement) => find_outcome_at(&statement.value, offset),
+            Statement::Reject(statement) => statement
+                .values
+                .iter()
+                .find_map(|field| find_outcome_at(&field.value, offset)),
+            Statement::If(statement) => find_outcome_at(&statement.condition, offset)
+                .or_else(|| find_outcome_at_in_block(&statement.then_block, offset))
+                .or_else(|| {
+                    statement
+                        .else_block
+                        .as_ref()
+                        .and_then(|block| find_outcome_at_in_block(block, offset))
+                }),
+            Statement::Match(statement) => {
+                find_outcome_at(&statement.subject, offset).or_else(|| {
+                    statement
+                        .arms
+                        .iter()
+                        .find_map(|arm| find_outcome_at_in_block(&arm.body, offset))
+                })
+            }
+            Statement::Assert(statement) => find_outcome_at(&statement.condition, offset),
+            Statement::AdvanceClock(statement) => find_outcome_at(&statement.duration, offset),
+            Statement::Unsupported(_) => None,
+        })
+}
+
+fn find_outcome_at(expression: &Expression, offset: usize) -> Option<&OutcomeMatchExpression> {
+    match expression {
+        Expression::OutcomeMatch(outcome) => {
+            if matches!(outcome.subject.as_ref(), Expression::Invocation(invocation) if invocation.callee.range.start <= offset && offset <= invocation.callee.range.end)
+                || matches!(outcome.subject.as_ref(), Expression::TestCall(call) if call.invocation.callee.range.start <= offset && offset <= call.invocation.callee.range.end)
+            {
+                return Some(outcome);
+            }
+            find_outcome_at(&outcome.subject, offset).or_else(|| {
+                outcome.arms.iter().find_map(|arm| match &arm.body {
+                    OutcomeMatchArmBody::Value(value) => find_outcome_at(value, offset),
+                    OutcomeMatchArmBody::Reject(rejection) => rejection
+                        .values
+                        .iter()
+                        .find_map(|field| find_outcome_at(&field.value, offset)),
+                    OutcomeMatchArmBody::Propagate(_) => None,
+                })
+            })
+        }
+        Expression::Invocation(invocation) => invocation
+            .arguments
+            .iter()
+            .find_map(|argument| find_outcome_at(argument, offset))
+            .or_else(|| {
+                invocation
+                    .named_arguments
+                    .iter()
+                    .find_map(|argument| find_outcome_at(&argument.value, offset))
+            }),
+        Expression::TestCall(call) => call
+            .invocation
+            .arguments
+            .iter()
+            .find_map(|argument| find_outcome_at(argument, offset))
+            .or_else(|| {
+                call.invocation
+                    .named_arguments
+                    .iter()
+                    .find_map(|argument| find_outcome_at(&argument.value, offset))
+            }),
+        Expression::Construction(construction) => construction
+            .fields
+            .iter()
+            .find_map(|field| find_outcome_at(&field.value, offset)),
+        Expression::Object(object) => object
+            .fields
+            .iter()
+            .find_map(|field| find_outcome_at(&field.value, offset)),
+        Expression::Create(create) => create
+            .fields
+            .iter()
+            .find_map(|field| find_outcome_at(&field.value, offset))
+            .or_else(|| {
+                create.conflicts.iter().find_map(|conflict| {
+                    conflict
+                        .rejection
+                        .values
+                        .iter()
+                        .find_map(|field| find_outcome_at(&field.value, offset))
+                })
+            }),
+        Expression::Query(query) => find_outcome_at(&query.value, offset).or_else(|| {
+            query.pagination.as_ref().and_then(|pagination| {
+                find_outcome_at(&pagination.limit, offset)
+                    .or_else(|| find_outcome_at(&pagination.offset, offset))
+            })
+        }),
+        Expression::Update(update) => find_outcome_at(&update.value, offset)
+            .or_else(|| {
+                update
+                    .changes
+                    .iter()
+                    .find_map(|field| find_outcome_at(&field.value, offset))
+            })
+            .or_else(|| {
+                update
+                    .conditional_changes
+                    .iter()
+                    .find_map(|change| find_outcome_at(&change.change.value, offset))
+            }),
+        Expression::Delete(delete) => find_outcome_at(&delete.value, offset),
+        Expression::Attempt(attempt) => find_outcome_at(&attempt.value, offset),
+        Expression::Unary(unary) => find_outcome_at(&unary.value, offset),
+        Expression::Binary(binary) => {
+            find_outcome_at(&binary.left, offset).or_else(|| find_outcome_at(&binary.right, offset))
+        }
+        Expression::Grouped(grouped) => find_outcome_at(&grouped.value, offset),
+        Expression::Literal(_) | Expression::Name(_) | Expression::Missing(_) => None,
+    }
 }
 
 fn display_type_reference(reference: &TypeReference) -> String {
@@ -1059,7 +1677,7 @@ fn semantic_symbol_type(kind: &str) -> u32 {
     match kind {
         "enum" => 2,
         "enum_variant" => 3,
-        "field" | "relationship" | "persistence_constraint" => 4,
+        "field" | "configuration_field" | "relationship" | "persistence_constraint" => 4,
         "function" | "action" | "test" | "route" => 5,
         "parameter" => 7,
         "variable" => 6,
@@ -1071,7 +1689,7 @@ fn symbol_kind(kind: &str) -> u32 {
     match kind {
         "enum" => 10,
         "enum_variant" => 22,
-        "field" | "relationship" => 8,
+        "field" | "configuration_field" | "relationship" => 8,
         "function" | "action" => 12,
         "test" | "route" => 6,
         "variable" | "parameter" => 13,
@@ -1083,8 +1701,10 @@ fn symbol_kind(kind: &str) -> u32 {
 fn completion_kind(kind: &str) -> u32 {
     match kind {
         "enum_variant" => 20,
-        "field" | "relationship" => 5,
-        "function" | "action" => 3,
+        "standard_value" => 20,
+        "field" | "configuration_field" | "relationship" => 5,
+        "function" | "action" | "standard_function" => 3,
+        "standard_namespace" => 9,
         "variable" | "parameter" => 6,
         "enum" | "type" | "persistent_object" | "object" | "input" | "output" => 7,
         _ => 1,
@@ -1095,6 +1715,7 @@ fn is_keyword(kind: TokenKind) -> bool {
     matches!(
         kind,
         TokenKind::Type
+            | TokenKind::Config
             | TokenKind::Enum
             | TokenKind::Entity
             | TokenKind::Value
@@ -1119,9 +1740,13 @@ fn is_keyword(kind: TokenKind) -> bool {
             | TokenKind::Mut
             | TokenKind::Return
             | TokenKind::Reject
+            | TokenKind::Propagate
+            | TokenKind::Async
+            | TokenKind::Await
             | TokenKind::If
             | TokenKind::Else
             | TokenKind::Match
+            | TokenKind::Success
             | TokenKind::Assert
             | TokenKind::Auth
             | TokenKind::Explicitly
@@ -1350,6 +1975,7 @@ mod tests {
     use jadpo_diagnostics::{Diagnostic, TextEdit, CATALOGUE_CODES};
     use jadpo_syntax::SourceFile;
     use serde_json::{json, Value};
+    use std::collections::BTreeSet;
     use std::io::Cursor;
     use std::path::Path;
 
@@ -1849,6 +2475,308 @@ mod tests {
         assert_eq!(
             help["result"]["signatures"][0]["label"],
             "add(left: Number, right: Number) -> Number"
+        );
+    }
+
+    #[test]
+    fn temporal_tooling_is_contextual_and_standard_symbols_are_not_renameable() {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("CLI crate should be inside the repository");
+        let fixture = repository.join("examples/temporal/app.jadpo");
+        let source =
+            std::fs::read_to_string(&fixture).expect("temporal example should be readable");
+        let uri = path_to_uri(&fixture);
+        let mut server = Server::default();
+        request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": { "rootUri": uri }
+            }),
+        );
+
+        let completion_labels = |server: &mut Server, id: u64, needle: &str, prefix: &str| {
+            let byte = source.find(needle).expect("completion site should exist") + prefix.len();
+            let (line, character) = offset_to_line_character(&source, byte);
+            request(
+                server,
+                json!({
+                    "jsonrpc": "2.0", "id": id, "method": "textDocument/completion",
+                    "params": {
+                        "textDocument": { "uri": uri },
+                        "position": { "line": line, "character": character }
+                    }
+                }),
+            )["result"]["items"]
+                .as_array()
+                .expect("completion result should contain items")
+                .iter()
+                .filter_map(|item| item["label"].as_str().map(str::to_owned))
+                .collect::<BTreeSet<_>>()
+        };
+
+        let temporal = completion_labels(&mut server, 2, "temporal.resolve(", "temporal.");
+        assert!(temporal.contains("resolve"));
+        assert!(temporal.contains("format_friendly"));
+        assert_eq!(temporal.len(), 31);
+
+        let zones = completion_labels(&mut server, 3, "Zone.europe_london", "Zone.");
+        assert!(zones.contains("utc"));
+        assert!(zones.contains("europe_london"));
+        assert_eq!(zones.len(), 419);
+
+        let locales = completion_labels(&mut server, 4, "Locale.en_gb", "Locale.");
+        assert_eq!(
+            locales,
+            BTreeSet::from(["en_gb".to_owned(), "en_us".to_owned(), "fr_fr".to_owned()])
+        );
+
+        let call = source
+            .find("temporal.resolve(")
+            .expect("temporal call should exist")
+            + "temporal.resolve(".len();
+        let (line, character) = offset_to_line_character(&source, call);
+        let help = request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 5, "method": "textDocument/signatureHelp",
+                "params": {
+                    "textDocument": { "uri": uri },
+                    "position": { "line": line, "character": character }
+                }
+            }),
+        );
+        assert_eq!(
+            help["result"]["signatures"][0]["label"],
+            "temporal.resolve(date: CalendarDate, at: Text, zone: Zone, overlap: LocalOverlap, gap: LocalGap) -> Time"
+        );
+
+        let resolve = source
+            .find("temporal.resolve")
+            .expect("temporal call should exist")
+            + "temporal.".len();
+        let (line, character) = offset_to_line_character(&source, resolve);
+        let rename = request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 6, "method": "textDocument/prepareRename",
+                "params": {
+                    "textDocument": { "uri": uri },
+                    "position": { "line": line, "character": character }
+                }
+            }),
+        );
+        assert_eq!(rename["result"], Value::Null);
+    }
+
+    #[test]
+    fn presents_complete_callable_outcomes_on_declarations_references_and_signatures() {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("CLI crate should be inside the repository");
+        let fixture =
+            repository.join("tests/compile/pass/111_transitive_internal_suspension.jadpo");
+        let source = std::fs::read_to_string(&fixture).expect("fixture should be readable");
+        let uri = path_to_uri(&fixture);
+        let mut server = Server::default();
+        request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": { "rootUri": uri }
+            }),
+        );
+
+        let cases = [
+            (
+                source.find("summarize").expect("function declaration"),
+                [
+                    "function summarize(customer: Customer) -> Customer",
+                    "**Failures**\n\nnone",
+                    "Pure and non-suspending",
+                ],
+            ),
+            (
+                source.find("load_summary").expect("action declaration"),
+                [
+                    "action load_summary(id: Customer.id) -> Customer",
+                    "`CustomerNotFound` · NotFound",
+                    "May suspend internally",
+                ],
+            ),
+            (
+                source
+                    .rfind("load_customer")
+                    .expect("action call reference"),
+                [
+                    "action load_customer(id: Customer.id) -> Customer",
+                    "`CustomerNotFound` · NotFound",
+                    "Propagated by `attempt`",
+                ],
+            ),
+        ];
+        for (byte, required) in cases {
+            let (line, character) = offset_to_line_character(&source, byte);
+            let hover = request(
+                &mut server,
+                json!({
+                    "jsonrpc": "2.0", "id": byte, "method": "textDocument/hover",
+                    "params": {
+                        "textDocument": { "uri": uri },
+                        "position": { "line": line, "character": character }
+                    }
+                }),
+            );
+            let markdown = hover["result"]["contents"]["value"]
+                .as_str()
+                .expect("callable hover should contain markdown");
+            for expected in required {
+                assert!(
+                    markdown.contains(expected),
+                    "missing `{expected}` in {markdown}"
+                );
+            }
+            assert!(!markdown.contains("Promise"));
+            assert!(!markdown.contains("Result<"));
+        }
+
+        let call = source.rfind("load_customer(").expect("action call") + "load_customer(".len();
+        let (line, character) = offset_to_line_character(&source, call);
+        let help = request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 5, "method": "textDocument/signatureHelp",
+                "params": {
+                    "textDocument": { "uri": uri },
+                    "position": { "line": line, "character": character }
+                }
+            }),
+        );
+        let documentation = help["result"]["signatures"][0]["documentation"]["value"]
+            .as_str()
+            .expect("signature help should share callable outcome documentation");
+        assert!(documentation.contains("`CustomerNotFound` · NotFound"));
+        assert!(documentation.contains("May suspend internally"));
+    }
+
+    #[test]
+    fn presents_the_route_contract_for_an_inline_action() {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("CLI crate should be inside the repository");
+        let fixture = repository.join("tests/compile/pass/66_inline_action_failure_surface.jadpo");
+        let source = std::fs::read_to_string(&fixture).expect("fixture should be readable");
+        let byte = source.find("action:").expect("inline action should exist");
+        let (line, character) = offset_to_line_character(&source, byte);
+        let uri = path_to_uri(&fixture);
+        let mut server = Server::default();
+        request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": { "rootUri": uri }
+            }),
+        );
+        let hover = request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 2, "method": "textDocument/hover",
+                "params": {
+                    "textDocument": { "uri": uri },
+                    "position": { "line": line, "character": character }
+                }
+            }),
+        );
+        let markdown = hover["result"]["contents"]["value"]
+            .as_str()
+            .expect("inline action hover should contain markdown");
+        assert!(markdown.contains("action POST /result inline -> Result"));
+        assert!(markdown.contains("`Refused` · Rejected — Request refused."));
+        assert!(markdown.contains("Does not suspend internally"));
+        assert!(!markdown.contains("Promise"));
+        assert!(!markdown.contains("Result<"));
+    }
+
+    #[test]
+    fn presents_handled_mapped_and_propagated_outcomes_at_call_sites() {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("CLI crate should be inside the repository");
+        let fixture = repository
+            .join("tests/compile/pass/113_outcome_match_recovery_mapping_propagation.jadpo");
+        let source = std::fs::read_to_string(&fixture).expect("fixture should be readable");
+        let uri = path_to_uri(&fixture);
+        let mut server = Server::default();
+        request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": { "rootUri": uri }
+            }),
+        );
+
+        let calls = source
+            .match_indices("match lookup")
+            .map(|(byte, _)| byte + "match ".len())
+            .collect::<Vec<_>>();
+        assert_eq!(calls.len(), 3);
+        let expected = [
+            "`LookupMissing` — handled locally",
+            "`LookupMissing` — mapped to `LookupRejected`",
+            "`LookupMissing` — propagated",
+        ];
+        for (byte, expected) in calls.into_iter().zip(expected) {
+            let (line, character) = offset_to_line_character(&source, byte);
+            let hover = request(
+                &mut server,
+                json!({
+                    "jsonrpc": "2.0", "id": byte, "method": "textDocument/hover",
+                    "params": {
+                        "textDocument": { "uri": uri },
+                        "position": { "line": line, "character": character }
+                    }
+                }),
+            );
+            let markdown = hover["result"]["contents"]["value"]
+                .as_str()
+                .expect("call-site hover should contain markdown");
+            assert!(markdown.contains("**Call-site outcome**"));
+            assert!(
+                markdown.contains(expected),
+                "missing `{expected}` in {markdown}"
+            );
+        }
+
+        let arm = source
+            .find("failure LookupMissing =>")
+            .expect("failure outcome arm should exist")
+            + "failure ".len();
+        let (line, character) = offset_to_line_character(&source, arm);
+        let definition = request(
+            &mut server,
+            json!({
+                "jsonrpc": "2.0", "id": 99, "method": "textDocument/definition",
+                "params": {
+                    "textDocument": { "uri": uri },
+                    "position": { "line": line, "character": character }
+                }
+            }),
+        );
+        let declaration = source
+            .find("failure LookupMissing {")
+            .expect("failure declaration should exist")
+            + "failure ".len();
+        let (declaration_line, declaration_character) =
+            offset_to_line_character(&source, declaration);
+        assert_eq!(definition["result"]["uri"], path_to_uri(&fixture));
+        assert_eq!(
+            definition["result"]["range"]["start"],
+            json!({ "line": declaration_line, "character": declaration_character })
         );
     }
 

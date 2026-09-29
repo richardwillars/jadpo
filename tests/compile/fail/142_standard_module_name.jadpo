@@ -1,0 +1,3 @@
+module temporal.jobs
+
+public type JobId = Uuid {}

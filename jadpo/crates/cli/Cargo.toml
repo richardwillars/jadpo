@@ -13,6 +13,7 @@ name = "jadpo"
 path = "src/main.rs"
 
 [dependencies]
+ctrlc = "3"
 jadpo-core = { path = "../core" }
 jadpo-diagnostics = { path = "../diagnostics" }
 jadpo-semantic = { path = "../semantic" }

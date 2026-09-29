@@ -1,0 +1,10 @@
+value ClockReading {
+    value: Instant
+}
+
+action move_production_clock() -> ClockReading {
+    advance clock by Duration("PT5M")
+    return ClockReading {
+        value: clock.now
+    }
+}

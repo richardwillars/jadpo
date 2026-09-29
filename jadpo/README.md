@@ -57,6 +57,29 @@ narrowing, arithmetic/ordering/Boolean operators with fixed precedence, and
 authored `test`/`assert` blocks. Generated boundaries validate tagged payloads
 and publish discriminated OpenAPI unions.
 
+The DATA-007/TX-001 foundation adds first-class identity-bearing entity
+dossiers with optional authority persistence, compiler-owned `.Ref` types,
+reference/value receivers, entity-owned functions/actions, and named read-only
+queries with explicit freshness. The checker enforces mutation ownership,
+persistence capability, project roles, value-receiver guards, explicit
+multi-owner consistency, and same-domain atomicity. Builds emit
+`audit/entities.json` and `audit/transactions.json`. Generated SQLite and
+PostgreSQL clients join nested actions to the enclosing transaction with
+compiler-owned savepoints; entities declaring derived representations also
+record per-entity revisioned authority changes in the same local transaction.
+Physical derived-store delivery and durable-workflow execution are intentionally
+fail-closed until their adapter and operational contracts are decided.
+
+AUTH-P1a adds one project-wide `application` authentication default and one
+closed `principal` declaration with required user and service variants.
+Immediate and positive bounded revocation contracts are checked and exposed in
+the semantic manifest. AUTH-P1b adds named strategies, reserved cookie or
+authorization-header credential slots, and signed, opaque, API-key, or JWT
+validators linked to the closed principal variants. AUTH-P1c adds explicit
+claim mappings and authoritative user/service resolution with initial uniqueness,
+active-state, nominal-type, and completeness checks. Principal construction is
+not generated yet, and protected routes continue to fail closed.
+
 ```text
 cargo run -p jadpo-cli -- new /tmp/example_application
 cargo run -p jadpo-cli -- check ../examples/jadpo-seed
@@ -69,6 +92,8 @@ cargo run -p jadpo-cli -- inspect ../examples/jadpo-seed
 cargo run -p jadpo-cli -- artifacts ../examples/jadpo-seed
 cargo run -p jadpo-cli -- build ../examples/jadpo-seed
 cargo run -p jadpo-cli -- test ../tests/compile/pass/58_authored_tests.jadpo
+cargo run -p jadpo-cli -- config check
+cargo run -p jadpo-cli -- config set mailer_api_key
 cargo run -p jadpo-cli -- fmt ../examples/jadpo-seed --check
 cargo run -p jadpo-cli -- lsp
 cargo run -p jadpo-cli -- schema init ../examples/persistence-seed
@@ -105,7 +130,11 @@ emit their JSON contracts directly.
   module headers, selective imports of public
   declarations, and an acyclic module graph; legacy header-free projects keep
   the original ambient namespace.
-  `--diagnostic-format=json` emits one version-1 machine-readable report with
+- `config check` reports only whether declared local values are set, defaulted,
+  missing, or invalid. `config set <field>` prompts in the terminal (hidden for
+  secrets), validates the value, and atomically updates `.env.local`; it never
+  accepts the value as an argument.
+  `--diagnostic-format=json` emits one version-2 machine-readable report with
   the check status, summary counts, and ordered diagnostics. Each diagnostic
   includes severity, stable code, message, nullable source/byte range, and
   notes. Human-readable output remains the default and renders available source
@@ -131,16 +160,20 @@ emit their JSON contracts directly.
   the final newline. `--check` reports drift without writing files.
 - `lsp` runs the compiler-backed language server over standard input/output.
   It provides live unsaved diagnostics, symbols, definitions, references,
-  inferred-type hover, contextual completion, signature help, semantic tokens,
-  conservative rename, and canonical formatting to VS Code or any standard LSP
-  client. Compiler byte ranges are converted to UTF-16 editor positions.
+  inferred-type and callable-outcome hover, outcome-aware callable signature
+  help, contextual completion, semantic tokens, conservative rename, and
+  canonical formatting to VS Code or any standard LSP client. Callable outcomes
+  show source-level success, failures, and completion semantics without target
+  `Promise` or `Result` wrappers. Outcome-match call sites show each handled,
+  mapped, or propagated failure, and inline actions show their route-derived
+  contract. Compiler byte ranges are converted to UTF-16 editor positions.
 - `watch` performs an immediate checked build, then watches authored `.jadpo`
   files and `schema.identities.json`. Polling snapshots coalesce rapid saves
   after a short quiet window and ignore `build/` plus compiler staging/backup
   directories. Every valid revision is promoted through the same build path;
   invalid revisions retain the last complete output and are reported as stale.
   Human lifecycle output is the default. `--diagnostic-format=json` emits
-  version-1 `checking`, `build_succeeded`, `build_failed`, and `watch_failed`
+  version-2 `checking`, `build_succeeded`, `build_failed`, and `watch_failed`
   events with monotonic sequence and revision numbers.
 - `dev` adds generated Bun execution to the same loop. It reads `PORT` (default
   `3000`), starts `bun --no-install`, waits up to three seconds for HTTP 200 from
@@ -150,8 +183,9 @@ emit their JSON contracts directly.
   redirected to standard error in JSON mode so standard output remains a pure
   lifecycle stream. Generated runtime faults are compact JSON diagnostics and
   omit target stacks unless `JADPO_DEBUG_TARGET_STACKS=1` is set. Startup
-  rollback to the previous generated revision and a portable structured
-  shutdown event remain DX0.5 work.
+  rollback preserves and restarts the last-known-good generated revision when a
+  replacement fails readiness. Portable interruption stops and waits for the
+  child runtime before emitting a structured `shutdown` event.
 - `schema init` writes a canonical checked-in `schema.identities.json` for
   persistent entities, fields, constraints, and indexes. It refuses to
   overwrite an existing registry. `schema check` and ordinary compiler commands
@@ -208,6 +242,7 @@ PORT=3000 bun --no-install ../examples/jadpo-seed/build/target/app.ts
 cd ..
 bun --no-install test tests/runtime/jadpo-seed.test.ts
 bun --no-install test tests/runtime/startup-failure.test.ts
+bun --no-install test tests/runtime/outcome-sequencing.test.ts
 bun --no-install test tests/runtime/persistence-seed.test.ts
 DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres \
   bun --no-install test tests/runtime/persistence-postgres.test.ts

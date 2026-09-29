@@ -47,7 +47,7 @@ Diagnostic codes in these fixtures are part of the compiler-facing contract.
 Renaming one requires updating the roadmap, relevant specification, and all
 affected fixture expectations together.
 
-The current 113 pairs comprise the original ten type/failure cases plus
+The current 180 pairs comprise the original ten type/failure cases plus
 coverage for optional omission, nullable widening, implicit narrowing,
 semantic-to-primitive unwrapping, incomplete records, invariant collections,
 transitive failure propagation, function/action separation, missing failure
@@ -81,6 +81,15 @@ scalars and nullable values, `some(value)` narrowing, fixed operator
 precedence, and authored `test`/`assert` blocks. Their failure cases cover
 invalid payload construction and patterns, incomplete matches, incompatible
 operators, and non-Boolean assertions.
+
+Fixtures 125–159 extend the contract with typed configuration and secret flow,
+the closed authentication principal/strategy/resolution graph and boundary
+reachability, canonical named arguments, Temporal/locales/generated lifecycle
+fields, language-wide casing and standard namespace ownership, fixed-clock and
+typed-config test fixtures, scoped direct/membership policy, central effect
+inheritance, field/output/relationship proofs, application invoke policy, and
+derived restricted-field disclosure rejection. Recursive multi-file fixtures
+remain one pair each.
 
 Fixtures 59–70 establish the executable P10.6 subset: explicit `kind` members,
 flat failure context, exact `fails` sets, mandatory `attempt` at fallible call
@@ -130,14 +139,67 @@ Fixtures 82–85 complete semantic-name trigger coverage: duplicate declaration,
 unknown reference, wrong declaration kind, unknown callable, and a resolved but
 non-callable failure name.
 
-Fixture 108 establishes the unified authored data model: object shapes and
+Fixture 108 records the executable unified-data-model prototype: object shapes and
 their nested object/list fields use `type`, standard `Email` is available from
 the prelude, persistence is declared separately with `persist`, and callable
 failures appear before the return arrow. Its negative companion requires an
 unknown persisted field to produce one contextual `SEM_UNKNOWN_NAME` error.
+DATA-007 now accepts the first-class entity/query/transaction model, so this
+fixture remains comparison and compatibility evidence rather than final
+language authority.
 Fixture 109 proves that the prelude-owned `Url` and `IpAddress` constructors
 reject invalid constants at compile time.
+Fixture 110 begins P10.7 with the complete permitted pure-call matrix:
+function-to-function, action-to-function, and action-to-action calls, including
+transitive chains and a named action route boundary.
+Fixture 111 proves that target suspension is inferred from persistence and
+propagated through action calls while a pure helper remains synchronous and
+free of target-level `Promise` or persistence parameters.
+Fixture 112 rejects authored `async` and `await` with explicit effect diagnostics
+while recovering around the ordinary action declarations and calls.
+Fixture 113 makes exhaustive outcome matching executable for local recovery,
+explicit failure mapping, and exact propagation without exposing a source-level
+`Result` value. Fixture 114 rejects missing or duplicate success arms, missing,
+duplicate, unknown, and wildcard failure arms, infallible or non-call subjects,
+and a success arm that does not produce the matched successful value.
+Fixture 115 gives an unrecognised outcome arm its own authored pattern
+diagnostic and exact conformance evidence.
+Fixtures 116–123 cover the bounded DATA-007/TX-001/CONSISTENCY-001 negative
+surface: mutation ownership and persistence capability, read-only queries,
+mandatory freshness, explicit multi-owner consistency, same-domain atomicity,
+query-to-action rejection, raw-query placement, and guarded value-receiver
+mutation. Fixtures 120–121 on the passing side exercise a persistent entity
+dossier with derived representation metadata, a named authoritative query,
+qualified/dot operations, and an explicitly atomic same-domain composition.
+The positive and negative nested role fixtures then prove that `entities/`
+accepts one authoritative entity dossier and rejects unrelated top-level
+behaviour with `DATA_PROJECT_ROLE_INVALID`.
+Fixture 123 proves that a top-level named query can compose authoritative reads
+from two persistent entities into a complete identity-free value while keeping
+the exact failure and freshness contracts visible.
+
+Fixture 126 on the passing side records the fresh-authority route requirement.
+Fixtures 126–127 on the failing side and fixture 127 on the passing side begin
+AUTH-P1: one application owns an immediate or positive bounded revocation
+default, one closed principal supplies exactly one user and one service variant,
+and the graph rejects duplicate project declarations, missing or duplicate
+variants, and zero, missing, or inapplicable revocation delays.
+Fixture 128 adds the AUTH-P1b credential topology: each named strategy owns one
+reserved cookie or bearer slot and one or more named validators with explicit
+signed, opaque, API-key, or JWT modes and closed user/service principal links.
+Its failing companion rejects duplicate strategies, slots, and validators,
+empty validator sets, unknown modes or principal variants, and bearer
+credentials configured in URL query or path locations.
+Fixture 129 begins AUTH-P2 by checking authoritative principal resolution:
+credential claims cannot populate application-owned identity fields, lookup
+authority must be unique, active-state predicates must be Boolean, mapped
+fields must be nominally compatible, and every declared resolution constructs
+a complete principal variant.
 
 Expectation files retain established compiler codes as migration aliases. CLI
 and LSP diagnostics expose the canonical lower-dotted `ruleId` alongside those
 aliases through diagnostic schema version 2.
+
+The first-party authentication secret-sink fixture rejects literal signing keys;
+the generated first-party example and focused core test cover configured adapters
+and the protected-route generation gate.

@@ -54,11 +54,17 @@ pub struct ImportDeclaration {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Declaration {
+    Application(ApplicationDeclaration),
+    Locales(LocalesDeclaration),
+    AuthenticationStrategy(AuthenticationStrategyDeclaration),
+    Principal(PrincipalDeclaration),
+    Config(ConfigDeclaration),
     Type(TypeDeclaration),
     Enum(EnumDeclaration),
     Record(RecordDeclaration),
     Failure(FailureDeclaration),
     Callable(CallableDeclaration),
+    Fixture(FixtureDeclaration),
     Test(TestDeclaration),
     Route(RouteDeclaration),
 }
@@ -66,15 +72,182 @@ pub enum Declaration {
 impl Declaration {
     pub const fn range(&self) -> TextRange {
         match self {
+            Self::Application(declaration) => declaration.range,
+            Self::Locales(declaration) => declaration.range,
+            Self::AuthenticationStrategy(declaration) => declaration.range,
+            Self::Principal(declaration) => declaration.range,
+            Self::Config(declaration) => declaration.range,
             Self::Type(declaration) => declaration.range,
             Self::Enum(declaration) => declaration.range,
             Self::Record(declaration) => declaration.range,
             Self::Failure(declaration) => declaration.range,
             Self::Callable(declaration) => declaration.range,
+            Self::Fixture(declaration) => declaration.range,
             Self::Test(declaration) => declaration.range,
             Self::Route(declaration) => declaration.range,
         }
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalesDeclaration {
+    pub default: Literal,
+    pub supported: Vec<Literal>,
+    pub unsupported: LocaleUnsupported,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocaleUnsupported {
+    FallbackToDefault,
+    Reject,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthenticationStrategyDeclaration {
+    pub name: Name,
+    pub transport: AuthenticationTransport,
+    pub validators: Vec<AuthenticationValidatorDeclaration>,
+    pub claims: Vec<AuthenticationMappingDeclaration>,
+    pub resolutions: Vec<AuthenticationResolutionDeclaration>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthenticationValidatorDeclaration {
+    pub name: Name,
+    pub mode: Name,
+    pub principal: Name,
+    pub settings: Vec<FieldInitialiser>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthenticationMappingDeclaration {
+    pub source: Name,
+    pub target: NameExpression,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthenticationResolutionDeclaration {
+    pub principal: Name,
+    pub authority: NameExpression,
+    pub active: Expression,
+    pub mappings: Vec<AuthenticationMappingDeclaration>,
+    pub inactive: Name,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthenticationTransport {
+    pub location: CredentialLocation,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CredentialLocation {
+    Cookie(Literal),
+    Bearer(Name),
+}
+
+impl CredentialLocation {
+    pub const fn range(&self) -> TextRange {
+        match self {
+            Self::Cookie(literal) => literal.range,
+            Self::Bearer(name) => name.range,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ApplicationDeclaration {
+    pub name: Name,
+    pub authentication: ApplicationAuthentication,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ApplicationAuthentication {
+    pub principal: TypeReference,
+    pub revocation: RevocationDeclaration,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RevocationDeclaration {
+    pub mode: RevocationMode,
+    pub maximum_delay: Option<ConfigDefault>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RevocationMode {
+    Immediate,
+    Bounded,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PrincipalDeclaration {
+    pub name: Name,
+    pub variants: Vec<PrincipalVariantDeclaration>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PrincipalVariantKind {
+    User,
+    Service,
+}
+
+impl PrincipalVariantKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Service => "service",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PrincipalVariantDeclaration {
+    pub kind: PrincipalVariantKind,
+    pub name: Name,
+    pub fields: Vec<FieldDeclaration>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConfigDeclaration {
+    pub name: Name,
+    pub fields: Vec<ConfigFieldDeclaration>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConfigFieldDeclaration {
+    pub name: Name,
+    pub field_type: TypeReference,
+    pub binding: Option<Literal>,
+    pub secret: bool,
+    pub default: Option<ConfigDefault>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConfigDefaultKind {
+    String,
+    Integer,
+    Decimal,
+    Boolean,
+    Duration,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConfigDefault {
+    pub kind: ConfigDefaultKind,
+    pub text: String,
+    pub range: TextRange,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -120,7 +293,61 @@ pub struct RecordDeclaration {
     pub fields: Vec<FieldDeclaration>,
     pub inverses: Vec<InverseDeclaration>,
     pub persistence_constraints: Vec<PersistenceConstraintDeclaration>,
+    pub dossier: Option<EntityDossier>,
+    pub membership: Option<MembershipDeclaration>,
+    pub policy: Option<PolicyDeclaration>,
     pub range: TextRange,
+}
+
+impl RecordDeclaration {
+    pub fn is_persistent_entity(&self) -> bool {
+        self.kind == RecordKind::Entity
+            && self
+                .dossier
+                .as_ref()
+                .map_or(true, |dossier| dossier.persistence.is_some())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EntityDossier {
+    pub identity: Name,
+    pub persistence: Option<EntityPersistence>,
+    pub representations: Vec<DerivedRepresentation>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EntityPersistence {
+    pub store: Name,
+    pub role: PersistenceRole,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PersistenceRole {
+    Authority,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DerivedRepresentation {
+    pub kind: DerivedRepresentationKind,
+    pub name: Name,
+    pub store: Name,
+    pub from: Name,
+    pub strategy: Option<Name>,
+    pub delivery: DeliveryMode,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DerivedRepresentationKind {
+    Cache,
+    Projection,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DeliveryMode {
+    Durable,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -157,9 +384,76 @@ pub struct FieldDeclaration {
     pub field_type: TypeReference,
     pub constraints: Vec<Constraint>,
     pub persistence: Vec<PersistenceModifier>,
+    pub generated: Option<GeneratedFieldRole>,
     pub reference: Option<ReferenceDeclaration>,
+    pub role: Option<RoleBinding>,
+    pub immutable: bool,
+    pub policy: Option<PolicyDeclaration>,
     pub optional: bool,
     pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RoleBinding {
+    pub role: NameExpression,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MembershipDeclaration {
+    pub scope: Name,
+    pub member: Name,
+    pub role: Name,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PolicyDeclaration {
+    pub scope: Option<Name>,
+    pub rules: Vec<PolicyRule>,
+    pub operations: Vec<PolicyOperation>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PolicyOperation {
+    pub name: Name,
+    pub rules: Vec<PolicyRule>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PolicyRule {
+    pub subject: NameExpression,
+    pub effects: Vec<PolicyEffect>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum PolicyEffect {
+    Create,
+    Read,
+    Update,
+    Delete,
+    Invoke,
+}
+
+impl PolicyEffect {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Create => "create",
+            Self::Read => "read",
+            Self::Update => "update",
+            Self::Delete => "delete",
+            Self::Invoke => "invoke",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GeneratedFieldRole {
+    Create,
+    CreateOrChange,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -224,17 +518,50 @@ pub struct FailureDeclaration {
 pub enum CallableKind {
     Function,
     Action,
+    Query,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReceiverKind {
+    Reference,
+    Value,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConsistencyDisposition {
+    Atomic,
+    DurableWorkflow,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QueryFreshness {
+    Authoritative,
+    ReadYourWrites,
+    BoundedStaleness,
+    Eventual,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MutationGuard {
+    Reload,
+    Revision,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CallableDeclaration {
     pub kind: CallableKind,
     pub name: Name,
+    pub owner: Option<Name>,
+    pub receiver: Option<ReceiverKind>,
+    pub consistency: Option<ConsistencyDisposition>,
+    pub freshness: Option<QueryFreshness>,
+    pub mutation_guard: Option<MutationGuard>,
     pub parameters: Vec<Parameter>,
     pub return_type: TypeReference,
     pub return_annotation_range: TextRange,
     pub failures: Vec<Name>,
     pub failures_range: Option<TextRange>,
+    pub policy: Option<PolicyDeclaration>,
     pub body: Block,
     pub range: TextRange,
 }
@@ -242,7 +569,24 @@ pub struct CallableDeclaration {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TestDeclaration {
     pub name: Literal,
+    pub fixture: Option<Name>,
     pub body: Block,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FixtureDeclaration {
+    pub name: Name,
+    pub clock: Option<Expression>,
+    pub configuration: Option<Vec<FixtureConfigValue>>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FixtureConfigValue {
+    pub name: Name,
+    pub value: Expression,
+    pub secret: bool,
     pub range: TextRange,
 }
 
@@ -268,6 +612,7 @@ pub enum Statement {
     If(IfStatement),
     Match(MatchStatement),
     Assert(AssertStatement),
+    AdvanceClock(AdvanceClockStatement),
     Unsupported(UnsupportedStatement),
 }
 
@@ -281,6 +626,7 @@ impl Statement {
             Self::If(statement) => statement.range,
             Self::Match(statement) => statement.range,
             Self::Assert(statement) => statement.range,
+            Self::AdvanceClock(statement) => statement.range,
             Self::Unsupported(statement) => statement.range,
         }
     }
@@ -296,6 +642,12 @@ pub struct MatchStatement {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AssertStatement {
     pub condition: Expression,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdvanceClockStatement {
+    pub duration: Expression,
     pub range: TextRange,
 }
 
@@ -388,12 +740,15 @@ pub enum Expression {
     Literal(Literal),
     Name(NameExpression),
     Invocation(InvocationExpression),
+    TestCall(TestCallExpression),
+    Object(ObjectExpression),
     Construction(ConstructionExpression),
     Create(CreateExpression),
     Query(QueryExpression),
     Update(UpdateExpression),
     Delete(DeleteExpression),
     Attempt(AttemptExpression),
+    OutcomeMatch(OutcomeMatchExpression),
     Unary(UnaryExpression),
     Binary(BinaryExpression),
     Grouped(GroupedExpression),
@@ -406,12 +761,15 @@ impl Expression {
             Self::Literal(expression) => expression.range,
             Self::Name(expression) => expression.range,
             Self::Invocation(expression) => expression.range,
+            Self::TestCall(expression) => expression.range,
+            Self::Object(expression) => expression.range,
             Self::Construction(expression) => expression.range,
             Self::Create(expression) => expression.range,
             Self::Query(expression) => expression.range,
             Self::Update(expression) => expression.range,
             Self::Delete(expression) => expression.range,
             Self::Attempt(expression) => expression.range,
+            Self::OutcomeMatch(expression) => expression.range,
             Self::Unary(expression) => expression.range,
             Self::Binary(expression) => expression.range,
             Self::Grouped(expression) => expression.range,
@@ -421,9 +779,60 @@ impl Expression {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ObjectExpression {
+    pub fields: Vec<FieldInitialiser>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AttemptExpression {
     pub value: Box<Expression>,
     pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OutcomeMatchExpression {
+    pub subject: Box<Expression>,
+    pub arms: Vec<OutcomeMatchArm>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OutcomeMatchArm {
+    pub pattern: OutcomeMatchPattern,
+    pub body: OutcomeMatchArmBody,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum OutcomeMatchPattern {
+    Success(Name),
+    Failure(Name),
+}
+
+impl OutcomeMatchPattern {
+    pub const fn range(&self) -> TextRange {
+        match self {
+            Self::Success(binding) | Self::Failure(binding) => binding.range,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum OutcomeMatchArmBody {
+    Value(Expression),
+    Reject(RejectStatement),
+    Propagate(TextRange),
+}
+
+impl OutcomeMatchArmBody {
+    pub const fn range(&self) -> TextRange {
+        match self {
+            Self::Value(expression) => expression.range(),
+            Self::Reject(statement) => statement.range,
+            Self::Propagate(range) => *range,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -556,6 +965,13 @@ pub struct NameExpression {
 pub struct InvocationExpression {
     pub callee: NameExpression,
     pub arguments: Vec<Expression>,
+    pub named_arguments: Vec<FieldInitialiser>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TestCallExpression {
+    pub invocation: InvocationExpression,
     pub range: TextRange,
 }
 
@@ -632,6 +1048,7 @@ pub struct RouteDeclaration {
     pub path: String,
     pub path_range: TextRange,
     pub public: bool,
+    pub fresh_authority: bool,
     pub path_fields: Vec<FieldDeclaration>,
     pub input: Option<TypeReference>,
     pub output: Option<TypeReference>,

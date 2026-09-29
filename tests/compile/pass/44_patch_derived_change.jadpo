@@ -1,7 +1,7 @@
 entity Todo {
     id: Uuid identity
-    due_at: DateTime?
-    reminder_sent_at: DateTime?
+    due_at: Instant?
+    reminder_sent_at: Instant?
 }
 
 input PatchTodo {

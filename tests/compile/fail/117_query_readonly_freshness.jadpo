@@ -1,0 +1,18 @@
+entity Customer {
+    id: Uuid
+    identity: id
+
+    persistence {
+        store: primary
+        role: authority
+    }
+
+    query illegal_write(id: Customer.id)
+        freshness: authoritative
+        -> Customer
+    {
+        return attempt create Customer {
+            id: id
+        }
+    }
+}

@@ -52,8 +52,10 @@ pub enum TokenKind {
     Failure,
     Function,
     Action,
+    Fixture,
     Test,
     Route,
+    Config,
     Module,
     Import,
     Persist,
@@ -72,10 +74,16 @@ pub enum TokenKind {
     Return,
     Reject,
     Attempt,
+    Call,
+    Async,
+    Await,
     If,
     Else,
     Match,
+    Success,
+    Propagate,
     Assert,
+    Advance,
     And,
     Or,
     Not,
@@ -127,6 +135,8 @@ pub enum TokenKind {
     RightBrace,
     LeftParen,
     RightParen,
+    LeftBracket,
+    RightBracket,
     LeftAngle,
     RightAngle,
     Colon,
@@ -213,7 +223,8 @@ impl<'source> Lexer<'source> {
                 }
                 '-' if self
                     .next_character()
-                    .is_some_and(|next| next.is_ascii_digit()) =>
+                    .is_some_and(|next| next.is_ascii_digit())
+                    && !self.subtraction_position() =>
                 {
                     self.lex_number(start)
                 }
@@ -227,6 +238,8 @@ impl<'source> Lexer<'source> {
                 '}' => self.single(TokenKind::RightBrace, start),
                 '(' => self.single(TokenKind::LeftParen, start),
                 ')' => self.single(TokenKind::RightParen, start),
+                '[' => self.single(TokenKind::LeftBracket, start),
+                ']' => self.single(TokenKind::RightBracket, start),
                 '<' if self.remaining().starts_with("<=") => {
                     self.offset += 2;
                     self.push(TokenKind::LessEqual, start);
@@ -365,6 +378,39 @@ impl<'source> Lexer<'source> {
         self.push(kind, start);
     }
 
+    fn subtraction_position(&self) -> bool {
+        let mut previous = self
+            .tokens
+            .iter()
+            .rev()
+            .filter(|token| !token.kind.is_trivia());
+        let Some(token) = previous.next() else {
+            return false;
+        };
+        // Retain signed literal tokens at value starts (including declaration
+        // settings), but separate subtraction after an expression operand.
+        // Ignore trivia so `value-2`, `value -2` and `value - 2` agree.
+        matches!(
+            token.kind,
+            TokenKind::Identifier
+                | TokenKind::Config
+                | TokenKind::Input
+                | TokenKind::Output
+                | TokenKind::Value
+                | TokenKind::Path
+                | TokenKind::IntegerLiteral
+                | TokenKind::DecimalLiteral
+                | TokenKind::StringLiteral
+                | TokenKind::BooleanLiteral
+                | TokenKind::NoneLiteral
+                | TokenKind::RightParen
+                | TokenKind::RightBracket
+                | TokenKind::RightBrace
+        ) || previous
+            .next()
+            .is_some_and(|token| token.kind == TokenKind::Dot)
+    }
+
     fn lex_identifier(&mut self, start: usize) {
         self.advance_while(is_identifier_continue);
         let text = &self.source[start..self.offset];
@@ -448,8 +494,10 @@ fn keyword_kind(text: &str) -> TokenKind {
         "failure" => TokenKind::Failure,
         "function" => TokenKind::Function,
         "action" => TokenKind::Action,
+        "fixture" => TokenKind::Fixture,
         "test" => TokenKind::Test,
         "route" => TokenKind::Route,
+        "config" => TokenKind::Config,
         "module" => TokenKind::Module,
         "import" => TokenKind::Import,
         "persist" => TokenKind::Persist,
@@ -468,10 +516,16 @@ fn keyword_kind(text: &str) -> TokenKind {
         "return" => TokenKind::Return,
         "reject" => TokenKind::Reject,
         "attempt" => TokenKind::Attempt,
+        "call" => TokenKind::Call,
+        "async" => TokenKind::Async,
+        "await" => TokenKind::Await,
         "if" => TokenKind::If,
         "else" => TokenKind::Else,
         "match" => TokenKind::Match,
+        "success" => TokenKind::Success,
+        "propagate" => TokenKind::Propagate,
         "assert" => TokenKind::Assert,
+        "advance" => TokenKind::Advance,
         "and" => TokenKind::And,
         "or" => TokenKind::Or,
         "not" => TokenKind::Not,
@@ -569,7 +623,7 @@ mod tests {
         let mut paths = Vec::new();
         collect_sources(&root, &mut paths);
 
-        assert_eq!(paths.len(), 113);
+        assert_eq!(paths.len(), 180);
         for path in paths {
             let source = fs::read_to_string(&path).expect("fixture should be readable");
             let result = lex(&path, &source);
