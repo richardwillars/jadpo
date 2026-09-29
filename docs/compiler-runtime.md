@@ -70,6 +70,29 @@ This may be more elegant and commercially distinctive, but it is a later
 technical problem. The initial reason to switch is correctness, constrained
 evolution, and agent safety—not performance.
 
+### 3.3 Scheduled Wasm target experiment
+
+On 2026-09-29 the project owner scheduled
+[WASM-EXP1](implementation-roadmap.md#wasm-exp1--bounded-wasm-runtime-experiment)
+after authentication. The owner subsequently clarified the order: finish the
+agreed authentication scope, complete the comprehensive validation phase, then
+begin this experiment. It will compare one generated
+Jadpo slice on Bun and Wasm, using a local Wasm host and Cloudflare Workers.
+The experiment evaluates a compiler-owned runtime with explicit host
+capabilities, semantic parity, source-level errors, performance and packaging.
+It also compares `Jadpo -> generated Rust -> Wasm` with direct Wasm generation
+from the checked semantic model, using small equivalent probes before choosing
+the route for the full slice. Compiler complexity, runtime functionality,
+toolchain burden and actual Cloudflare compatibility determine the
+recommendation. Direct code generation may still use a Rust-built runtime;
+runtime implementation language and application lowering are separate choices.
+
+TypeScript/Bun remains the working target until a recorded decision changes
+it. Wasm does not itself supply domain validation, durable storage, distributed
+coordination or portable threading. Host adapters must preserve the accepted
+language guarantees or reject unsupported requirements. A replicated storage
+platform and a full backend migration are outside this bounded experiment.
+
 ## 4. Build outputs
 
 P8 and P9 establish one compiler-owned disposable output root:
@@ -135,10 +158,31 @@ Domain constraints should also become database `CHECK` constraints where
 possible. One rule should not be hand-copied into code, Zod, SQL, OpenAPI, docs,
 and tests.
 
+### 6.1 Callable execution and outcomes
+
+Authored functions stay synchronous and pure. Authored actions have no
+`async`, `await`, promise, or result-wrapper surface; the compiler derives
+internal suspension to a fixed point through the action call graph and emits
+target-level `async`/`await` only where required. Every ordinary call completes
+before the next authored statement runs.
+
+An exhaustive outcome match lowers to a compiler-owned call boundary. The
+successful value continues through the `success` arm. A caught declared
+`DomainFailure` dispatches on its semantic failure name to a compatible recovery
+value, a newly constructed mapped failure, or an exact rethrow for `propagate`.
+Unknown domain failures and non-domain exceptions are rethrown, so defects and
+impossible states cannot be mistaken for recoverable authored outcomes. The
+same lowering is wrapped in an internal asynchronous expression when the
+derived callee graph may suspend.
+
 ## 7. Database runtime
 
 Postgres is the opinionated initial default. Ordinary source uses declarative,
-typed queries and mutations. The runtime owns:
+typed named queries and entity-owned mutations under the accepted
+[entity/query contract](entity-query-model.md). Entity-centred and top-level
+cross-entity query declarations are read-only runtime operations. Only an
+entity's actions directly mutate that entity; top-level workflow actions compose
+those operations. The runtime owns:
 
 - parameterisation and safe SQL generation;
 - connection handling;
@@ -147,6 +191,44 @@ typed queries and mutations. The runtime owns:
 - constraint error translation;
 - migration execution;
 - observability and timeouts.
+
+An entity action invoked directly receives an independently failure-atomic
+database boundary. Reaching multiple entity mutation scopes does not silently
+widen that transaction: the enclosing action must explicitly declare atomic
+intent or a durable-workflow disposition. For an explicit atomic boundary,
+nested entity actions and named queries reuse one compatible transaction
+context and never commit independently; their success is provisional until the
+outer commit. Propagated failure rolls back the boundary; a nested failure
+recovered by the caller first rolls that action back to a compiler-owned
+savepoint. Policy, lifecycle, and invariant reads guarding a write use the same
+transaction and concurrency plan. The compiler rejects false atomicity across
+databases or external services unless every adapter proves a common
+prepare/commit and durable-recovery protocol. It emits the derived transaction
+domain, isolation, locking/conditional-write, savepoint, deadlock-ordering, and
+retry plan for audit.
+
+Every mutable fact has one authority. Declared caches, graph views, search
+indexes, and denormalised read models are compiler-managed derived
+representations rather than additional write targets for application source.
+The implemented local foundation records each projection obligation in the
+authority transaction with a unique change ID and monotonic per-entity
+revision. SQLite runtime evidence covers commit and nested-savepoint rollback.
+Physical workers are not yet generated: at-least-once adapter delivery,
+idempotent apply, lag/watermarks, retry, replay, rebuild, and reconciliation
+remain required future contracts and are reported as pending in the audit.
+
+Named queries declare authoritative, read-your-writes, bounded-staleness, or
+eventual freshness. The runtime may use a stronger source but not a weaker one;
+read-your-writes propagates the commit revision and waits, falls back to an
+equivalent authoritative plan, or returns a typed availability problem.
+Policy, ownership, lifecycle, and invariant checks default to authority; an
+eventual query declaration cannot weaken them. A derived plan must prove its
+revocation/freshness contract or revalidate candidate identities at authority.
+Work across independently authoritative stores or services uses a persisted
+durable workflow with idempotent steps, retry, compensation, reconciliation,
+and outcome uncertainty. It is not reported as a transaction. Prepared
+distributed atomicity is a separate future adapter capability, never an
+automatic fallback.
 
 Complex safe query constructs should be added based on real applications.
 Raw SQL, if eventually necessary, is a deliberate audited escape hatch.
@@ -380,3 +462,19 @@ The active sequence, evidence, and exit gates live in the
 
 If users or agents routinely inspect generated `.ts` files to understand or fix
 application behaviour, the source mapping and abstraction have failed.
+
+
+### First-party authentication runtime checkpoint
+
+The [AUTH-P4/P7 example](../examples/first-party-authentication/README.md) uses
+compiler-owned Web Crypto HMAC-SHA-256 and a generated session authority with no
+package dependency. Supported protected routes authenticate before decoding
+inputs, preserve the operation clock, and supply the principal to existing
+policy enforcement. Cookie writes require both configured-origin and
+session-bound CSRF checks, including writes reachable from GET routes.
+
+The narrow supported identity mapping and remaining service/JWT, PostgreSQL and
+assurance gates are recorded in the [authentication plan](authentication-plan.md).
+Authentication completion and the subsequent comprehensive validation phase
+precede the scheduled Wasm probes and provide working adapter behavior for a
+later target comparison.

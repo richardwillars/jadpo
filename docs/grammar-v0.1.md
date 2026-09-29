@@ -8,6 +8,22 @@ This grammar freezes the smallest coherent source subset needed to build the
 compiler front end. It intentionally excludes unresolved features rather than
 letting parser code decide their semantics.
 
+DATA-007, TX-001, CONSISTENCY-001, and WORKFLOW-001 now accept the [entity,
+query, transaction, and cross-store consistency model](entity-query-model.md).
+First-class `entity` dossiers are the accepted source model for identity-bearing
+concepts; `type ... = Object` describes identity-free values. Legacy `type` plus
+`persist` productions remain compatibility syntax, not the recommended model
+for new applications. The bounded dossier/query/consistency surface below is
+fixture-backed and executable; physical derived-store adapters and durable
+workflow execution remain outside this grammar's runtime claim.
+
+TIME-001 and TEST-001 accept the digest-pinned
+[time and testing contract](time-testing-plan.md). The implemented prelude uses
+`Instant`, `CalendarDate`, resolved zone-aware `Time`, fixed `Duration`, generated
+`Zone`, bounded `Locale`, and presentation-classified text. Section 14 lists
+these current names; the old `Date`/`DateTime` spellings are not alternatives for
+new source. Authored tests and fixtures are described with the compilation unit below.
+
 The semantic rules remain authoritative in the [semantic model](semantic-model.md),
 [type system](type-system.md), and [failure model](failure-model.md). This
 document controls spelling for the core compiler slice.
@@ -53,10 +69,14 @@ spans and comment trivia for diagnostics and future documentation tooling.
 
 ## 3. Naming diagnostics
 
-Naming shape is checked semantically rather than encoded into token kinds:
+Naming shape is checked semantically rather than encoded into token kinds. The
+accepted [naming and qualification contract](naming-and-qualification.md) is
+authoritative:
 
-- named types, records, failures, and standard kinds use `UpperCamelCase`;
-- fields, parameters, bindings, functions, and actions use `lower_snake_case`;
+- nominal/type-like declarations use `UpperCamelCase`;
+- fields, parameters, bindings, functions, actions, queries, jobs, capability
+  instances, and variants use `lower_snake_case`;
+- module segments and standard-library namespaces use `lower_snake_case`; and
 - language keywords are lowercase.
 
 The lexer emits one `identifier` token so a misspelt case can receive a targeted
@@ -76,15 +96,167 @@ source_file         = [ module_declaration ], { import_declaration },
                       { [ "public" ], declaration } ;
 
 declaration         = type_declaration
+                    | application_declaration
+                    | principal_declaration
+                    | config_declaration
+                    | entity_declaration
                     | persistence_declaration
                     | failure_declaration
                     | function_declaration
                     | action_declaration
-                    | route_declaration ;
+                    | query_declaration
+                    | route_declaration
+                    | fixture_declaration
+                    | test_declaration ;
 ```
 
-There is no `app` wrapper. The bounded module/import extension is specified in
-section 14.
+The `application` declaration owns project-wide capabilities; it is not a
+wrapper around the other declarations. The bounded module/import extension is
+specified in section 15.
+
+### 4.1 Application authentication and principal
+
+```ebnf
+application_declaration
+                    = "application", identifier, "{",
+                      application_authentication,
+                      "}" ;
+application_authentication
+                    = "authentication", "{",
+                      "principal", ":", type_expression,
+                      revocation_declaration,
+                      "}" ;
+revocation_declaration
+                    = "revocation", "{",
+                      "mode", ":", revocation_mode,
+                      [ "maximum_delay", ":", duration_literal ],
+                      "}" ;
+revocation_mode     = "immediate" | "bounded" ;
+duration_literal    = ( integer_literal | decimal_literal ),
+                      ( "ms" | "s" | "m" | "h" | "d" ) ;
+
+principal_declaration
+                    = "principal", identifier, "{",
+                      { principal_variant },
+                      "}" ;
+principal_variant   = ( "user" | "service" ), object_body ;
+```
+
+A project has at most one application and one principal declaration. The
+principal is closed over exactly one `user` and one `service` variant. Bounded
+revocation requires a positive `maximum_delay`; immediate revocation forbids
+one. Strategy selection and typed principal resolution are implemented. Fully
+configured first-party user strategies can generate protected routes; unsupported
+strategies and principal mappings remain fail-closed.
+
+```ebnf
+authentication_strategy = "authentication", identifier, "{",
+                          { authentication_item }, "}" ;
+authentication_item = transport | validators | claims | resolution ;
+transport           = "transport", "{",
+                      ( "cookie", ":", string_literal
+                      | "bearer", ":", "authorization_header" ), "}" ;
+validators          = "validators", "{", { validator }, "}" ;
+validator           = identifier, "{", "mode", ":", identifier,
+                      "principal", ":", ( "user" | "service" ),
+                      { validator_setting }, "}" ;
+validator_setting   = identifier, ":", expression ;
+claims              = "claims", "{", { authentication_mapping }, "}" ;
+authentication_mapping = identifier, "->", qualified_name ;
+resolution          = "resolution", ( "user" | "service" ), "{",
+                      "authority", ":", qualified_name,
+                      "active", ":", expression,
+                      "mappings", "{", { authentication_mapping }, "}",
+                      "inactive", ":", identifier, "}" ;
+```
+
+Each strategy has one transport and a nonempty validator set. First-party
+validator settings are `secret`, optional `previous_secret`, `audience`, and
+cookie `origin`. Keys must reference secret textual configuration; audience and
+origin must be non-secret text literals or configuration references. Duplicate
+or unsupported settings are errors. Signed credential lifetime uses the
+application's bounded revocation limit; opaque session lifetime is supplied at
+the trusted host issuance boundary. See the
+[first-party example](../examples/first-party-authentication/README.md) for the
+supported runtime subset and remaining gates.
+
+### 4.2 Bounded entity dossier and named query extension
+
+```ebnf
+entity_declaration  = "entity", identifier, "{",
+                      { entity_field | entity_dossier_item | entity_operation },
+                      "}" ;
+entity_field        = identifier, ":", type_expression ;
+entity_dossier_item = "identity", ":", identifier
+                    | persistence_capability
+                    | representation_declaration ;
+persistence_capability
+                    = "persistence", "{",
+                      "store", ":", identifier,
+                      "role", ":", "authority",
+                      { "unique", ":", identifier },
+                      "}" ;
+representation_declaration
+                    = ( "cache" | "projection" ), identifier, "{",
+                      "store", ":", identifier,
+                      "from", ":", identifier,
+                      [ "strategy", ":", identifier ],
+                      "delivery", ":", "durable",
+                      "}" ;
+entity_operation    = function_declaration | action_declaration
+                    | query_declaration ;
+query_declaration   = "query", identifier, parameters,
+                      "freshness", ":", freshness,
+                      [ fails_clause ], "->", type_expression, block ;
+freshness           = "authoritative" | "read_your_writes"
+                    | "bounded_staleness" | "eventual" ;
+```
+
+An entity operation may use `self: ref` or `self: value`; the compiler lowers
+these to `Entity.Ref` or the complete entity snapshot. A mutating value receiver
+also requires `guard: reload` or `guard: revision`. Actions may declare
+`consistency: atomic` or `consistency: durable_workflow`. Top-level named
+queries use the same `query_declaration` form. Entity-centred operations are
+indexed under the qualified name `Entity.operation`; dot calls are checked
+qualified calls and never trigger an implicit load or save.
+
+### Authored tests and fixtures
+
+```ebnf
+test_declaration    = "test", string_literal, [ "using", identifier ], block ;
+fixture_declaration = "fixture", identifier, "{", { fixture_setting }, "}" ;
+fixture_setting     = "clock", ":", "fixed", expression
+                    | "config", "{", { fixture_config_value }, "}" ;
+fixture_config_value = identifier, ":", expression
+                     | identifier, ":", "secret", "(", expression, ")" ;
+assert_statement    = "assert", expression ;
+advance_statement   = "advance", "clock", "by", expression ;
+```
+
+An assertion must evaluate to `Bool`. Tests may use ordinary checked statements,
+assertions and the supported test-only operations. `advance clock by` requires
+a fixture clock and a fixed duration. Fixture configuration is checked against
+the application's `config` declaration; secret fields use `secret(...)`.
+The [time/testing plan](time-testing-plan.md) defines the detailed isolation and
+capability boundaries.
+
+A minimal executable test needs no HTTP service:
+
+```jadpo
+type CardTitle = Text { min_length: 3 max_length: 12 }
+
+test "a valid title is preserved" {
+    var title = CardTitle("First card")
+    assert title == CardTitle("First card")
+}
+```
+
+Run `jadpo test <project>`. A project with no authored `test` declarations reports
+`TEST_NO_TESTS`; a successful `check` or `build` alone does not run tests. Each
+fixture-backed test receives fresh supported test state. Root `app.jadpo` may
+contain shared failures and tests; recognised role directories constrain the
+kinds of declarations they contain, as described in the
+[project-role contract](entity-query-model.md#10-project-roles).
 
 ## 5. Type expressions
 
@@ -201,7 +373,40 @@ declaring parent. An optional inverse additionally requires that field to be
 Inverse declarations are metadata, not stored entity fields and not implicit
 lazy-loading accessors.
 
-## 8. Failure declarations
+## 8. Configuration declarations
+
+```ebnf
+config_declaration  = "config", identifier, "{",
+                        { config_field },
+                      "}" ;
+
+config_field        = identifier, ":", type_expression, "{",
+                        config_binding,
+                        [ config_secret ],
+                        [ config_default ],
+                      "}" ;
+
+config_binding      = "binding", ":", string_literal ;
+config_secret       = "secret", ":", boolean_literal ;
+config_default      = "default", ":",
+                      ( string_literal | integer_literal | decimal_literal
+                      | boolean_literal | duration_literal ) ;
+duration_literal    = number, ( "ms" | "s" | "m" | "h" | "d" ) ;
+```
+
+There is exactly one application configuration declaration. Options are
+structured and may be written in any order, but each may appear at most once.
+Every field has one non-empty, portable environment `binding`; fields are
+required unless they have a checked literal `default`. A `secret: true` field
+cannot have a source default and may flow only to a compiler-owned declared
+secret sink. All v0.1 fields are startup-bound. Authored behavior reads typed
+values through `config.<field>` and cannot inspect the process environment.
+
+Local development uses `.env.local`; it is not part of this source grammar.
+Generated production startup reads only declared binding names and disables
+automatic environment-file discovery.
+
+## 9. Failure declarations
 
 ```ebnf
 failure_declaration = "failure", identifier, "{",
@@ -226,7 +431,7 @@ which values may cross the public boundary.
 Compatible-code alias syntax is deferred under `FAIL-002`; the seed does not
 need it.
 
-## 9. Callable declarations
+## 10. Callable declarations
 
 ```ebnf
 function_declaration = "function", identifier, parameter_list,
@@ -250,7 +455,7 @@ and external effects remain unavailable until their compiler phases.
 Raw representation primitives in application callable parameter or return
 positions are semantic errors, not parse errors.
 
-## 10. Statements
+## 11. Statements
 
 ```ebnf
 block               = "{", { statement }, "}" ;
@@ -286,7 +491,7 @@ the binding's established nominal type. Assignment cannot target a parameter, fi
 other value. This is local rebinding rather than observable reference or
 interior mutation.
 
-## 11. Expressions
+## 12. Expressions
 
 ```ebnf
 expression          = equality_expression ;
@@ -298,11 +503,23 @@ prefix_expression   = [ "attempt" ], primary_expression ;
 
 primary_expression  = literal
                     | named_expression
+                    | outcome_match_expression
                     | create_expression
                     | query_expression
                     | update_expression
                     | delete_expression
                     | "(", expression, ")" ;
+
+outcome_match_expression
+                    = "match", qualified_name, invocation_suffix, "{",
+                      { outcome_match_arm },
+                      "}" ;
+outcome_match_arm   = outcome_success_arm | outcome_failure_arm ;
+outcome_success_arm = "success", "(", identifier, ")", "=>", expression ;
+outcome_failure_arm = "failure", identifier, "=>", outcome_arm_body ;
+outcome_arm_body    = expression
+                    | reject_statement
+                    | "propagate" ;
 
 create_expression   = "create", identifier, object_body,
                       [ "conflict", ":", failure_binding ] ;
@@ -368,11 +585,24 @@ Name resolution distinguishes validated type construction from callable
 invocation. A qualified name without a suffix represents a binding or field
 access. A qualified name followed by an object body is record construction.
 
-Every invocation or persistence expression that can fail must be prefixed with
-`attempt`. The callable's `fails` clause must then equal its complete reachable,
-unhandled failure set. Missing failures and stale declarations are both compile
-errors. The exact handler-arm syntax for locally mapping an attempted failure is
-still unresolved and therefore is not accepted by this grammar.
+The accepted callable-ownership rule additionally reserves lowercase
+compiler-owned standard-library namespaces such as `temporal` and `collection`.
+Their operations use one mandatory qualified spelling. They cannot be opened by
+an import, shadowed, aliased, or mirrored as receiver methods. Authored free
+callables remain unqualified within their module or selective-import scope;
+entity-owned operations retain their existing entity-qualified or receiver-dot
+forms. The grammar already accepts the shared qualified-name shape; individual
+standard-library families enter the executable prelude with their owning
+implementation milestone.
+
+Every invocation or persistence expression that can fail must be acknowledged
+with `attempt` or, for a direct callable invocation, an exhaustive outcome
+match. `attempt` propagates the exact failure set. An outcome match contains
+exactly one `success(value)` arm and one named arm for every callable failure;
+wildcards are rejected. A failure arm returns a compatible replacement value,
+rejects a mapped failure, or uses `propagate`. The callable's `fails` clause
+must equal the complete reachable, unhandled set after those decisions.
+Failure-context binding is not part of this executable grammar.
 
 `RegistrationAccepted { email: input.email }` constructs a complete record.
 `create Customer { ... }` is the P10 persistent-create expression. Its target
@@ -510,8 +740,10 @@ supplied `none` clears a nullable field. An optional following `set:` block may
 add fixed derived writes; `value when patch.field supplied` applies only when
 that exact patch field was present. A field cannot be written by both `patch:`
 and derived `set:`. The generated adapter preflights
-cardinality and mutates inside the inferred action transaction, so multiple
-matches or constraint failures leave no partially committed fields.
+cardinality and mutates inside the current prototype's inferred action
+transaction, so multiple matches or constraint failures leave no partially
+committed fields. The accepted entity/query model retains failure atomicity but
+requires explicit intent before several entity mutation scopes are combined.
 
 The exact colon-delimited spelling for named compound uniqueness remains open.
 The former call-shaped `constraint name: unique(field_a, field_b)` spelling is
@@ -522,7 +754,7 @@ The expression grammar implements conventional precedence for unary `not` and
 `<=`, `>`, and `>=`; equality `==` and `!=`; `and`; then `or`. Arithmetic is
 numeric except for `Text + Text`, and `match` is exhaustive for closed domains.
 
-## 12. Route declarations
+## 13. Route declarations
 
 ```ebnf
 route_declaration   = "route", http_method, route_path, "{",
@@ -572,7 +804,9 @@ Reachable failures are derived through `run` or the inline action's exact
 `fails` set. Routes do not contain numeric status mappings. Query, header, and
 body binding grammar remains unresolved and is not inferred from the path form.
 
-## 13. Core prelude
+## 14. Core prelude
+
+This section describes the current implemented prelude, including TIME-001.
 
 The compiler initially recognises these representation or standard semantic
 types without user declarations:
@@ -584,10 +818,20 @@ Decimal
 Text
 Bytes
 Uuid
-Date
+Instant
+CalendarDate
 Time
-DateTime
 Duration
+Zone
+Locale
+PresentationText
+InstantRange
+LocalOverlap
+LocalGap
+InvalidDay
+Weekday
+TimeFormat
+FriendlyTimeFormat
 Unit
 Object
 List<T>
@@ -606,7 +850,7 @@ prelude names.
 Prelude types still obey semantic rules. For example, `Text` cannot be used as
 an ordinary application callable parameter merely because it is in the prelude.
 
-## 14. P10.5 module extension
+## 15. P10.5 module extension
 
 The optional module grammar is:
 
@@ -640,7 +884,7 @@ remain unsupported rather than receiving implicit semantics.
 Legacy projects with no module headers retain the original single ambient
 namespace so existing core fixtures and the Jadpo seed remain valid.
 
-## 15. Explicitly unsupported in the first slice
+## 16. Explicitly unsupported in the first slice
 
 The parser or semantic checker produces a stable unsupported-feature diagnostic
 for:
@@ -649,7 +893,7 @@ for:
   declarations in separate modules, and external packages;
 - loops and recursion;
 - assignment outside a bare, fixed-type `var mut` local;
-- local failure-handler arms and failure mapping after `attempt`;
+- failure-context binding in outcome arms;
 - compound many-result predicates and general patch-condition expressions;
 - services, events, and jobs;
 - policies and `require`;
@@ -669,7 +913,7 @@ construction are invalid.
 Unsupported does not mean rejected forever. It means the feature cannot enter
 the implementation without a specification and fixture.
 
-## 15. Seed coverage
+## 17. Seed coverage
 
 The [Jadpo seed](../examples/jadpo-seed/app.jadpo) exercises:
 

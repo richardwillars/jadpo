@@ -1,7 +1,18 @@
 # Policy and proof kernel v0.1
 
-**Status:** candidate normative specification for P10R review  
-**Scope:** authorization and effect conformance for the golden todo application
+**Status:** pre-POLICY-001 candidate retained as migration evidence
+**Scope:** historical authorization/proof vocabulary for the golden todo application
+
+The approved [POLICY-001 decision plan](policy-plan.md) supersedes this
+document's actor/owner/tenant predicate vocabulary, explicit concealment choice,
+and lifecycle-in-policy assumptions. POLICY-P0 must revise the named kernel
+rules and machine-readable fixtures around qualified scoped roles,
+authoritative direct/membership bindings, compiler-derived entity effects,
+narrowing field policy, automatic database scoping, and the complete
+input/database/output validation chain before implementation claims conformance.
+
+The conservative judgement outcomes below remain accepted design input; the
+older source facts and examples are not current policy syntax authority.
 
 This document defines when the project may say the compiler has proved a policy
 property. A property without a named rule and fixture is validation, testing,
@@ -55,7 +66,7 @@ Facts may enter a derivation only through:
 | validated request input | typed path/query/body values and supplied-field set | generated boundary validator |
 | guarded query result | entity identity plus the exact query predicate | generated parameterised persistence adapter |
 | guarded mutation result | affected entity plus exact predicate/fields | generated transactional persistence adapter |
-| trusted configuration | typed value, classification, provenance—not secret contents | preflight/startup validator |
+| trusted configuration | typed value, classification, provenance—not secret contents | deployment/startup validator |
 | prior proof step | the rule conclusion only | same semantic graph/version |
 
 Tests, comments, agent assertions, generated prose, and successful historical
@@ -67,8 +78,8 @@ The compiler creates obligations at these semantic nodes:
 
 | Node | Required obligations |
 |---|---|
-| query | actor access to every possible selected row; permitted projection; boundedness where required |
-| mutation | actor access to every possible affected row; field write permissions; lifecycle transition; transaction/effect constraints |
+| query | actor access to every possible selected row; permitted projection; boundedness where required; chosen representation meets freshness and revocation policy |
+| mutation | actor access to every possible affected row; field write permissions; lifecycle transition; authoritative guard reads; transaction/effect constraints |
 | relationship traversal | permission for the source and target rows; policy-preserving join path; bounded cardinality |
 | route | inherited or explicit access; input/output closure; transitive read/write/effect/failure conformance |
 | action/function call | callee preconditions implied by caller facts; every transitive effect and failure represented |
@@ -81,12 +92,16 @@ The compiler creates obligations at these semantic nodes:
 
 ### AUTH-EXACTLY-ONE
 
-If exactly one presented strategy validates, its mapped subject resolves to one
-active application user, and every presented credential is valid and
-identity-compatible, derive `authenticated(a)`. Zero strategies yields an
-authentication rejection. Multiple identities, ambiguity, or an invalid
-credential beside a valid credential rejects. Claims are never unioned across
-strategies.
+If exactly one credential is presented in the configured cookie/bearer slots,
+its selected strategy validates, and its mapped subject produces exactly one
+active authoritative user or service principal when authority is required,
+derive `authenticated(p)`. Zero credentials yields an authentication rejection.
+Multiple credentials, duplicate values, multiple identities, ambiguity, or an
+invalid credential beside a valid credential rejects. Claims, roles,
+permissions, and strength are never unioned across credentials or strategies.
+Immediate mode performs authority resolution on every request; bounded mode
+may defer it only until the declared maximum delay, and a fresh-authority route
+always resolves authority before application behavior.
 
 ### ROUTE-DEFAULT-AUTH
 

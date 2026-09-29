@@ -10,6 +10,29 @@ support. The source deliberately uses required authentication, policy,
 omission-aware patches, lifecycle, job, service, configuration, and migration
 constructs before their compiler implementations exist.
 
+The approved [POLICY-001 plan](../../docs/policy-plan.md) now supersedes the
+separate `policy.jadpo`, manual `require policy`, lifecycle-in-policy, and
+field-allowlist spellings in this candidate. Their behavioural pressure remains
+valid, but POLICY-P0/P6 must migrate them to qualified scoped roles, entity
+permission matrices, relationship/membership bindings, narrowing field policy,
+and compiler-injected query/mutation enforcement before implementation.
+
+The candidate source predates the accepted DATA-007
+[entity/query/transaction model](../../docs/entity-query-model.md). Its
+behavioural, policy, acceptance, and adversarial obligations remain fixed
+pressure evidence, while its top-level `type`/`persist`, free query, action, and
+single-file layout are not final syntax authority. The fixture-first P10.6
+revision must express the same contract through authoritative entity dossiers,
+named queries, entity-owned mutations, and workflows without silently changing
+the experiment.
+
+The candidate source has been migrated onto the accepted TIME-001
+[time contract](../../docs/time-testing-plan.md): exact moments use `Instant`,
+creation and change timestamps use explicit compiler-owned lifecycle roles, and
+the application no longer selects a production clock. The remaining TEST-001
+boundary and fixture work is tracked separately and does not restore any legacy
+date/time spelling.
+
 The package has two independent authorities:
 
 1. [`policy.jadpo`](policy.jadpo) defines human-owned permission, field, effect,
@@ -19,7 +42,9 @@ The package has two independent authorities:
 
 The remaining artifacts are subordinate evidence:
 
-3. [`app.jadpo`](app.jadpo) is the proposed canonical implementation source.
+3. [`app.jadpo`](app.jadpo) is the original proposed implementation source and
+   retained pre-DATA-007 pressure case; its behaviour is authoritative input,
+   while its superseded source organisation must be revised transparently.
 4. [`expected-audit.md`](expected-audit.md) defines the derived review surface.
 5. [`adversarial-changes.md`](adversarial-changes.md) defines change-pressure
    cases and required compiler dispositions.
@@ -46,9 +71,12 @@ require the approval protocol defined during P10R.
 
 The application supports:
 
-- session-cookie and OIDC bearer authentication normalised to one actor;
+- browser sessions, user API bearers, service API keys/exchange, and opt-in JWT
+  bearer validation normalised to one closed user/service principal;
 - authenticated-by-default routes and one explicit public health route;
 - fail-closed handling of invalid, conflicting, or ambiguous credentials;
+- bounded revocation for ordinary traffic with fresh-authority checks on
+  sensitive operations, without cache-dependent correctness;
 - owner-scoped todo CRUD with omission-aware patches;
 - stable cursor pagination and stable child ordering without N+1 reads;
 - explicit owner relationship integrity and deletion lifecycle;

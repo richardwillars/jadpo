@@ -1,8 +1,16 @@
 # Persistence slice v0.1
 
-**Status:** accepted for P10 typed create/read/update/delete paths  
+**Status:** accepted P10 prototype evidence; transaction widening superseded by TX-001
 **Runtime adapters:** SQLite local and PostgreSQL  
 **Deployment contract:** fresh schema plus parameterised CRUD
+
+**Reading this historical slice:** new source uses the accepted
+[entity/query model](entity-query-model.md): identity-bearing data lives in an
+`entity` dossier, entity mutations in its actions, and reads in named queries
+with declared freshness. Top-level CRUD examples below preserve the earlier
+prototype's compatibility and adapter evidence; they are not a second source
+model to copy into new applications. The operation-level parameterisation,
+cardinality and failure contracts still apply within the accepted owners.
 
 The first persistence operation is the existing canonical language form:
 
@@ -158,15 +166,17 @@ Required mutations preflight up to two rows and execute inside adapter-native
 transactions, rolling back ambiguous cardinality. The SQLite path comes from
 `SQLITE_PATH`; otherwise it is `build/local.sqlite`.
 
-Transactions are an inferred action guarantee rather than routine authored
-syntax. If an action can mutate persistence, directly or through another
-callable, the generated runtime executes the whole action in one transaction.
-All reads and writes in that action receive the same transaction-scoped
-adapter, and nested mutative calls reuse the existing transaction. Read-only
-actions do not open a write transaction. PostgreSQL uses its native async
-transaction callback; SQLite serialises action transactions on the generated
-connection and uses `BEGIN IMMEDIATE`, `COMMIT`, and `ROLLBACK`. The persistence
-manifest records `transaction_policy: mutative_action` and nested reuse.
+The P10 prototype infers one transaction for any transitively mutative action.
+That behaviour remains implementation evidence, not final language authority:
+TX-001 now makes an entity action independently failure-atomic and requires an
+enclosing action that reaches multiple mutation scopes to declare atomic or
+durable intent. Within a declared atomic boundary, all reads and writes receive
+the same transaction-scoped adapter and nested mutative calls reuse it.
+Read-only actions do not open a write transaction. PostgreSQL uses its native
+async transaction callback; SQLite serialises action transactions on the
+generated connection and uses `BEGIN IMMEDIATE`, `COMMIT`, and `ROLLBACK`. The
+current manifest records the prototype `transaction_policy: mutative_action`;
+future TX-001 artifacts must record the declared consistency and proved plan.
 
 The generated PostgreSQL client currently sets `prepare: false`. Bun still
 binds every parameter safely, but disables named prepared statements and query

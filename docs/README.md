@@ -17,12 +17,25 @@ not need that conversation for context.
    responsibility, scope, and non-goals.
 4. [Semantic model](semantic-model.md) — the concepts the compiler understands
    and the guarantees attached to them.
+   - [Entity, query, and transaction model](entity-query-model.md) — the
+     accepted identity/persistence boundary, entity operations, named reads,
+     mutation ownership, project roles, multi-entity transactions, and
+     authority/projection consistency across stores.
+   - [AUTH-001 implementation plan](authentication-plan.md) — the decision
+     contract, security invariants, staged compiler/runtime work, adversarial
+     evidence, dependencies, and stop conditions for authentication.
+   - [POLICY-001 implementation plan](policy-plan.md) — the approved scoped-role,
+     membership, entity/field permission, automatic database scoping,
+     validation, output, audit, and approval contract.
+   - [CONFIG-001 implementation plan](configuration-plan.md) — the implemented
+     in-source binding, local secret handoff, and automatic startup-validation
+     core, plus the pending adapter readiness/deployment evidence.
 5. [Type system](type-system.md) — nominal semantic and field types,
    compatibility, validated construction, and trust boundaries.
 6. [Failure model](failure-model.md) — declared domain failures, operational
    faults, client disclosure, HTTP mapping, telemetry, and stack policy.
-7. [Policy and proof kernel](policy-proof-v0.1.md) — candidate named
-   authorization/effect obligations and conservative outcomes.
+7. [Policy and proof kernel](policy-proof-v0.1.md) — pre-POLICY-001 candidate
+   proof vocabulary retained for migration into the approved policy plan.
 8. [Runtime validation rules](validation-rules-v0.1.md) — named generated,
    runtime, and operational boundaries that must not be mislabeled as proofs.
 9. [Threat model](threat-model.md) — assets, boundaries, trusted components,
@@ -31,6 +44,9 @@ not need that conversation for context.
    and behavioural-review contract for policy weakening.
 11. [Syntax draft](syntax.md) — the proposed human- and LLM-readable source
     notation.
+    - [Naming and qualification](naming-and-qualification.md) — the accepted
+      language-wide casing, ownership, import, callable, standard-library
+      namespace, and canonical-spelling contract.
 12. [Assurance model](assurance-model.md) — policy ownership, security defaults,
     compiler proofs, audits, tests, and CI gates.
 13. [Golden todo design](../examples/golden-todo/README.md) — candidate canonical
@@ -60,15 +76,22 @@ not need that conversation for context.
     and explicit limits.
 24. [Migration identity v0.1](migration-identity-v0.1.md) — the provisional
     checked-in identity registry, rename, lifecycle, and schema-diff contract.
-25. [Agent development workflow](agent-workflow.md) — how humans, agents, and the
+25. [Pre-implementation decision sprint](decision-sprint.md) — the ordered
+    owner-decision packages, external gates, deliberate non-decisions, and
+    unattended build queue for currently parked work.
+    - [TIME-001 and TEST-001 decision plan](time-testing-plan.md) — the approved
+      instant/civil-time library, timezone and human-formatting rules, monotonic
+      deadline, deterministic fixture, capability-fake, and test-evidence
+      implementation contract.
+26. [Agent development workflow](agent-workflow.md) — how humans, agents, and the
     compiler collaborate.
-26. [Validation plan](validation-plan.md) — the deliberately hostile experiment
+27. [Validation plan](validation-plan.md) — the deliberately hostile experiment
     intended to prove or kill the idea.
-27. [Product and adoption considerations](product-strategy.md) — ecosystem,
+28. [Product and adoption considerations](product-strategy.md) — ecosystem,
     commercial, timing, and adoption risks.
-28. [Decision register](decision-register.md) — accepted, provisional, rejected,
+29. [Decision register](decision-register.md) — accepted, provisional, rejected,
     and open design choices.
-29. [Conversation coverage](conversation-coverage.md) — a traceability check
+30. [Conversation coverage](conversation-coverage.md) — a traceability check
     showing where every substantive theme from the source discussion lives.
 
 The [candidate golden todo](../examples/golden-todo/README.md) is the current
@@ -118,22 +141,41 @@ syntax, compiler behaviour, and examples to drift apart.
 
 ## Current phase
 
-The project remains a hypothesis test. Milestone B is complete: the semantic
-compiler, stable derived artifacts, deterministic scaffold, generated Bun
-target, and seed HTTP acceptance path are implemented. The P10 persistence core
-is complete, with transactional typed CRUD passing the SQLite suite and all 22
-live Postgres 16 acceptance cases. P10R is now the active gate before the P10.5
-language-completion pass and P11 authentication/policy work.
+The project remains a hypothesis test. Milestone B and the P10 persistence core
+are complete, including transactional typed CRUD across SQLite and all 22 live
+Postgres 16 acceptance cases. P10.5, DX0.5, DX1, and the bounded
+P10.6/P10.7 entity/query/transaction work are implemented as exploratory work
+under the explicit P10R review deferral. The call, outcome, IDE,
+persistence-free runtime, local savepoint, and authority-change-record slices
+are implemented. The [CONFIG-001 plan](configuration-plan.md) now has an
+implemented compiler/runtime core and first-party authentication secret sinks;
+broader dependency readiness remains coupled to later service/platform work.
+P11 has implemented AUTH-P0–P3, the Temporal/testing core, and the policy
+enforcement core. The [first-party authentication checkpoint](../examples/first-party-authentication/README.md)
+adds signed/opaque browser and API credentials, real protected routes, authority
+checks, CSRF, and SQLite/PostgreSQL/HTTP evidence including restart and revocation.
+The scoped browser/API milestone is complete; service/JWT authentication, richer
+principal mappings, full golden integration, broader PostgreSQL coverage and
+external approval evidence remain open. Comprehensive validation follows this
+milestone, with Wasm probes after that phase.
+Physical cross-store delivery and WORKFLOW-001 runtime execution also remain
+decision-bound. The existing
+`type` plus `persist` path remains supported compatibility evidence beside the
+first-class entity dossier.
+P10R independent review and five
+first-user sessions remain required before Milestone C or any release-equivalent
+assurance claim; by owner direction, those sessions follow feature-complete
+implementation.
 Current status and the next concrete action live in the [implementation
 roadmap](implementation-roadmap.md).
 
 The [core grammar](grammar-v0.1.md),
 [Jadpo seed application](../examples/jadpo-seed/app.jadpo), and
-[language issue log](language-issues.md) constrain the first implementation
-slice. The candidate complete todo and assurance package now require independent
-review and freeze before P10.5 language expansion and authentication
-implementation. The order/payment application and executable TypeScript
-baseline remain the later falsification test.
+[language issue log](language-issues.md) constrain implementation. The candidate
+complete todo and assurance package still require independent review and freeze;
+implementation progress does not satisfy or waive that evidence. The
+order/payment application and executable TypeScript baseline remain the later
+falsification test.
 
 Naming, a production compiler, native generated output, package management, and
 broad deployment tooling remain premature. IDE and LLM presentation support is

@@ -1,8 +1,15 @@
 # Validation and falsification plan
 
-**Status:** proposed first programme of work  
+**Status:** thesis-validation programme; engineering validation foundation active (2026-09-29)
 **Objective:** determine whether Jadpo's compiler-enforced backend model
 materially outperforms conventional TypeScript for agentic development
+
+The current engineering entry point is `python3 tools/verify.py`, documented in
+[the validation guide](../tests/validation/README.md). It checks supported
+behaviour and records the full golden application's blockers separately.
+This foundation does not satisfy the fresh-agent comparison, comprehension
+study or independent-review gates described below. Feature expansion and Wasm
+remain paused while the broader validation programme is completed.
 
 ## 1. Test the thesis, not compiler engineering
 
@@ -172,9 +179,9 @@ staging, and production. Acceptance cases must prove that:
 - static source checking catches unknown names, type-invalid uses, conflicting
   defaults, and incomplete environment declarations without requiring access
   to deployment secret values;
-- environment preflight rejects every missing required value, malformed value,
-  forbidden production fallback, and invalid overlay with a non-zero status and
-  a stable machine-readable diagnostic;
+- local `jadpo config check`, automatic deployment validation, and runtime
+  startup reject every missing required value and malformed value with a
+  non-zero status and a stable machine-readable diagnostic;
 - diagnostics, logs, manifests, generated examples, and health responses name
   the affected declaration and safe provenance but never reveal secret values
   or credentials embedded in connection strings;
@@ -186,10 +193,11 @@ staging, and production. Acceptance cases must prove that:
   recover when the dependency becomes usable;
 - liveness remains healthy during an external dependency outage so the system
   does not create a restart storm;
-- restart-bound and reloadable values obey their declared rotation semantics,
-  including atomic rejection of an invalid replacement; and
+- a valid local value change causes a controlled `dev` restart, while an
+  invalid replacement is rejected without replacing the last ready revision;
+  and
 - a deployment-harness test presents a bad new revision, observes failed
-  preflight or readiness, and proves it is not promoted (or is rolled back)
+  automatic validation or readiness, and proves it is not promoted (or is rolled back)
   while the previous healthy revision continues serving.
 
 Run these cases against generated Bun output with package auto-install disabled
@@ -323,6 +331,8 @@ Todo flatters DSLs because it is mostly CRUD. The next application should force:
 - money and currency types;
 - pricing calculations;
 - multi-entity transactions;
+- one authoritative write feeding cache and graph projections;
+- projection lag, replay, rebuild, reconciliation, and read-your-writes;
 - Stripe or another payment contract;
 - provider error normalisation;
 - idempotency;
@@ -330,6 +340,7 @@ Todo flatters DSLs because it is mostly CRUD. The next application should force:
 - retries/timeouts;
 - inventory and order lifecycle;
 - refunds and irreversible effects;
+- a multi-authority durable workflow with compensation and outcome uncertainty;
 - role and ownership collisions;
 - data migration after real state exists;
 - million-element collections, zero-copy slicing, incremental builders,

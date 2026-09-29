@@ -1,8 +1,8 @@
 # Project structure workstream
 
-**Status:** P8 prototype selected; enforcement remains open  
-**Earliest decision point:** P8, before P9 fixes generated and runtime paths  
-**Enforcement decision:** deliberately not yet made
+**Status:** entity/query/workflow role validation implemented; broader workspace enforcement remains provisional
+**Accepted decision:** DATA-007, 2026-09-26
+**Remaining pressure point:** large applications, packages, and companion files
 
 ## 1. Motivation
 
@@ -20,7 +20,7 @@ small applications, or accidentally turn directories into an undeclared module
 system. The project should therefore test a concrete structure before enforcing
 it.
 
-## 2. Leading hypothesis
+## 2. Accepted semantic roles and remaining hypothesis
 
 The leading hypothesis is a hybrid structure:
 
@@ -32,7 +32,43 @@ The leading hypothesis is a hybrid structure:
 - bounded extension points cover integrations and genuinely unusual assets;
 - arbitrary alternative layouts are not supported merely for personal taste.
 
-This is a hypothesis to pressure-test, not accepted syntax or layout.
+DATA-007 now accepts a bounded role-first source core:
+
+```text
+app.jadpo
+entities/       # one authoritative identity-bearing concept per file
+values/         # identity-free domain values and projections
+queries/        # named cross-entity read models
+workflows/      # multi-entity and application-level actions
+routes/         # transport bindings
+jobs/           # scheduled/durable entry points once specified
+```
+
+For the current executable layout, put shared `failure` declarations in root
+`app.jadpo`; an entity dossier file may also contain its supporting failures.
+`values/` accepts value declarations only, so a failure beside a value in that
+directory is rejected. Root `app.jadpo` can also hold authored tests and fixtures;
+no separate failure or test directory role is required for a small application.
+
+
+Unused roles may be absent. Entity-centred queries, functions, and actions live
+in the authoritative entity dossier; cross-entity reads live under `queries/`;
+multi-entity transactions are orchestrated under `workflows/`. The complete
+semantic contract is the [entity, query, and transaction
+model](entity-query-model.md).
+
+Store authority, caches, and projections are capabilities declared in the
+authoritative entity dossier, not extra entity definitions or arbitrary
+integration files. Multi-authority durable workflows remain under
+`workflows/`. Generated outbox delivery, projection workers, and reconciliation
+artifacts belong to compiler-owned output rather than authored source roles.
+
+These directories are compiler-validated organisation, not a second identity system.
+Explicit declarations, modules, and compiler-owned stable IDs remain semantic
+authority, so moving a file does not create a new schema object. Invalid
+declaration kinds in recognised role directories produce
+`DATA_PROJECT_ROLE_INVALID`. Large-entity companion files, packages, monorepos,
+and integrations remain hypotheses to pressure-test.
 
 ## 3. Scaffolding strategy
 
@@ -82,21 +118,21 @@ small set of application profiles should be added only when repeated project
 shapes demonstrate real value. The generator must not create arbitrary folders
 or naming schemes from an unconstrained model response.
 
-## 4. Questions the design must answer
+## 4. Remaining questions
 
-The proposal must decide explicitly:
+The accepted role core resolves where entities, value projections,
+cross-entity queries, workflows, and routes belong. The remaining proposal must
+decide explicitly:
 
-- whether directories have language semantics or are only an organisational
-  convention;
 - how layout relates to future files, modules, imports, visibility, and package
   identity;
 - whether a tiny application may remain a single source file;
-- when a feature should become a directory and which filenames inside it are
-  canonical;
+- when an entity may gain compiler-recognised companion files and which
+  filenames are canonical without permitting partial entity declarations;
 - where shared semantic types live without becoming an unstructured dumping
   ground;
-- where routes, actions, entities, policy, jobs, events, service contracts,
-  configuration, migrations, and tests belong;
+- where application-wide policy, events, service contracts, configuration,
+  migrations, integrations, and tests belong;
 - whether tests are colocated, mirrored in a test tree, or compiler-derived;
 - how monorepos, multiple deployable applications, libraries, and generated
   clients fit without weakening the default;
@@ -177,12 +213,13 @@ An enforceable structure should:
    boundary so runtime work does not create accidental conventions.
 3. During P9, scaffold and build the seed using the prototype layout and decide
    whether evidence justifies the first additive capability pack.
-4. During P11, apply it to the todo backend and decide whether placement should
-   be a warning, error, or convention.
+4. During P10.6/P11, implement the accepted entity/query/workflow roles, apply
+   them to the todo backend, and decide whether each remaining placement rule
+   should be a warning, error, or convention.
 5. During P12, pressure-test the decision against the order/payment application
    and TypeScript baseline.
-6. Only then mark the layout accepted and move enforcement into the language or
-   project specification.
+6. Only then mark the broader workspace/package layout accepted and move its
+   remaining enforcement into the project specification.
 
 ## 9. P8 candidate trees
 
@@ -284,7 +321,8 @@ The current boundaries are explicit:
   path;
 - `build/` is always excluded from discovery and exclusively compiler-owned;
 - `.app/project.json` is Jadpo scaffold metadata, not language source;
-- `.local/`, `.env`, and `build/` are ignored by the generated repository;
+- `.local/`, `.env`, `.env.local`, and `build/` are ignored by the generated
+  repository; only `.env.local` is a Jadpo local-configuration input;
 - tests are authored beneath `tests/`; deployment material may later live in
   `deploy/`, but the base does not create speculative files;
 - source directories have no semantic meaning yet, so moving a declaration
@@ -292,6 +330,8 @@ The current boundaries are explicit:
 - the scaffolder refuses a non-empty destination rather than merging with or
   overwriting authored material.
 
-Candidate A is a prototype, not final layout enforcement. P11 and P12 still
-decide whether placement remains convention, becomes a warning, or becomes an
-error with a narrow reviewed escape.
+Candidate A remains historical scaffold evidence. DATA-007 supersedes its
+unstructured source growth with accepted entity/query/workflow roles for the
+next compiler slice. P11 and P12 still decide the enforcement level for
+remaining roles, the small single-file escape, packages, and a narrow reviewed
+large-application escape.

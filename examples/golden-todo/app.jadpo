@@ -3,8 +3,13 @@
 // are enumerated in language-friction.md rather than replaced with host code.
 
 application TodoApplication {
-    authentication: required
-    clock: system_utc
+    authentication {
+        principal: Principal
+        revocation {
+            mode: bounded
+            maximum_delay: 5m
+        }
+    }
 }
 
 type TodoTitle = Text {
@@ -22,6 +27,16 @@ type UserStatus = Enum {
     disabled
 }
 
+type ServiceStatus = Enum {
+    active
+    disabled
+}
+
+type CredentialStatus = Enum {
+    active
+    revoked
+}
+
 type TodoStatus = Enum {
     open
     completed
@@ -32,51 +47,111 @@ type AuthenticationStrength = Enum {
     multi_factor
 }
 
+type DatabaseUrl = Url {}
+type SessionSigningKey = Text { min_length: 32 }
+type MailApiKey = Text { min_length: 16 }
+type CredentialVerifier = Text { min_length: 32 }
+
 config TodoConfiguration {
-    database_url: DatabaseUrl secret required restart
-    session_signing_key: Secret required restart
-    oidc_issuer: Url required restart
-    oidc_audience: Text required restart
-    mail_api_key: Secret required reloadable
-    mail_sender: Email required restart
-    soft_delete_retention: Duration default 30d restart
+    database_url: DatabaseUrl {
+        binding: "DATABASE_URL"
+        secret: true
+    }
+    session_signing_key: SessionSigningKey {
+        binding: "SESSION_SIGNING_KEY"
+        secret: true
+    }
+    oidc_issuer: Url {
+        binding: "OIDC_ISSUER"
+    }
+    oidc_audience: Text {
+        binding: "OIDC_AUDIENCE"
+    }
+    mail_api_key: MailApiKey {
+        binding: "MAIL_API_KEY"
+        secret: true
+    }
+    mail_sender: Email {
+        binding: "MAIL_SENDER"
+    }
+    soft_delete_retention: Duration {
+        binding: "SOFT_DELETE_RETENTION"
+        default: 30d
+    }
 }
 
-authentication session_cookie {
-    strategy: signed_session
-    secret: config.session_signing_key
-    cookie: "todo_session"
+principal Principal {
+    user {
+        subject: Text
+        user_id: User.id
+        email: Email
+        authentication_strength: AuthenticationStrength
+    }
+    service {
+        subject: Text
+        service_id: Service.id
+        authentication_strength: AuthenticationStrength
+    }
+}
+
+authentication browser_session {
+    transport {
+        cookie: "todo_session"
+    }
+    validators {
+        signed_user {
+            mode: signed
+            principal: user
+            secret: config.session_signing_key
+            audience: "todo-browser"
+            expires: 5m
+        }
+    }
     claims {
-        subject -> Actor.subject
-        authentication_strength -> Actor.authentication_strength
+        subject -> Principal.user.subject
+        authentication_strength -> Principal.user.authentication_strength
     }
     resolve: User.authentication_subject where status == UserStatus.active {
-        id -> Actor.user_id
-        email -> Actor.email
+        id -> Principal.user.user_id
+        email -> Principal.user.email
         inactive: UserDisabled
     }
 }
 
-authentication oidc_bearer {
-    strategy: oidc
-    issuer: config.oidc_issuer
-    audience: config.oidc_audience
-    claims {
-        sub -> Actor.subject
-        acr -> Actor.authentication_strength using oidc_acr
+authentication api_bearer {
+    transport {
+        bearer: authorization_header
     }
-    resolve: User.authentication_subject where status == UserStatus.active {
-        id -> Actor.user_id
-        email -> Actor.email
+    validators {
+        signed_user {
+            mode: signed
+            principal: user
+            secret: config.session_signing_key
+            audience: "todo-api"
+            expires: 5m
+        }
+        jwt_user {
+            mode: jwt
+            principal: user
+            issuer: config.oidc_issuer
+            audience: config.oidc_audience
+            algorithms: compiler_allowlist
+        }
+        service_api_key {
+            mode: api_key
+            principal: service
+            authority: ServiceCredential.verifier
+        }
+    }
+    user_resolution: User.authentication_subject where status == UserStatus.active {
+        id -> Principal.user.user_id
+        email -> Principal.user.email
         inactive: UserDisabled
     }
-}
-
-actor Actor {
-    subject: Text
-    user_id: User.id
-    email: Email
-    authentication_strength: AuthenticationStrength
+    service_resolution: ServiceCredential.verifier where status == CredentialStatus.active {
+        service_id -> Principal.service.service_id
+        inactive: ServiceDisabled
+    }
 }
 
 type User = Object {
@@ -84,8 +159,8 @@ type User = Object {
     authentication_subject: Text
     email: Email
     status: UserStatus default UserStatus.active
-    created_at: DateTime default now
-    disabled_at: DateTime?
+    created_at: Instant generated { on: create }
+    disabled_at: Instant?
 }
 
 persist User {
@@ -95,16 +170,48 @@ persist User {
     inverse todos: many Todo via: Todo.owner_id
 }
 
+type Service = Object {
+    id: Uuid
+    owner_id: User.id
+    name: Text
+    status: ServiceStatus default ServiceStatus.active
+    created_at: Instant generated { on: create }
+    disabled_at: Instant?
+}
+
+persist Service {
+    identity: id
+    unique: name
+    references owner_id: User.id as: owner on_delete: restrict
+    inverse credentials: many ServiceCredential via: ServiceCredential.service_id
+}
+
+type ServiceCredential = Object {
+    id: Uuid
+    service_id: Service.id
+    verifier: CredentialVerifier
+    status: CredentialStatus default CredentialStatus.active
+    expires_at: Instant
+    created_at: Instant generated { on: create }
+    revoked_at: Instant?
+}
+
+persist ServiceCredential {
+    identity: id
+    unique: verifier
+    references service_id: Service.id as: service on_delete: cascade
+}
+
 type Todo = Object {
     id: Uuid
     owner_id: User.id
     title: TodoTitle
     status: TodoStatus default TodoStatus.open
-    due_at: DateTime?
-    reminder_sent_at: DateTime?
-    created_at: DateTime default now
-    updated_at: DateTime default now
-    deleted_at: DateTime?
+    due_at: Instant?
+    reminder_sent_at: Instant?
+    created_at: Instant generated { on: create }
+    updated_at: Instant generated { on: create_or_change }
+    deleted_at: Instant?
 }
 
 persist Todo {
@@ -129,7 +236,7 @@ type PatchTodo = Object {
 
 type ListTodos = Object {
     status: Todo.status optional
-    due_before: DateTime optional
+    due_before: Instant optional
     page_size: PageSize default 25
     after: TodoCursor optional
 }
@@ -180,7 +287,7 @@ type ReminderMessage = Object {
 }
 
 type ReminderReceipt = Object {
-    accepted_at: DateTime
+    accepted_at: Instant
 }
 
 failure TodoNotFound {
@@ -207,6 +314,12 @@ failure UserDisabled {
     kind: NotPermitted
     code: "user_disabled"
     message: "This account is not available."
+}
+
+failure ServiceDisabled {
+    kind: NotPermitted
+    code: "service_disabled"
+    message: "This service identity is not available."
 }
 
 failure EmptyPatch {
@@ -257,18 +370,18 @@ service ReminderMail {
     maps provider.authentication -> fault Misconfigured
 }
 
-action create_todo(input: CreateTodo, actor: Actor)
+action create_todo(input: CreateTodo, principal: Principal.user)
     fails DueDateInPast, TodoMutationConflict
     -> TodoView
 {
-    require policy Todo.create with actor
+    require policy Todo.create with principal
 
     if input.due_at exists and input.due_at <= clock.now {
         reject DueDateInPast
     }
 
     var todo = attempt create Todo {
-        owner_id: actor.user_id
+        owner_id: principal.user_id
         title: input.title
         status: TodoStatus.open
         due_at: input.due_at
@@ -281,11 +394,11 @@ action create_todo(input: CreateTodo, actor: Actor)
     return project todo as TodoView
 }
 
-action list_todos(input: ListTodos, actor: Actor) -> TodoPage {
-    require policy Todo.read with actor
+action list_todos(input: ListTodos, principal: Principal.user) -> TodoPage {
+    require policy Todo.read with principal
 
     return attempt query page Todo {
-        where: owner_id == actor.user_id
+        where: owner_id == principal.user_id
         and deleted_at == none
         and status matches optional input.status
         and due_at <= optional input.due_before
@@ -297,15 +410,15 @@ action list_todos(input: ListTodos, actor: Actor) -> TodoPage {
     }
 }
 
-action get_todo(todo_id: Todo.id, actor: Actor)
+action get_todo(todo_id: Todo.id, principal: Principal.user)
     fails TodoNotFound
     -> TodoView
 {
-    require policy Todo.read with actor
+    require policy Todo.read with principal
 
     var todo = attempt query required Todo {
         where: id == todo_id
-        and owner_id == actor.user_id
+        and owner_id == principal.user_id
         and deleted_at == none
         missing: TodoNotFound {
             todo_id: todo_id
@@ -315,11 +428,11 @@ action get_todo(todo_id: Todo.id, actor: Actor)
     return project todo as TodoView
 }
 
-action patch_todo(todo_id: Todo.id, input: PatchTodo, actor: Actor)
+action patch_todo(todo_id: Todo.id, input: PatchTodo, principal: Principal.user)
     fails TodoNotFound, EmptyPatch, DueDateInPast, TodoMutationConflict
     -> TodoView
 {
-    require policy Todo.update with actor
+    require policy Todo.update with principal
 
     if supplied_count(input) == 0 {
         reject EmptyPatch
@@ -331,7 +444,7 @@ action patch_todo(todo_id: Todo.id, input: PatchTodo, actor: Actor)
 
     var todo = attempt update required Todo {
         where: id == todo_id
-        and owner_id == actor.user_id
+        and owner_id == principal.user_id
         and deleted_at == none
         patch: input
         set: {
@@ -347,15 +460,15 @@ action patch_todo(todo_id: Todo.id, input: PatchTodo, actor: Actor)
     return project todo as TodoView
 }
 
-action delete_todo(todo_id: Todo.id, actor: Actor)
+action delete_todo(todo_id: Todo.id, principal: Principal.user)
     fails TodoNotFound, TodoMutationConflict
     -> None
 {
-    require policy Todo.delete with actor
+    require policy Todo.delete with principal
 
     attempt update required Todo {
         where: id == todo_id
-        and owner_id == actor.user_id
+        and owner_id == principal.user_id
         and deleted_at == none
         set: {
             deleted_at: clock.now
@@ -370,13 +483,13 @@ action delete_todo(todo_id: Todo.id, actor: Actor)
     return none
 }
 
-action read_user_with_todos(user_id: User.id, actor: Actor)
+action read_user_with_todos(user_id: User.id, principal: Principal.user)
     fails UserNotFound
     -> UserWithTodos
 {
-    require actor.user_id == user_id
-    require policy User.read with actor
-    require policy Todo.read with actor through User.todos
+    require principal.user_id == user_id
+    require policy User.read with principal
+    require policy Todo.read with principal through User.todos
 
     return attempt query required User {
         where: id == user_id and status == UserStatus.active
@@ -390,12 +503,12 @@ action read_user_with_todos(user_id: User.id, actor: Actor)
     }
 }
 
-action disable_user(input: DisableUser, actor: Actor)
+action disable_user(input: DisableUser, principal: Principal.user)
     fails UserNotFound
     -> None
 {
-    require actor.user_id == input.user_id
-    require policy User.disable with actor
+    require principal.user_id == input.user_id
+    require policy User.disable with principal
 
     attempt update required User {
         where: id == input.user_id and status == UserStatus.active
@@ -412,7 +525,7 @@ action disable_user(input: DisableUser, actor: Actor)
     return none
 }
 
-action send_due_reminders(at: DateTime)
+action send_due_reminders(at: Instant)
     fails ReminderRecipientRejected, ReminderTemporarilyUnavailable
     -> None
 {
@@ -446,7 +559,7 @@ action send_due_reminders(at: DateTime)
     return none
 }
 
-action purge_deleted_todos(at: DateTime) -> None {
+action purge_deleted_todos(at: Instant) -> None {
     delete many Todo {
         where: deleted_at exists
         and deleted_at <= at - config.soft_delete_retention
@@ -471,46 +584,47 @@ readiness database {
 
 route POST /todos {
     input: CreateTodo
-    run: create_todo(input, current_actor)
+    run: create_todo(input, current_principal.user)
     output: TodoView
     success: created
 }
 
 route GET /todos {
     query: ListTodos
-    run: list_todos(query, current_actor)
+    run: list_todos(query, current_principal.user)
     output: TodoPage
 }
 
 route GET /todos/:todo_id {
     path: { todo_id: Todo.id }
-    run: get_todo(path.todo_id, current_actor)
+    run: get_todo(path.todo_id, current_principal.user)
     output: TodoView
 }
 
 route PATCH /todos/:todo_id {
     path: { todo_id: Todo.id }
     input: PatchTodo
-    run: patch_todo(path.todo_id, input, current_actor)
+    run: patch_todo(path.todo_id, input, current_principal.user)
     output: TodoView
 }
 
 route DELETE /todos/:todo_id {
     path: { todo_id: Todo.id }
-    run: delete_todo(path.todo_id, current_actor)
+    run: delete_todo(path.todo_id, current_principal.user)
     output: none
     success: no_content
 }
 
 route GET /users/:user_id/todos {
     path: { user_id: User.id }
-    run: read_user_with_todos(path.user_id, current_actor)
+    run: read_user_with_todos(path.user_id, current_principal.user)
     output: UserWithTodos
 }
 
 route DELETE /users/:user_id {
+    auth: fresh
     path: { user_id: User.id }
-    run: disable_user(DisableUser { user_id: path.user_id }, current_actor)
+    run: disable_user(DisableUser { user_id: path.user_id }, current_principal.user)
     output: none
     success: no_content
 }

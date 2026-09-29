@@ -18,6 +18,13 @@ failure payload and handling syntax for dynamic construction remain
 provisional. The compatibility and trust rules are the important part and
 should survive other syntax changes.
 
+**Accepted time boundary:** the digest-pinned
+[TIME-001/TEST-001 contract](time-testing-plan.md) replaces the earlier
+`Date`/zone-less-`Time`/`DateTime` sketch with `Instant`, `CalendarDate`,
+resolved zone-aware `Time`, fixed `Duration`, generated `Zone`, and bounded
+`Locale`. It governs compatibility, boundary decoding, persistence, operations,
+and formatting for those types.
+
 ## 1. Goals
 
 The type system should:
@@ -128,12 +135,12 @@ a record whose state-specific fields are all nullable:
 ```text
 enum PaymentOutcome {
     pending {
-        started_at: DateTime
+        started_at: Instant
     }
 
     paid {
         receipt_id: PaymentReceipt.id
-        paid_at: DateTime
+        paid_at: Instant
     }
 
     declined {
@@ -553,6 +560,12 @@ Field references inherit constraints that can be decided from the value itself:
 - closed enumeration membership;
 - nullability;
 - element constraints for contained values.
+
+For valid Unicode text, the current compiler and runtime count Unicode scalar
+values for `min_length` and `max_length`. A supplementary character such as `😀`
+counts as one; `e` followed by a combining accent counts as two. This does not
+normalize text or count displayed grapheme clusters. List length counts elements
+independently of any length constraints on each element.
 
 ### 6.2 Shape rules
 

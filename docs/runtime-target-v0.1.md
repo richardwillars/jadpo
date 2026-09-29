@@ -40,6 +40,29 @@ Bun can otherwise auto-install an unresolved bare package during execution;
 the disabled mode proves the target is closed over Bun's runtime and its own
 generated files.
 
+Applications use an explicit empty environment file, including the
+compiler-owned `test` and `dev` launches. The pinned Bun 1.2.20 ignores the
+unsupported `--no-env-file` flag and still discovers dotenv files. A production
+launcher must retain both package and environment-loading boundaries:
+
+```text
+bun --no-install --env-file=/dev/null build/target/app.ts
+```
+
+The generated application reads only declared binding names from `Bun.env`,
+decodes one complete typed snapshot, and exits before `Bun.serve` when any
+required value is missing or invalid. Cloud-specific launch generation remains
+outside this target contract; dropping the explicit empty-file argument is not
+a supported production launch. Windows launches use `--env-file=NUL`.
+
+P11 adds one narrow capability exception without changing this P9 seed
+evidence: when JWT bearer validation is explicitly declared, the compiler may
+add its exact pinned `jose` dependency plus a compiler-owned frozen
+lock/integrity record. Applications without that declaration retain this closed
+dependency-free contract. Authors cannot select, replace, or import the package,
+and Bun auto-install remains disabled in both modes. See the
+[AUTH-001 implementation plan](authentication-plan.md).
+
 ## Runtime boundaries
 
 The v0.1 generator implements the already-checked core constructs needed by the

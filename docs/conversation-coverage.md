@@ -131,6 +131,9 @@ The resolution was:
 Captured in:
 
 - [assurance model](assurance-model.md), sections 1, 4, and 8;
+- [POLICY-001 decision plan](policy-plan.md), especially the qualified scoped
+  role model, membership/direct bindings, automatic database scoping, complete
+  input-to-output validation chain, and semantic weakening approval;
 - [agent workflow](agent-workflow.md), section 7;
 - [decision register](decision-register.md), accepted and rejected items.
 
@@ -378,7 +381,7 @@ Rust `Result` plumbing.
 The evolved response proposed:
 
 - explicit binding keyword, later settled as `var` / `var mut`;
-- language/standard operations such as `count(items)` rather than magic
+- language/standard operations such as `collection.count(items)` rather than magic
   properties or prototype methods;
 - visible compiler-understood `create`, `query`, `update`, `delete` rather than
   `Order.create`/`order.update`;

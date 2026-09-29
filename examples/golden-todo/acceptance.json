@@ -25,33 +25,33 @@
     {
       "id": "AUTH-002",
       "kind": "http",
-      "title": "session authentication resolves the provider-independent actor",
+      "title": "browser session resolves the provider-independent user principal",
       "fixture": ["active alice", "valid alice session"],
       "request": { "method": "GET", "path": "/todos", "auth": "alice-session" },
-      "expect": { "status": 200, "actorUser": "alice", "providerFieldsInOutput": false }
+      "expect": { "status": 200, "principalKind": "user", "principalUser": "alice", "providerFieldsInOutput": false }
     },
     {
       "id": "AUTH-003",
       "kind": "http",
-      "title": "OIDC authentication resolves the same actor shape",
-      "fixture": ["active alice", "valid alice OIDC token"],
-      "request": { "method": "GET", "path": "/todos", "auth": "alice-oidc" },
-      "expect": { "status": 200, "actorUser": "alice", "providerFieldsInOutput": false }
+      "title": "JWT API bearer resolves the same user principal variant",
+      "fixture": ["active alice", "valid allowlisted alice JWT bearer"],
+      "request": { "method": "GET", "path": "/todos", "auth": "alice-jwt" },
+      "expect": { "status": 200, "principalKind": "user", "principalUser": "alice", "providerFieldsInOutput": false }
     },
     {
       "id": "AUTH-004",
       "kind": "http",
       "title": "conflicting strategies do not merge identity or privileges",
-      "fixture": ["valid alice session", "valid bob OIDC token"],
-      "request": { "method": "GET", "path": "/todos", "auth": ["alice-session", "bob-oidc"] },
+      "fixture": ["valid alice session", "valid bob JWT bearer"],
+      "request": { "method": "GET", "path": "/todos", "auth": ["alice-session", "bob-jwt"] },
       "expect": { "status": 401, "code": "ambiguous_credentials", "databaseQueries": 0 }
     },
     {
       "id": "AUTH-005",
       "kind": "http",
       "title": "invalid credential fails closed even beside a valid credential",
-      "fixture": ["valid alice session", "invalid OIDC token"],
-      "request": { "method": "GET", "path": "/todos", "auth": ["alice-session", "invalid-oidc"] },
+      "fixture": ["valid alice session", "invalid JWT bearer"],
+      "request": { "method": "GET", "path": "/todos", "auth": ["alice-session", "invalid-jwt"] },
       "expect": { "status": 401, "code": "invalid_credentials", "databaseQueries": 0 }
     },
     {
@@ -66,9 +66,48 @@
       "id": "AUTH-007",
       "kind": "http",
       "title": "provider email claim cannot replace application-owned user data",
-      "fixture": ["active alice with database email alice@example.test", "valid alice OIDC subject with email claim attacker@example.test"],
-      "request": { "method": "GET", "path": "/users/alice/todos", "auth": "alice-oidc" },
+      "fixture": ["active alice with database email alice@example.test", "valid alice JWT subject with email claim attacker@example.test"],
+      "request": { "method": "GET", "path": "/users/alice/todos", "auth": "alice-jwt" },
       "expect": { "status": 200, "outputEmail": "alice@example.test", "providerEmailUsed": false }
+    },
+    {
+      "id": "AUTH-008",
+      "kind": "http",
+      "title": "opaque API bearer resolves a user without a request-time cache dependency",
+      "fixture": ["active alice", "valid bounded alice bearer", "cache unavailable"],
+      "request": { "method": "GET", "path": "/todos", "auth": "alice-bounded-bearer" },
+      "expect": { "status": 200, "principalKind": "user", "principalUser": "alice", "authorityQueries": 0 }
+    },
+    {
+      "id": "AUTH-009",
+      "kind": "http",
+      "title": "service API key resolves a distinct service principal",
+      "fixture": ["active reporting service", "current reporting service key"],
+      "request": { "method": "POST", "path": "/auth/exchange", "auth": "reporting-service-key" },
+      "expect": { "status": 200, "principalKind": "service", "principalService": "reporting", "secretInOutput": false }
+    },
+    {
+      "id": "AUTH-010",
+      "kind": "http",
+      "title": "fresh-authority route checks a bounded principal",
+      "fixture": ["active alice", "valid bounded alice bearer"],
+      "request": { "method": "POST", "path": "/users/alice/disable", "auth": "alice-bounded-bearer" },
+      "expect": { "status": 200, "authorityQueries": 1 }
+    },
+    {
+      "id": "AUTH-011",
+      "kind": "http",
+      "title": "disabled service cannot exchange a still-valid key",
+      "fixture": ["disabled reporting service", "cryptographically valid reporting service key"],
+      "request": { "method": "POST", "path": "/auth/exchange", "auth": "reporting-service-key" },
+      "expect": { "status": 403, "code": "service_disabled" }
+    },
+    {
+      "id": "AUTH-012",
+      "kind": "http",
+      "title": "public liveness skips ambient invalid credentials",
+      "request": { "method": "GET", "path": "/health/live", "auth": "invalid-bearer" },
+      "expect": { "status": 200, "body": { "status": "healthy" }, "authenticationAttempts": 0, "databaseQueries": 0 }
     },
     {
       "id": "PUBLIC-001",

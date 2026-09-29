@@ -24,9 +24,10 @@ protected by a human-approval boundary.
 The initial model assumes:
 
 - authentication is required unless public access is explicit;
-- authentication strategies are configured behind one compiler-owned actor and
-  permission context, so routes and business logic do not bind to provider
-  SDKs, token formats, or session mechanisms;
+- authentication strategies are configured behind one compiler-owned principal
+  boundary, while qualified scoped roles come from authoritative POLICY-001
+  bindings, so routes and business logic do not bind to provider SDKs, token
+  formats, session mechanisms, or credential-carried permissions;
 - every route has typed input and output;
 - inputs, outputs, database reads/writes, config, queues, cache, and external
   responses are runtime validated;
@@ -51,9 +52,10 @@ cannot silently create a public endpoint or an unbounded operation.
 The original discussion proposed at least these invariants:
 
 - every database mutation belongs to an action;
-- every action is associated with an actor/authorisation context;
+- every protected action is associated with one principal/authorisation context;
 - every route has input and output contracts;
-- every selected record is proven readable by the current actor under policy;
+- every selected record is proven readable by the current principal's scoped
+  roles under policy;
 - every mutation is proven permitted under policy;
 - every external side effect is visible in the effect graph;
 - every async/external operation has delivery, retry, and idempotency behaviour;
@@ -74,15 +76,24 @@ The original discussion proposed at least these invariants:
 
 ## 4. Policy conformance
 
-An illustrative policy is:
+The accepted [POLICY-001 contract](policy-plan.md) colocates one role-first
+matrix with the protected entity. For example:
 
 ```text
-policy {
-    Todo {
-        read owner
-        create authenticated
-        update owner
-        delete owner
+enum TodoRole {
+    owner
+}
+
+entity Todo {
+    owner_id: User.id {
+        role: TodoRole.owner
+        immutable: true
+    }
+
+    policy {
+        TodoRole.owner: [create, read, update]
+        ApplicationRole.support: [read]
+        ApplicationRole.administrator: [read, delete]
     }
 }
 ```
@@ -96,16 +107,17 @@ POLICY VIOLATION
 DELETE /todos/:id
 
 Expected:
-  Todo.delete = owner
+  Todo.delete = ApplicationRole.administrator
 
 Implementation permits:
-  authenticated users
+  TodoRole.owner
 
 Build blocked.
 ```
 
-The compiler should also identify when policy itself lacks a necessary human
-decision—for example, the deletion lifecycle of related payment records.
+The compiler separately identifies when lifecycle or another human-owned
+contract lacks a necessary decision—for example, what deletion means for
+related payment records. That decision is not disguised as a role rule.
 
 ## 5. Security properties targeted
 
@@ -139,9 +151,10 @@ entry includes:
 ```text
 GET /todos
   authentication: required
-  actor: current user
+  principal: current user
   reads: Todo
-  row scope: owner == current_user
+  admitted role: TodoRole.owner
+  role binding: Todo.owner_id == principal.user_id
   input: validated
   output: validated Todo[]
   rate limit: default
@@ -151,10 +164,13 @@ GET /todos
   escape hatches: none
 ```
 
-For persistence, the safe default is concrete: every transitively mutative
-action is one compiler-inferred transaction, nested mutative calls reuse its
-scoped adapter, and read-only actions avoid write transactions. Review surfaces
-show the inferred policy; routine source code does not opt into atomicity.
+For persistence, the safe default is concrete: an entity action is independently
+failure-atomic, while an action reaching multiple mutation scopes must declare
+its consistency intent. An explicit atomic boundary supplies one checked
+transaction context to nested calls; durable projection and multi-authority
+workflow guarantees remain distinct. Review surfaces show authority,
+transaction, freshness, delivery, and compensation plans rather than hiding
+them behind the call graph.
 
 Application-level summaries should include:
 
@@ -162,8 +178,12 @@ Application-level summaries should include:
 - public routes and explicit security exceptions;
 - configured authentication strategies, validated claim mappings, and routes
   that change the inherited authentication requirement;
-- entity/field access by actor and route;
+- entity/field access by principal, qualified role, scope, and route;
 - destructive operations and lifecycle decisions;
+- each fact's authority, dependent projections, freshness requirements,
+  delivery lag/watermarks, and reconciliation status;
+- atomic boundaries and durable-workflow steps, retries, compensation, and
+  unresolved outcomes;
 - external services, secrets, and egress;
 - jobs/events and delivery policy;
 - raw/unsafe escape hatches;

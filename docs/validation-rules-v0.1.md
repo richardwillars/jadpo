@@ -20,17 +20,19 @@ Every public output is closed-serialized and validated against its declared
 schema before bytes are sent. An undeclared field, invalid nominal value, secret
 classification, or incomplete value fails closed behind the safe boundary.
 
-### CONFIG-PREFLIGHT
+### CONFIG-VALIDATE
 
-Environment-bound preflight validates required values, types, constraints,
-overlays, defaults, and production-fallback rules without disclosing values.
-Invalid configuration returns stable declaration/provenance diagnostics and a
-non-zero status.
+Local development, generated deployment integration, and runtime startup use
+the same environment-bound validator for required values, types, constraints,
+and defaults without disclosing values. Local `jadpo config check` reports safe
+presence/validity status; production validation is automatic rather than a
+manual preflight step. Invalid configuration returns stable binding diagnostics
+and a non-zero status.
 
 ### STARTUP-BEFORE-LISTEN
 
 Runtime startup repeats actual-value validation and does not bind a public
-listener or announce readiness until all required restart-bound configuration
+listener or announce readiness until all required startup-bound configuration
 and local initialization have succeeded.
 
 ### READINESS-LIVENESS-SEPARATION
@@ -54,9 +56,34 @@ join/batch strategy so N+1 and Cartesian behavior can be tested.
 
 ### TRANSACTION-ATOMIC
 
-Every transitively mutative action runs in one compiler-inferred transaction;
-nested mutations reuse it and a failed domain/operational/cardinality check
-commits no partial database state.
+An entity action invoked directly is failure-atomic. An enclosing action that
+reaches multiple mutation scopes declares atomic or durable intent; omission is
+invalid. Inside a proved atomic boundary, nested mutations and guarding reads
+reuse one compatible transaction context, nested success remains provisional,
+and a failed domain/operational/cardinality check commits no partial state.
+
+### PROJECTION-DURABLE
+
+An authoritative mutation and its durable change record commit together.
+Derived-store delivery uses stable revision and idempotency identities, preserves
+per-entity ordering, retries safely, exposes lag/watermarks, and supports
+replay, rebuild, and reconciliation. This proves durable convergence machinery,
+not that every projection is current at authority commit time.
+
+### FRESHNESS-POLICY
+
+A cache, graph, search index, or other derived representation never weakens
+authorisation, ownership, lifecycle, or invariant decisions. The compiler
+proves its freshness and revocation contract satisfies policy or revalidates
+candidate identities against authority before releasing or changing data.
+
+### DURABLE-WORKFLOW
+
+An operation spanning independent authorities persists step progress and uses
+stable idempotency, bounded retry/timeout, authored compensation,
+reconciliation, and explicit outcome/intervention states. It is never labelled
+atomic unless every participant proves one supported prepare/commit and durable
+recovery protocol.
 
 ### FAILURE-NORMALISE
 
@@ -91,4 +118,3 @@ Each use of a validation rule must name the executable/integration/operational
 case that exercises it and the relevant threat-model entry. If the case does not
 yet exist, the evidence map must label it `planned`; candidate documentation may
 state the intended property but not claim it is implemented.
-

@@ -71,10 +71,15 @@ compiler failures.
 
 ### 3.2 Naming
 
-**Provisional:**
+**Accepted:** the complete language-wide rules are fixed by the digest-pinned
+[naming and qualification contract](naming-and-qualification.md). In summary:
 
-- types, entities, events, and named failures use `UpperCamelCase`;
-- values, fields, functions, actions, and jobs use `lower_snake_case`;
+- nominal/type-like declarations use `UpperCamelCase`;
+- values, fields, callables, jobs, capability instances, and enum variants use
+  `lower_snake_case`;
+- logical modules use dotted `lower_snake_case` segments;
+- compiler standard-library families use mandatory lowercase namespaces such
+  as `temporal.*` and `collection.*`; and
 - language keywords use lowercase.
 
 ```text
@@ -85,10 +90,13 @@ CreditLimitExceeded
 current_user
 calculate_total
 place_order
+todo.order_pricing
+temporal.in_zone
 ```
 
 Capitalisation supplies useful visual information without introducing special
-sigils such as `@Order`.
+sigils such as `@Order`. Ownership then determines qualification; casing alone
+does not turn an authored module or runtime value into a namespace.
 
 ### 3.3 Comments and documentation
 
@@ -163,8 +171,11 @@ undeclared or missing fields. If `customer` has type `Customer`, every field in
 
 ### 5.2 Primitive and domain types
 
-**Accepted and implemented:** the prelude contains a deliberately small set of
-representation, time, container, and broadly unambiguous semantic types.
+**Accepted target; TIME/TEST-P0 migration pending:** the prelude contains a
+deliberately small set of representation, time, container, and broadly
+unambiguous semantic types. The executable prototype still recognises the
+legacy `Date`/zone-less-`Time`/`DateTime` set; that is migration input, not an
+alternative language contract.
 
 ```text
 Bool
@@ -173,10 +184,13 @@ Decimal
 Text
 Bytes
 Uuid
-Date
+Instant
+CalendarDate
 Time
-DateTime
 Duration
+Zone
+Locale
+PresentationText
 Unit
 Object
 List<T>
@@ -293,12 +307,12 @@ Enums may carry variant-specific data:
 ```text
 type PaymentOutcome = Enum {
     pending {
-        started_at: DateTime
+        started_at: Instant
     }
 
     paid {
         receipt_id: PaymentReceipt.id
-        paid_at: DateTime
+        paid_at: Instant
     }
 
     declined {
@@ -402,22 +416,23 @@ Map<Text, Int>
 Set<Id>
 ```
 
-Collection operations should be language or standard-library functions rather
-than magic properties or prototype-style methods:
+Collection operations are compiler standard-library functions under the
+mandatory lowercase `collection` namespace, rather than unqualified globals,
+magic properties, or prototype-style methods:
 
 ```text
-count(items)
-contains(items, product)
-sum(prices)
-filter(items, is_available)
-map(items, calculate_price)
+collection.count(items)
+collection.contains(items, product)
+collection.sum(prices)
+collection.filter(items, is_available)
+collection.map(items, calculate_price)
 ```
 
 The earlier `input.items.empty` form is rejected because `empty` could be a data
 field, a method, a magic property, or a compiler intrinsic. Prefer:
 
 ```text
-if count(input.items) == 0 {
+if collection.count(input.items) == 0 {
     reject EmptyBasket
 }
 ```
@@ -435,7 +450,7 @@ This is a firm part of the emerging design.
 `null`. A value that may be absent has type `T?`; the absent value is `none`.
 
 ```text
-var due_at: DateTime? = none
+var due_at: Instant? = none
 ```
 
 An optional value must be narrowed before use:
@@ -455,7 +470,7 @@ match due_at {
 }
 ```
 
-There is no general truthiness rule. A `DateTime?`, `Int`, or `Text` cannot be
+There is no general truthiness rule. An `Instant?`, `Int`, or `Text` cannot be
 used as a boolean.
 
 ### 6.2 Omission is not `none`
@@ -506,7 +521,19 @@ one canonical default.
 
 ## 7. Structured values, inputs, and outputs
 
-Every structured data shape uses `type Name = Object { ... }`. `input:` and
+**Accepted boundary:** ordinary structured `type` declarations are complete
+identity-free values. A first-class `entity` represents an identity-bearing
+domain subject whether or not it persists. The accepted semantic shape,
+operation/query ownership, and project roles are fixed in the
+[entity, query, and transaction model](entity-query-model.md). Exact punctuation
+is still fixture-first work. That accepted model also distinguishes one
+authority per fact, compiler-managed durable projections, query freshness, and
+multi-authority workflows from true atomic transactions. The `type` plus
+top-level `persist` spellings below describe the executable prototype, not the
+accepted final entity surface.
+
+In the current prototype, every structured data shape uses
+`type Name = Object { ... }`. `input:` and
 `output:` are route roles and may reference any declared type. Boundary use
 derives the closed decoder or serializer; it does not change type identity.
 
@@ -571,11 +598,20 @@ removes the earlier inconsistency between `field = value` and `field: value`.
 
 ## 8. Entities and persistence
 
-Canonical source declares `type Name = Object { ... }` and opts into storage
-separately with `persist Name { ... }`. A type without `persist` is ordinary
-constructible application data and has no generated database operations.
+**Implemented bounded grammar:** an entity has
+stable identity independently of storage, one authoritative file under
+`entities/`, optional explicit capabilities, entity-owned functions/actions,
+and named entity-centred queries. Complete values and compiler-owned references
+are distinct receiver requirements; dot syntax is a checked qualified call and
+never implies loading, saving, or mutation. Only entity-owned actions directly
+mutate that entity. Cross-entity queries and workflows have their own recognised
+roles. Dossiers accept `identity:`, an optional authority `persistence` block,
+`cache`/`projection` declarations, entity `function`/`action`/`query`
+operations, receiver kinds, mutation guards, consistency dispositions, and
+freshness contracts. The following `type` plus `persist` syntax remains
+executable comparison and migration evidence.
 
-### 8.1 Entity declaration
+### 8.1 Current executable persistence prototype
 
 `persist` declares storage metadata for an existing object type. Postgres is
 the opinionated initial database target.
@@ -585,7 +621,7 @@ type Customer = Object {
     id: Uuid
     email: Email
     middle_name: Text?
-    last_seen_at: DateTime?
+    last_seen_at: Instant?
 }
 
 persist Customer {
@@ -1093,10 +1129,35 @@ fields.
 
 ## 9. Functions and actions
 
+Callable spelling is determined by semantic ownership, giving each callable one
+canonical source form:
+
+```text
+calculate_total(items)                         // authored free callable
+Customer.by_email(email)                       // entity-owned static operation
+customer.change_email(email)                   // entity receiver call
+temporal.in_zone(created_at, viewer.zone)       // standard-library family
+collection.count(items)                        // standard-library family
+```
+
+An authored free function, action, or query is unqualified in its declaring
+module and after a selective import. An entity operation is qualified by the
+entity, with receiver-dot syntax only when it declares a receiver. A
+compiler-owned standard-library family is always qualified by its reserved
+lowercase namespace. Standard namespaces cannot be selectively opened, aliased,
+or reproduced as unqualified or receiver-method synonyms.
+
+This is not a general “everything is a method” rule. `clock.now` is a contextual
+capability value, `config.mail_sender` is typed data access, `Email(value)` is
+validated construction, and `Zone.europe_london` is an enum variant. Their dot
+or call punctuation reflects different semantic categories that the compiler
+and generated audit retain.
+
 ### 9.1 Functions
 
-**Provisional:** `function` describes ordinary computation without persistent or
-external effects.
+**Accepted:** `function` describes pure, non-suspending computation. It may call
+functions and produce declared failures, but it cannot access persistence,
+services, events, secrets, ambient time or randomness, or invoke an action.
 
 ```text
 function calculate_discount(
@@ -1137,15 +1198,17 @@ to need one, is open.
 
 ### 9.2 Actions
 
-**Provisional, strongly recommended:** `action` is a domain operation that may
-read or mutate persistent state, emit events, or call declared services.
+**Accepted:** `action` is a runtime-managed application operation. It may call
+functions or actions, read or mutate persistent state, emit events, or call
+declared services. It need not perform an effect merely to qualify as an action
+or route boundary.
 
 ```text
 action place_order(input: CreateOrder)
     fails EmptyBasket, CreditLimitExceeded
     -> Order
 {
-    if count(input.items) == 0 {
+    if collection.count(input.items) == 0 {
         reject EmptyBasket
     }
 
@@ -1170,7 +1233,9 @@ action place_order(input: CreateOrder)
 ```
 
 The compiler understands the action's database mutations, external effects,
-possible domain failures, and transaction needs.
+possible domain failures, transaction needs, and internal suspension. Authored
+source has no `async`, `await`, promise, or detached-call type: each ordinary
+action call completes before the next statement executes.
 
 **Accepted signature order:** a fallible callable places `fails` before its
 successful result arrow:
@@ -1189,11 +1254,11 @@ itself fails.
 
 ### 9.3 Effect rules
 
-**Open:** the exact effect system has not been designed. At minimum, pure
-functions should not be able to perform undeclared database writes, service
-calls, event emission, or secret access. Whether functions can read the database
-or whether all persistence belongs exclusively to actions must be decided from
-real examples.
+**Accepted core boundary:** functions are pure and non-suspending; persistence
+and external effects belong to actions. The compiler rejects direct or
+transitive function-to-action calls and derives target suspension through the
+action call graph. Structured parallelism, cancellation, and durable background
+work remain separate future decisions.
 
 ## 10. Control flow
 
@@ -1215,7 +1280,7 @@ form in v0.
 Expressions use conventional precedence: unary `not` and `-`; `*`, `/`, `%`;
 `+`, `-`; `<`, `<=`, `>`, `>=`; `==`, `!=`; `and`; then `or`. Arithmetic is
 numeric, except `Text + Text`; ordering accepts compatible non-null Text,
-numeric, and DateTime representations. Operations return representation values,
+numeric, and compatible `Instant`/resolved-`Time` representations. Operations return representation values,
 so producing a constrained semantic type requires explicit construction.
 
 ### 10.2 Pattern matching
@@ -1329,12 +1394,13 @@ channels, operational faults, and non-HTTP mappings.
 
 ### 11.2 Propagation
 
-**Accepted P10.6 direction:** every fallible expression is acknowledged with
-`attempt`, including straightforward propagation. After local handling and
-mapping, the callable's authored `fails` clause must exactly equal the closed
-set of recoverable problems that can still escape. Missing declarations and
-stale extra declarations are compile errors; the compiler reports the inferred
-difference but never silently edits the contract.
+**Executable P10.7 semantics:** every fallible expression is acknowledged with
+either `attempt` for complete propagation or exhaustive outcome `match` for
+local handling and mapping. After those decisions, the callable's authored
+`fails` clause must exactly equal the closed set of recoverable problems that
+can still escape. Missing declarations and stale extra declarations are compile
+errors; the compiler reports the inferred difference but never silently edits
+the contract.
 
 ```text
 action cancel_order_by_id(id: Order.id)
@@ -1351,18 +1417,22 @@ against the written clause. A named action's route does not repeat that list:
 the route derives its error surface from `run:`, and standard failure kinds
 supply transport mapping without numeric statuses in application code.
 
-For local handling or transformation, `attempt` grows a handler block:
+For local handling or transformation, exhaustive outcome `match` is the second
+acknowledgement form. It names the success value and every exact failure; there
+is no failure wildcard or separate handler grammar inside `attempt`:
 
 ```text
-var order = attempt cancel_order(input.order_id) {
-    NotFound => reject OrderNotFound
-    NotOwner => reject Forbidden
-    AlreadyShipped => reject CannotCancelOrder
+var order = match cancel_order(input.order_id) {
+    success(order) => order
+    failure NotFound => reject OrderNotFound
+    failure NotOwner => reject Forbidden
+    failure AlreadyShipped => reject CannotCancelOrder
 }
 ```
 
-The precise handler-arm grammar, replacement-value typing, and interaction with
-`match` remain open.
+A failure arm may instead return a compatible replacement value or use
+`propagate`. The optional spelling for binding a failure's typed context remains
+open; handling, mapping, recovery, and propagation do not depend on it.
 
 ### 11.3 Operational failures
 
@@ -1501,17 +1571,50 @@ prototype acceptance routes use the explicit authentication opt-out, while
 generation of a protected route fails rather than silently exposing it. This
 temporary fixture repetition is not the intended application model.
 
-**Accepted direction:** authentication strategies are configured outside route
-business logic. Whether a request arrived through a session, OIDC/JWT, API key,
-service identity, or another reviewed strategy, application code receives the
-same typed actor context: authenticated identity, tenant where applicable,
-allowlisted user information, permissions/capabilities, and authentication
-strength. Routes inherit authentication and may eventually state a stronger
+**Implemented compiler foundation:** the project-wide default and closed
+principal are declared independently of routes:
+
+```text
+application TodoApplication {
+    authentication {
+        principal: Principal
+        revocation {
+            mode: bounded
+            maximum_delay: 5m
+        }
+    }
+}
+
+principal Principal {
+    user {
+        subject: Text
+        user_id: User.id
+    }
+    service {
+        subject: Text
+        service_id: Service.id
+    }
+}
+```
+
+There is at most one application and one principal declaration. The principal
+must contain exactly one user and one service variant. Immediate revocation has
+no delay; bounded revocation requires a positive maximum delay. The compiler
+parses, validates, and exposes these declarations through `inspect`, but does
+not yet generate their runtime.
+
+Authentication strategies are configured outside route business logic.
+Whether a request arrived through a session, OIDC/JWT, API key, service
+identity, or another reviewed strategy, application code receives the same
+typed principal context: authenticated user or service identity, allowlisted
+user information, and authentication strength. Qualified scoped roles are
+resolved separately from authoritative POLICY-001 bindings rather than carried
+as credential claims. Routes inherit authentication and may state a stronger
 typed requirement or the conspicuous `none` exception; they do not name
 provider SDKs or token
 formats. Multiple enabled strategies require deterministic selection and may
-not silently combine privileges. Exact configuration and strategy-declaration
-syntax remains a P11 issue.
+not silently combine privileges. Credential transport, validation, mapping,
+and authoritative-resolution syntax remains in AUTH-P1.
 
 Path placeholders use braces in the route template and are typed together in a
 `path: { ... }` group:
@@ -1605,27 +1708,54 @@ streaming, and composition questions above are not executable syntax.
 
 ## 14. Policies
 
-Policy expresses human-approved intent independently enough for the compiler to
-compare it with implementation behaviour.
+Policy expresses human-approved permitted behaviour. The accepted
+[POLICY-001 contract](policy-plan.md) uses qualified role variants,
+authoritative relationship/membership bindings, and one role-first matrix on
+each protected entity:
 
 ```text
-policy {
-    Todo {
-        read owner
-        create authenticated
-        update owner
-        delete owner
+enum CompanyRole {
+    owner
+    editor
+    viewer
+}
+
+entity CompanyMembership {
+    company_id: Company.id
+    user_id: User.id
+    role: CompanyRole
+
+    membership {
+        scope: company_id
+        member: user_id
+        role: role
+    }
+}
+
+entity Article {
+    company_id: Company.id
+
+    policy {
+        CompanyRole.owner: [create, read, update, delete]
+        CompanyRole.editor: [read, update]
+        CompanyRole.viewer: [read]
     }
 }
 ```
 
-This syntax is illustrative. The important requirement is that an LLM must not
-silently weaken human-owned policy to make its implementation compile. A policy
-change requires an explicit human decision and appears clearly in review.
+The compiler derives `create`, `read`, `update`, and `delete` from named query
+and action graphs and injects required row scope before data access. Ordinary
+fields inherit the entity matrix; an exceptional field-local policy may only
+narrow it. Input validation, supplied-field policy, write ownership, lifecycle,
+database constraints/result validation, projections, and exact output
+serialization remain distinct checked gates. Policy never dynamically strips
+fields.
 
-**Open:** whether policies live in the same files, a protected companion file,
-or a separate signed/approved artifact; role and attribute syntax; record-level
-proof rules; and how policy changes are authorised.
+The exact grammar is delivered fixture-first by POLICY-P0–P2. The semantic
+location and approval boundary are closed: policy is colocated with the entity,
+field, or non-entity operation, while protected review attestation over policy
+and semantic-graph digests prevents an LLM from silently authorising a
+weakening.
 
 ## 15. Events and jobs
 
@@ -1683,8 +1813,10 @@ match their declared schemas.
 
 Handwritten tests remain necessary for business intent that cannot be inferred.
 
-**Open:** fixtures, property tests, clocks, randomness, external-service fakes,
-and the boundary between generated and authored tests.
+**Accepted:** the [TIME-001/TEST-001 contract](time-testing-plan.md) defines
+typed isolated fixtures, clocks, entropy, declared capability fakes, direct
+call/HTTP/job invocation, and generated-versus-authored evidence. General
+property-test syntax remains deferred.
 
 ## 17. Formatting and canonical source
 
@@ -1746,7 +1878,7 @@ type Order = Object {
     items: List<OrderItem>
     total: Money
     status: OrderStatus
-    created_at: DateTime
+    created_at: Instant
 }
 
 persist Order {
@@ -1769,7 +1901,7 @@ action place_order(input: CreateOrder)
     fails EmptyBasket, CreditLimitExceeded
     -> Order
 {
-    if count(input.items) == 0 {
+    if collection.count(input.items) == 0 {
         reject EmptyBasket
     }
 
@@ -1809,8 +1941,9 @@ resolve:
 
 1. How are files, modules, imports, visibility, and namespacing expressed?
 2. What is the exact syntax for zero/one/exactly-one database queries?
-3. Are functions strictly pure? Which effects may actions perform?
-4. How are transactions declared or inferred?
+3. Which additional explicit effect capabilities, if any, may actions perform?
+4. What is the canonical explicit-atomicity spelling and initial checked
+   isolation/locking/retry plan?
 5. How do partial entity updates consume omission-aware input safely?
 6. What is the exact handler-arm and replacement-value grammar after an
    `attempt` prefix?
@@ -1823,9 +1956,9 @@ resolve:
     migrations declared?
 12. How are authentication identities, roles, tenancy, ownership, and policy
     proofs represented?
-13. How are secrets introduced and prevented from reaching outputs or logs?
+13. Which additional compiler-owned secret sinks are required beyond the
+    approved CONFIG-001 and authentication boundaries?
 14. How do external contracts, retries, idempotency, and webhooks work?
-15. How are configuration and environment values declared and validated?
 16. What is the comment, documentation, intent, and decision-record syntax?
 17. What belongs in authored tests versus compiler-generated tests?
 18. Which escape hatches are genuinely required for ordinary SaaS backends?
@@ -1859,8 +1992,8 @@ resolve:
 | Expected failure | declared `fails`, raised with `reject` |
 | Failure transport | standard kind maps automatically; no route status numbers |
 | Failure disclosure | safe code/message by default; public details are explicit |
-| Fallible expression | explicit `attempt` prefix |
-| Local failure mapping | handler block spelling remains unresolved |
+| Fallible expression | explicit `attempt` propagation or exhaustive outcome `match` |
+| Local failure mapping | exact `success(value)` and `failure FailureName` outcome arms |
 | Persistence | `create`, `query`, `update`, `delete` language constructs |
 | External effects | declared `service`, `event`, and `job` constructs |
 | Route security | authenticated by default; exact opt-out is `auth: none` |

@@ -17,8 +17,9 @@ checkpoint is reported as a separate run rather than silently changing tools.
   receives an equivalent local mode;
 - an explicit policy layer using CASL or an equivalently mature typed
   authorization library selected before the checkpoint;
-- JOSE/OIDC validation plus a signed-session adapter, both normalised into one
-  application-owned `Actor` type;
+- signed browser sessions, opaque user bearer tokens, service API keys/exchange,
+  and allowlisted JOSE JWT validation, all normalised into one closed
+  application-owned user/service `Principal` type;
 - Vitest for unit/integration tests and the shared black-box runner for contract
   tests;
 - ESLint with type-aware rules, dependency/egress restrictions, and no floating
@@ -33,7 +34,7 @@ make it easier for the language to win.
 
 ## Required architecture
 
-The baseline must centralise authentication, actor normalisation, error
+The baseline must centralise authentication, principal normalisation, error
 mapping, output validation, secret injection, database transactions, policy
 checks, and job execution. It may use code generation, lint rules, repository
 boundaries, and custom static analysis. The comparison question is whether
@@ -51,6 +52,9 @@ Both implementations must:
   lifecycle inventories;
 - expose exactly the same HTTP contracts and safe failure envelopes;
 - use the same authentication test identities and provider failure fixtures;
+- enforce exactly-one cookie/bearer credential selection, the declared
+  immediate/bounded revocation guarantees, and fresh-authority routes without
+  depending on a cache;
 - operate under the same database, network, clock, and package-install
   constraints;
 - receive the same task prompts and clarification answers; and
@@ -71,4 +75,3 @@ The baseline agent receives concise generated architecture and contract
 summaries, schema/type navigation, runnable validation commands, and relevant
 examples. The language agent receives the corresponding compiler context. Raw
 framework boilerplate is not intentionally dumped into either context.
-

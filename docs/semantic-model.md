@@ -3,12 +3,39 @@
 **Status:** conceptual draft  
 **Related:** [type system](type-system.md), [failure model](failure-model.md),
 [syntax](syntax.md), [assurance model](assurance-model.md),
+[naming and qualification](naming-and-qualification.md),
 [decision register](decision-register.md)
 
 The semantic model matters more than the parser grammar. It defines the concepts
 the compiler can reason about and the guarantees each concept carries. Surface
 syntax should remain replaceable until complete example programs demonstrate
 that these are the right abstraction boundaries.
+
+**Accepted boundary:** DATA-007 defines an `entity` as an identity-bearing
+domain subject independent of persistence. Persistence is an optional explicit
+entity capability. Entities own their mutations; named queries own reads; and
+top-level actions compose multi-entity workflows and consistency intent. Every
+mutable fact has one authority; declared derived representations converge under
+compiler-managed delivery and freshness contracts. The complete accepted
+contract is the [entity, query, and transaction
+model](entity-query-model.md). The current `type` plus separate `persist`
+compiler path remains prototype evidence until the accepted model has fixtures
+and executable support.
+
+**Accepted time boundary:** `Instant` is the ordinary global timestamp;
+`CalendarDate` is a date-only fact; resolved `Time` retains an `Instant` plus a
+compiler-generated `Zone` enum value. The compiler-owned `temporal` library,
+stable operation clock, monotonic deadlines, lifecycle timestamp ownership,
+formatting boundary, database decoding, and deterministic test capabilities are
+specified by the digest-pinned [TIME-001/TEST-001 contract](time-testing-plan.md).
+
+**Accepted naming boundary:** every name has one semantic owner and canonical
+source form. Authored free callables are unqualified in module/import scope;
+entity operations are entity-qualified or receiver-qualified; compiler
+standard-library families use mandatory lowercase namespaces. Casing, imports,
+constructors, variants, capability access, diagnostics, and alias rejection are
+fixed by the digest-pinned [naming and qualification
+contract](naming-and-qualification.md).
 
 ## 1. Program
 
@@ -108,19 +135,39 @@ Returning a richer internal value where a narrower public output is declared
 must not accidentally expose extra fields. Either the compiler proves a safe
 projection or the serializer rejects the mismatch.
 
-### 2.5 Object types
+### 2.5 Object types and entities
 
-`type Name = Object { ... }` declares structured domain data. Examples may
-include addresses, money breakdowns, date ranges, provider contracts, request
-shapes, response shapes, and objects later selected for persistence.
+`type Name = Object { ... }` declares complete structured value data without
+enduring identity. Examples include addresses, money breakdowns, date ranges,
+provider contracts, request shapes, response shapes, projections, and
+snapshots. Equal values are interchangeable; a concrete value is complete and
+declared fields are never mysteriously missing.
 
-Its equality, copying, and serialisation semantics are open, but a concrete
-value is complete: declared fields are never mysteriously missing.
+`entity Name { ... }` declares a nominal identity-bearing domain subject. An
+entity may be persistent, externally backed, cached, graph-backed,
+request-scoped, or not stored. Entityhood intrinsically supplies stable
+identity, nominal equality/reference semantics, an authoritative source home,
+and a semantic target for explicit capabilities, policy, lifecycle,
+operations, audit, and tooling. It does not automatically supply persistence,
+CRUD, routes, authentication, caching, graph participation, or mutation.
+
+A complete entity value is an immutable validated snapshot, not a live ORM
+proxy. Field access never performs I/O. Every entity also exposes a
+compiler-owned nominal reference derived from its declared identity. A complete
+value may project to its reference; a reference never loads a complete value
+implicitly.
 
 ### 2.6 Persistence
 
-`persist Type { ... }` opts an object type into persistent, identified storage.
-Initially it maps to Postgres. The persistence declaration supplies:
+Persistence is an optional explicit capability inside an entity's
+authoritative contract. Absence of that capability is the canonical statement
+that the entity has no generated database operations. Persistence does not
+create the entity's identity; it binds that already-declared identity and state
+to a store.
+
+The current executable top-level `persist Type { ... }` form remains prototype
+and migration evidence rather than final source authority. The accepted entity
+capability initially maps to Postgres and supplies:
 
 - identity, defaults, and storage constraints for fields declared by the type;
 - relationships and ownership-relevant references;
@@ -177,22 +224,51 @@ The compiler may infer anonymous projection types or allow them to be named.
 
 ### 2.8 `query`
 
-A query is a compiler-understood database read. The semantic model knows:
+A query is a named compiler-understood read-only runtime operation. It may
+suspend and produce normalized operational problems, so a fallible invocation
+requires `attempt` or exhaustive outcome matching. It may call pure functions
+and other queries, but it cannot create, update, delete, call an action or
+service, emit an event, or access a secret. The semantic model knows:
 
 - entity/projection returned;
 - cardinality: many, optional one, or required one;
 - filters and ownership scope;
 - ordering, limits, and pagination;
 - whether policy permits the selected rows and fields;
+- the selected authority or derived representation and required freshness;
 - resource/cost bounds where knowable.
 
 Raw SQL is not an ordinary query. Complex capabilities should first be added as
 safe declarative query forms. Any raw escape hatch is explicitly audited.
 
+Entity-centred queries live in the entity's authoritative file. Cross-entity
+reports, searches, dashboards, and other projections are named top-level
+queries under the recognised query role and return complete value types. Raw
+query expressions do not appear in routes, functions, ordinary top-level
+actions, workflows, jobs, policy, or configuration; those declarations call
+named queries. When invoked inside an action transaction, a query uses the same
+transaction context.
+
+A query over derived state declares one of four semantic freshness levels:
+authoritative, read-your-writes, bounded staleness, or eventual. Exact syntax
+remains fixture work. The compiler may use a stronger representation but may
+not silently weaken the declaration. Within one operation graph,
+read-your-writes propagates a compiler-owned authority revision; a lagging
+projection must be awaited, replaced by an equivalent authoritative plan, or
+reported as a typed availability failure. A later request needs a typed
+revision token if it requires continuity with an earlier commit.
+
+Freshness never weakens authorisation. Policy, lifecycle, ownership, and
+invariant decisions default to authoritative state. A derived representation
+may supply them only when its propagation and revocation contract satisfies the
+policy proof; otherwise selected identities are revalidated at authority before
+data is released or changed.
+
 ### 2.9 `action`
 
-An action is a domain operation capable of persistent or declared external
-effects. It owns or makes visible:
+An action is a runtime-managed application operation that may perform persistent
+or declared external effects. It may also be effect-free when it serves as a
+route or stable operation boundary. It owns or makes visible:
 
 - reads and mutations;
 - authorisation preconditions;
@@ -202,25 +278,99 @@ effects. It owns or makes visible:
 - typed domain failures;
 - operational failure policy.
 
-Every database mutation belongs to an action or an equivalently explicit route
-body. The compiler must be able to see the action's effect graph.
+Every database mutation belongs to an action owned by the entity being
+mutated. Routes and application workflows cannot issue raw mutations; they call
+named entity actions. The compiler must be able to see the complete action
+effect graph and can therefore prevent bypass of entity invariants, lifecycle,
+and policy.
 
-The default boundary is the complete mutative action. The compiler infers this
-transitively, passes one transaction-scoped persistence capability through
-nested callable invocations, and reuses it if a nested mutative action is
-entered. Reads within that action share the same transaction; read-only actions
-avoid a write transaction. Explicit syntax is reserved for advanced choices
-such as isolation or intentionally splitting a boundary, not for remembering
-basic atomicity.
+An entity action is independently failure-atomic when invoked directly. The
+compiler manages its connection, commit, rollback, and validated result; source
+does not receive a transaction object. Composition does not silently widen that
+boundary. When an enclosing action reaches multiple mutation scopes, the author
+must explicitly declare atomic intent or choose a durable-workflow disposition.
+Omission is a compile error rather than an inferred semantic choice.
 
-### 2.10 Function
+Multi-entity operations are ordinary top-level application actions. The
+action explicitly declares when those operations must form one atomic boundary.
+The compiler then derives and validates the transaction domain and passes one
+transaction-scoped persistence capability through nested entity actions and
+queries; nested actions never commit independently and their success is
+provisional until the outer boundary commits. A propagated failure rolls back
+the declared boundary. A nested failure that is handled locally rolls the
+callee back to a compiler-owned savepoint before recovery continues. Policy,
+lifecycle, and invariant reads guarding a mutation use that same transaction
+and concurrency plan. Atomic participants must share one compatible
+transaction domain unless every adapter proves one compiler-supported
+prepare/commit and durable-recovery protocol. Isolation, locking or
+conditional-write strategy, deadlock ordering, and safe retry behaviour are
+part of the checked/audited contract rather than implied by the word
+`transaction`.
 
-A function performs ordinary computation. The design preference is to keep it
-free from persistent and external effects so a call is locally understandable.
+A mutating entity action normally receives an entity reference. A complete
+entity value remains an immutable snapshot, not a concurrency token. If a
+mutating value receiver is accepted, the action must reload or lock current
+authoritative state in its transaction or use a compiler-checked revision or
+conditional-write precondition; an unguarded stale-snapshot write is invalid.
 
-Whether functions may perform database reads is unresolved. Their effect rules
-must be explicit enough that an agent never has to guess whether a call can
-mutate state, perform network I/O, or access secrets.
+Actions may call functions or actions and may suspend internally. Authored
+source has no `async`, `await`, promise, or detached-call type; an ordinary
+action invocation always completes or produces a declared failure before its
+caller continues. The compiler derives target suspension through the action
+call graph. Parallel or background work requires a later explicit structured-
+concurrency, event, or durable-job boundary.
+
+### 2.10 Authority, projections, and cross-store consistency
+
+Each mutable domain fact has exactly one declared authority. Other copies in a
+cache, graph, search index, analytics store, or denormalised table are derived
+representations and cannot be directly mutated by application source. The
+initial implementation may require all mutable fields of one entity to share
+one authority. A later split remains legal only when every fact is unambiguous
+and any cross-authority change uses the consistency contract below.
+
+Jadpo distinguishes four mechanisms:
+
+- **local atomic** — one compatible transaction domain commits all writes or
+  none;
+- **prepared atomic** — every participant implements one compiler-verified
+  prepare/commit and recovery protocol, accepting lower availability and
+  possible in-doubt recovery;
+- **durable projection** — authoritative state and a change record commit in
+  one local transaction, after which derived stores converge through ordered,
+  at-least-once, idempotent, replayable delivery; and
+- **durable workflow** — independently authoritative systems are coordinated
+  through persisted progress, idempotent steps, retry, timeout, authored
+  compensation, reconciliation, and explicit outcome uncertainty.
+
+`transaction` and `atomic` refer only to the first two. The compiler rejects an
+atomic declaration it cannot prove and never substitutes eventual consistency
+or compensation. Durable projection success means the authoritative change and
+its delivery obligation are committed, not that every projection has already
+caught up. Watermarks, lag, rebuild, reconciliation, and query freshness make
+that temporary divergence explicit and manageable.
+
+Entity actions express one authoritative domain change. For every declared
+durable representation, the runtime writes an outbox/change-journal record (or
+adapter-native equivalent) at the authority commit point and generates stable
+entity, projection, idempotency, and monotonic revision identities. Application
+code neither dual-writes derived stores nor publishes ad hoc synchronisation
+events.
+
+An external service or store that owns facts is another authority, not a
+projection. Work spanning such authorities is a durable workflow unless every
+participant supports prepared atomicity. Compensation is domain behaviour, not
+rollback, and unresolved external reality is represented by an
+`OutcomeUnknown`-style operational state rather than guessed success or
+failure.
+
+### 2.11 Function
+
+A function performs pure, non-suspending computation from its arguments. It may
+call functions and may produce declared failures, but it cannot read or mutate
+persistence, call services or actions, emit events, access secrets, or read
+ambient time or randomness. Generated target scheduling never changes that
+source-level contract.
 
 The current design direction prohibits raw representation primitives in normal
 application-defined callable signatures. Parameters and results use named
@@ -229,7 +379,7 @@ declarations, local computation, operators, and low-level standard-library
 facilities; whether authored low-level utilities need an explicit escape hatch
 will be tested in the golden applications.
 
-### 2.11 `route`
+### 2.12 `route`
 
 A route binds an HTTP transport boundary to typed behaviour. It declares or
 inherits:
@@ -246,14 +396,23 @@ inherits:
 Authentication is required by default. Disabling it is an explicit weakening,
 written `auth: none`, not the result of an omitted authentication line.
 
+The implemented AUTH-P1a model gives one top-level `application` declaration a
+project-wide authentication default naming one provider-independent
+`principal`. That principal is closed over exactly one `user` variant and one
+`service` variant. The application selects either immediate revocation or
+bounded revocation with a positive maximum delay. These facts are stable
+semantic graph nodes; they do not yet claim credential validation or runtime
+principal construction.
+
 Authentication mechanism is not route business logic. Session cookies,
 OIDC/JWT, API keys, service identities, and future strategies terminate at a
 compiler-generated boundary that validates and normalises them into one typed
-actor context. Routes inherit the requirement for an authenticated actor and
+principal context. Routes inherit the requirement for an authenticated principal and
 may describe stronger requirements or an explicit public exception; they do
-not select a provider. Actions and policy see only stable identity, tenant,
-allowlisted user information, permissions/capabilities, and authentication
-strength. A route may eventually require a stronger application-defined
+not select a provider. Actions and policy see only stable identity, allowlisted
+user information, and authentication strength from this boundary. Qualified
+scoped roles are resolved separately through authoritative POLICY-001 bindings,
+never credential claims. A route may eventually require a stronger application-defined
 authentication capability, but it does not select a provider. When several
 strategies are enabled, selection and conflicts are deterministic and
 privileges are never combined implicitly.
@@ -272,21 +431,31 @@ command, or behaviour deserving an independently reviewed boundary is a named
 action invoked with `run:`. The route keeps the explicit mapping from transport
 values to that action's parameters.
 
-### 2.12 `policy`
+### 2.13 `policy`
 
-Policy is a human-owned statement of permitted behaviour. It can cover:
+Policy is a human-owned statement of permitted behaviour. The accepted
+[POLICY-001 contract](policy-plan.md) uses qualified scoped roles, authoritative
+direct or membership role bindings, and one role-first matrix on each entity.
+The compiler derives `create`, `read`, `update`, and `delete` effects from the
+checked operation graph and automatically scopes queries and mutations before
+data is released or changed. Routine actions do not repeat policy calls or
+tenant predicates. The only compiler-owned non-role subjects are the qualified
+`Access.public` and `Access.authenticated`; every domain-specific authority uses
+an authoritative role binding.
 
-- actor and role permissions;
-- record ownership and tenancy;
-- field-level read/write rules;
-- destructive lifecycle choices;
-- public exposure;
-- allowed external effects and exceptional escape hatches.
+Ordinary fields inherit entity policy. Exceptional field policy may narrow but
+never widen it. Input validation, supplied-field tracking, field write
+ownership, lifecycle/business rules, database integrity, result decoding,
+projection authorisation, and exact output validation remain separate
+fail-closed gates. Policy never silently strips input or output fields.
 
-Implementation is checked against policy. Audit is derived from both. The agent
-may not silently change policy to resolve a violation.
+Policy is semantically colocated with the protected entity, field, or
+non-entity operation. Implementation is checked against policy; audit is
+derived from the complete semantic graph; and a weakening is release-blocked
+without a protected approval bound to the exact before/after policy and graph
+digests. The agent may propose but may not silently authorise that weakening.
 
-### 2.13 Intent, rule, or decision
+### 2.14 Intent, rule, or decision
 
 The conversation identified a need to preserve why behaviour exists and which
 choices required human approval. The semantic concept is accepted; its shape is
@@ -299,7 +468,7 @@ Possible uses include:
 - markers that a compiler diagnostic requires a human rather than an agent;
 - traceability from policy to implementation and tests.
 
-### 2.14 `event`
+### 2.15 `event`
 
 An event is an explicit fact emitted by an action. Its schema is typed. The
 compiler knows which actions emit it and which handlers consume it.
@@ -307,7 +476,7 @@ compiler knows which actions emit it and which handlers consume it.
 Delivery, transaction/outbox behaviour, retention, idempotency, ordering, and
 replay semantics are open but must be declared or safely defaulted.
 
-### 2.15 `job`
+### 2.16 `job`
 
 A job is scheduled or background work. It declares schedule/trigger,
 concurrency, resource bounds, effects, retries, idempotency, and failures.
@@ -315,7 +484,7 @@ concurrency, resource bounds, effects, retries, idempotency, and failures.
 Async work must not inherit accidental behaviour from a queue library. The
 compiler should require unresolved delivery decisions explicitly.
 
-### 2.16 `service`
+### 2.17 `service`
 
 A service is a reviewed external contract. It defines permitted operations,
 schemas, authentication/secrets, timeouts, retries, idempotency, and provider
@@ -328,7 +497,7 @@ that point on, use is typed and auditable rather than arbitrary network code.
 Provider-specific failures are normalised at this boundary into domain failures
 or operational faults.
 
-### 2.17 `test`
+### 2.18 `test`
 
 A test is either:
 
@@ -388,6 +557,14 @@ handled: `NotOwner`, `BookingUnavailable`, `PaymentDeclined`, and similar.
 They exist at the semantic level without forcing the source to carry a
 `Result<T, E>` wrapper through every line.
 
+A fallible expression is acknowledged either with `attempt`, which propagates
+its exact failure set, or with an exhaustive outcome `match`. The match has one
+`success(value)` arm and one named arm per failure, with no wildcard. Each
+failure arm must recover with a compatible successful value, `reject` a new
+declared failure, or `propagate` the matched failure. Failure-context binding
+remains a separate follow-up decision and is not implied by this executable
+core.
+
 Every application failure derives from one standard kind such as `NotFound`,
 `Conflict`, or `Rejected`. The standard kind owns default boundary behaviour;
 the application failure owns a stable public code and domain meaning. Domain
@@ -445,7 +622,9 @@ supports:
 - authorisation proofs;
 - secret-flow and output checks;
 - declared-egress enforcement;
-- transaction inference or validation;
+- explicit atomic-intent and transaction-plan validation;
+- authority, projection, freshness, delivery, and reconciliation validation;
+- durable-workflow step, idempotency, compensation, and outcome analysis;
 - lifecycle impact analysis;
 - route inventory and documentation;
 - audit output;
@@ -477,9 +656,13 @@ adding domain meaning.
 Complete example programs must determine:
 
 - module and visibility semantics;
-- whether functions are pure and whether they may read persistence;
-- advanced transaction isolation, savepoints, and external-effect interaction;
-- query cardinality and absence behaviour;
+- canonical atomic-intent spelling and the initial isolation,
+  locking/conditional-write, deadlock-ordering, savepoint, and safe-retry matrix;
+- canonical syntax, adapter capability proofs, runtime state, and operational
+  controls for the accepted durable-projection and multi-authority-workflow
+  semantics;
+- advanced query cardinality and absence behaviour beyond the accepted
+  optional/required/many core;
 - pagination and streaming;
 - representation strategies for immutable values at large-data and foreign-
   buffer boundaries; copying, moving, sharing, and copy-on-write must remain

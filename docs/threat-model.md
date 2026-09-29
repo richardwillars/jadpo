@@ -40,14 +40,14 @@ human policy authority -> protected policy/approval system -> CI release gate
 untrusted source/agent -> compiler semantic graph -> generated artifacts
 hostile HTTP/auth data -> generated validators/auth adapters -> typed actor/input
 typed operations -> generated persistence/service adapters -> database/providers
-generated release -> deployment preflight/readiness -> serving runtime
+generated release -> automatic deployment/startup validation -> readiness -> serving runtime
 ```
 
 The TCB includes the compiler semantic passes, proof kernel implementation,
 artifact canonicalizer, generated validators and serializers, auth adapters,
 persistence/service adapters, runtime failure boundary, database constraints,
 policy and approval stores, CI identity/configuration, artifact provenance,
-deployment preflight, runtime built-ins, and the reviewed external contracts
+deployment/startup validation, runtime built-ins, and the reviewed external contracts
 used for code generation.
 
 Application source, agents, prompts, boundary data, provider responses, ordinary
@@ -72,11 +72,17 @@ repository files, generated prose, and cached approvals are not trusted.
 | TM-13 | agent manufactures/replays approval | external attestation and digest binding | CI | stale, self-issued, replay, scope mismatch cases | approval service compromise |
 | TM-14 | generated target diverges from semantic graph | deterministic generation + artifact digest + integration tests | build + CI | reproducibility check; black-box suite | common-mode compiler/generator bug |
 | TM-15 | CI/deployment uses stale artifacts | provenance manifest and digest verification | CI + deployment | rebuild/verify from clean checkout | privileged CI bypass |
-| TM-16 | invalid configuration starts serving | preflight + startup validation + readiness | runtime + operational | configuration/deployment acceptance cases | platform ignores readiness |
+| TM-16 | invalid configuration starts serving | automatic deployment/startup validation + readiness | runtime + operational | configuration/deployment acceptance cases | platform ignores readiness |
 | TM-17 | dependency outage causes restart storm | separate liveness/readiness | runtime + operational | outage recovery test | operator misconfiguration |
 | TM-18 | unbounded query/job exhausts resources | explicit bounds + generated plan | static + runtime | plan metadata; load/boundary tests | allowed bound still too costly |
 | TM-19 | escape hatch bypasses guarantees | typed capability envelope + audit + approval | static + human + operational | adversarial escape cases | approved code remains unsafe |
 | TM-20 | reviewer misses transitive unsafe effect | compiler-derived behavioural/graph review | human process + UI | comprehension experiment | fatigue, misleading presentation |
+| TM-21 | stale cache/graph data preserves revoked access or violates an invariant | authoritative policy/invariant check + freshness proof | static + runtime | revocation during projection lag; stale-candidate revalidation | authority outage may reduce availability |
+| TM-22 | projection update is lost, duplicated, reordered, or silently diverges | authority-atomic change record + revisioned idempotent delivery + reconciliation | runtime + operational | crash-window, duplicate, reorder, replay, rebuild, and drift fixtures | compiler/adapter/common-store defect |
+| TM-23 | multi-authority retry duplicates an irreversible effect or compensation hides ambiguity | persisted workflow + stable step idempotency + explicit outcome/intervention state | static + runtime + operational | timeout-at-each-boundary and reconciliation fixtures | provider violates contract; manual resolution error |
+| TM-24 | stale signed credential outlives the promised revocation guarantee | declared immediate/bounded mode + per-route fresh authority | static + runtime | disable/logout/key-revoke matrices at the bound and fresh routes | clock/authority adapter defect |
+| TM-25 | service credential is confused with a user or carries permissions | closed user/service principal + authoritative resolution + policy boundary | static + runtime | kind-confusion, disabled-service, exchange, and policy fixtures | principal-lowering defect |
+| TM-26 | JWT validation widens algorithms, issuer, key source, or dependency surface | compiler-owned `jose` adapter + pinned closure | build + runtime + supply-chain review | non-JWT zero-footprint proof; JOSE adversarial/conformance suite | upstream/runtime or key-infrastructure compromise |
 
 ## 5. Escape hatches
 

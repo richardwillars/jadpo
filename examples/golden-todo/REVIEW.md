@@ -25,6 +25,15 @@ not external validation and cannot satisfy the P10R review or first-user gates.
 | The acceptance contract required `201`/`204`, but source relied on an unspecified success-status convention. | Added typed `created` and `no_content` route success declarations and logged the missing route capability. |
 | List query parameters allowed both omission and `none`, although URL query decoding needs only omission. | Made `due_before` and `after` non-nullable optional fields. |
 
+## 2026-09-27 authentication/configuration alignment
+
+| Finding | Resolution |
+|---|---|
+| The candidate treated authentication as user-only OIDC/session mapping and omitted API/service clients. | Expanded the frozen behavior matrix to browser, opaque/JWT user API, and service API-key/exchange paths that all produce a closed user/service principal. |
+| The old actor shape mixed provider subject with authoritative profile data. | Kept provider claims only as intermediate resolution input; authoritative user/service records own application identity and profile data. |
+| Revocation semantics implicitly required a lookup on every request. | Selected bounded mode for ordinary traffic, explicit maximum delay, and fresh-authority checks for sensitive routes; correctness never depends on a cache. |
+| Configuration used positional `secret required restart/reloadable` modifiers and a second lifecycle choice. | Migrated the golden configuration to structured in-source binding bodies; all v0.1 values are startup-bound and secrets have no defaults. |
+
 ## Verification
 
 Run:

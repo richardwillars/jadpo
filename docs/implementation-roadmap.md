@@ -1,8 +1,8 @@
 # Jadpo implementation roadmap
 
 **Status:** active progress tracker
-**Last updated:** 2026-09-26
-**Current phase:** DX0.5/P10.6 implementation and DX2 external exit evidence, before P11 under an explicit P10R review deferral
+**Last updated:** 2026-09-29
+**Current phase:** comprehensive validation is in progress; the unified local verification gate and CI workflow are implemented, with full golden behaviour and independent test expansion still open. The unattended DATA-007/TX-001/CONSISTENCY-001 and CONFIG-001 foundations are implemented and verified. AUTH-P0–P3 cover the closed user/service principal, route reachability, exact credential selection, typed authority resolution, and the strategy-independent runtime selector. The 2026-09-29 AUTH-P4/P7 first-party checkpoint adds real signed/opaque browser/API credentials, protected-route execution, configuration sinks, authority/session checks, CSRF, and SQLite/PostgreSQL/HTTP evidence including restart and initialization recovery; the scoped browser/API milestone is complete, while service/JWT and broader authentication exits remain open. NAME-P0–P2 are enforced. TIME/TEST supplies the Temporal runtime, stable operation clock/deadlines, lifecycle timestamp ownership, isolated typed fixtures, and callable evidence. POLICY-P0–P4 plus the executable P5 core supply scoped user/service roles, automatic persistence predicates, validation composition, concealment, invoke policy, and audit evidence. The remaining exits are genuinely gated: service/JWT authentication and broader principal mappings, services and jobs, protected CI approval attestation, broader PostgreSQL coverage, platform hooks, P10R/DX2 human evidence, physical cross-store adapters, and durable workflows require their recorded decisions, providers, or external systems.
 
 This document is the implementation control plane. It records what must be
 built, what evidence completes each phase, what is deliberately deferred, and
@@ -10,6 +10,28 @@ what should happen next.
 
 Progress is evidence-based. A phase is not complete because code exists or
 because it feels nearly finished; every exit gate must be satisfied and linked.
+
+### Unattended implementation triage
+
+Before starting any roadmap area, assess whether its next slice is executable
+from accepted decisions and existing contracts. Park the slice instead of
+implementing it when it would:
+
+- choose between materially different language, runtime, product, policy, or
+  security semantics that have not already been accepted;
+- freeze public syntax, generated contracts, migration behaviour, or an
+  authority boundary while a relevant question remains open;
+- require human judgement, external evidence, or approval that the compiler
+  and repository cannot supply; or
+- make a speculative foundation that would bias a later decision even if the
+  surface were hidden temporarily.
+
+A parked slice must name the unresolved question and the affected exit-gate
+evidence in this roadmap or the decision register. Do not implement one option
+as an implicit default. Continue with the next independent, fixture-backed
+slice whose semantics are already decided. Mark the whole phase `blocked` only
+when no such independent work remains; otherwise keep the phase `in progress`
+and distinguish its implemented and parked parts explicitly.
 
 ### 2026-09-25 roadmap correction
 
@@ -96,8 +118,8 @@ The compiler supports the canonical todo application with Postgres, SQLite (loca
 authentication required by default, ownership policy, CRUD, safe failures, and
 generated artifacts.
 
-Milestone C comprises P10, the corrective P10R gate, P10.5, the DX0.5 local
-development loop, and P11. P10R must complete before Milestone C can be
+Milestone C comprises P10, the corrective P10R gate, P10.5, P10.6, P10.7, the
+DX0.5 local development loop, and P11. P10R must complete before Milestone C can be
 claimed. By explicit owner direction, P10.5, DX0.5, and P11 implementation may
 proceed before the deferred external evidence arrives, but it remains
 exploratory and cannot produce release-equivalent assurance. DX0.5 must pass
@@ -137,24 +159,26 @@ which semantic risks remain.
 | ----- | ----------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | P0    | Design foundation                         | complete    | Charter, semantic model, type system, failure model, acceptance cases                                                                                                                   |
 | P1    | Jadpo seed and core grammar            | complete    | [Core grammar](grammar-v0.1.md), [seed application](../examples/jadpo-seed/app.jadpo), [expected semantics](../examples/jadpo-seed/expected.md), [issue log](language-issues.md) |
-| P2    | Executable compiler fixtures              | complete    | [One hundred and ten source/expectation pairs](../tests/compile/README.md) cover syntax, names, types, failures, disclosure, effects, typed CRUD, patches, relationships, modules, local mutation, enums, matching, operators, authored tests, and the executable P10.6 surface |
+| P2    | Executable compiler fixtures              | complete    | [One hundred and eighty source/expectation pairs](../tests/compile/README.md) cover syntax, names, types, failures, disclosure, effects, typed CRUD, patches, relationships, modules, local mutation, enums, matching, operators, authored tests, callable/outcome semantics, entity/query/transaction, configuration, authentication, Temporal/testing, naming, and policy |
 | P3    | Rust workspace and CLI                    | complete    | [Rust workspace](../jadpo/README.md), deterministic scaffold manifest, discovery tests, stable build-stage diagnostics                                                               |
 | P4    | Lexer, parser, and syntax tree            | complete    | Span-preserving lexer and AST, recovering parser, exact seed outline, fixture coverage, real `jadpo check` syntax pass                                                               |
 | P5    | Declaration index and semantic graph      | complete    | Deterministic IDs, resolved declaration references, field/refinement nodes, callable edges, semantic JSON manifest                                                                       |
 | P6    | Nominal type and constraint checker       | complete    | Expression typing, nominal compatibility, validated constructors, nested structured-field selection, nullable/optional records, invariant collections, stable fixture diagnostics      |
 | P7    | Failure and effect checker                | complete    | Closed failure propagation, typed rejection context, derived route status, disclosure contracts, effect checks; Milestone A                                                            |
-| P8    | Derived artifacts and layout boundaries   | complete    | Nine byte-stable artifact files, explicit discovery/output boundary, generated diagnostic catalogue/reference, three layout candidates, and deterministic static scaffold                                                       |
+| P8    | Derived artifacts and layout boundaries   | complete    | Eleven byte-stable artifact files, including entity and transaction audits, explicit discovery/output boundary, generated diagnostic catalogue/reference, three layout candidates, and deterministic static scaffold |
 | P9    | TypeScript/Bun target and runtime         | complete    | Dependency-free generated Bun target and six real HTTP acceptance cases; Milestone B                                                                                                   |
 | P10   | Postgres and persistence constructs       | complete    | Typed CRUD, inferred transactions, foreign keys, bounded repeated relationship loads, atomic multi-field updates, named compound uniqueness, and precise unique-conflict mappings pass SQLite and live PostgreSQL exit suites            |
 | P10R  | Assurance and validation reset            | deferred    | Candidate packages exist; outside review and five first-user sessions are deferred until feature-complete implementation, not passed                                                    |
 | P10.5 | Pre-P11 language completion               | complete    | Exploratory under P10R deferral; patches, bounded relationships, migration review, index acceptance, bounded modules/imports, and immutable-value/scoped-local-rebinding semantics are implemented; advanced extensions remain deferred |
-| DX0.5 | Checked local development loop             | in progress | JSON plus source-rendered diagnostics, coalesced atomic watch, compiler-owned HTTP health, structured runtime faults, and initial Bun restart with invalid-edit continuity implemented; startup rollback and structured shutdown remain |
-| P10.6 | Problems, routes, and type/persistence boundary | in progress | All unblocked work is executable: explicit failure kinds and flat context, exact callable failures with `attempt`, typed path bindings, `auth: none`, local/named route behaviour, unified authored `type` declarations, separate `persist`, pre-arrow `fails`, nested objects/lists, and the complete accepted prelude. Operational boundary mapping, compound persistence spelling, and policy authority remain unresolved design choices; local outcome handling is now specified by P10.7. |
-| P10.7 | Callable execution and outcome matching       | not started | Accepted source model: pure non-suspending functions, runtime-managed completion-guaranteed actions, propagation with `attempt`, exhaustive local handling with outcome `match`, exact inferred `fails`, action-only routes, internal target suspension, and full IDE outcome hover. Canonical fixtures precede implementation. |
+| DX0.5 | Checked local development loop             | complete    | JSON plus source-rendered diagnostics, coalesced atomic watch, compiler-owned HTTP health, structured runtime faults, last-known-good startup rollback, portable structured shutdown, and edit/recovery protocol tests |
+| P10.6 | Problems, routes, and entity/type/persistence boundary | unattended DATA-007 and policy cores complete; extensions parked | First-class entities, optional persistence, `.Ref` types, receiver kinds, entity operations, named queries with freshness, mutation ownership, recognised project roles, authority/derived-representation declarations, entity audit output, and POLICY-001 syntax/enforcement are implemented. Operational boundary extensions, lifecycle syntax, compound-persistence spelling, and physical multi-store adapters remain parked behind their owning contracts. |
+| P10.7 | Callable execution and outcome matching       | in progress; unattended local TX core complete | The call/outcome/IDE work remains implemented. Explicit atomic-intent diagnostics, independently failure-atomic entity actions, same-domain enforcement, guarded value receivers, nested transaction joining/savepoints, audited isolation/locking/retry plans, authority-plus-change-record atomicity, and SQLite runtime evidence are now implemented. Live PostgreSQL savepoint evidence and physical derived-store delivery remain outstanding; durable-workflow target generation fails closed. |
 | DX1   | Compiler-backed language service            | complete    | Standard `jadpo lsp`, live unsaved diagnostics, symbols, cross-file definitions/references, hover, contextual completion, signature help, semantic tokens, rename, formatting, explicit generated-artifact commands, and a persistent VS Code client pass protocol tests |
-| DX2   | Guided diagnostics and agent context        | internal implementation complete; external trials pending | All 298 compiler-emitted public codes have central authored copy, exhaustive agent, terminal, LSP, and VS Code projection tests, and explicit conformance evidence. One hundred and ten compile pairs plus focused Rust scenarios cover every language diagnostic; operational and I/O faults have explicit emitter-contract tests. The permanent catalogue-and-evidence gate is active and green. Fresh-agent and first-user repair-cycle trials remain external evidence. |
-| P11   | Authentication, policy, and golden todo   | not started | May proceed as exploratory implementation after P10.6, P10.7, and DX0.5; Milestone C and assurance claims still require the deferred P10R evidence                                        |
-| P12   | Order/payment application and TS baseline | not started | Reference implementations may proceed; external sessions and protocol freeze precede final comparative trials and the continuation decision                                             |
+| DX2   | Guided diagnostics and agent context        | internal implementation complete; external trials pending | The corrected 480-code inventory includes configuration, policy and test-runner families, with authored copy and audience projection tests. One hundred and eighty compile pairs plus focused Rust scenarios provide bounded trigger evidence. Syntax-aware catalogue references exclude comments and unrelated helper code; this index does not prove assertion execution or exhaustive trigger coverage. Fresh-agent and first-user repair-cycle trials remain separate evidence. |
+| VAL-001 | Comprehensive validation | three local waves verified; release evidence open | `python3 tools/verify.py` passes 39 steps: 374 Rust tests, 155 local runtime/artifact cases and 63 PostgreSQL cases, plus compile/editor/authored checks. Independent review and ten targeted mutations across the programme challenge regressions. A frozen internal cold-start pilot passed 12/12 obligations; it does not replace formal studies. The [ledger](../tests/validation/unattended-progress.md) records fixes and limits. Golden compilation/behaviour, Set/Map wire semantics, compatibility/deprecation, broader campaigns and external comprehension/approval evidence remain open. |
+| WASM-EXP1 | Bounded Wasm runtime experiment | not started; queued after authentication and validation | Finish the agreed authentication scope, then complete the comprehensive validation phase before comparing one compiler-generated slice with Bun locally and on Cloudflare. Record semantic parity, diagnostics, host capabilities, performance and packaging; conclude with an explicit adopt/extend/defer/reject recommendation. |
+| P11   | Authentication, policy, and golden todo   | AUTH-P0–P3 and first-party AUTH-P4/P7 checkpoint implemented; service/JWT/external exits gated | DATA/query/transaction and CONFIG foundations are executable. Authentication has closed typed principals, reachability enforcement, exact selector behavior, and fake-adapter evidence plus real signed/opaque cookie and bearer adapters and configured protected routes. Policy has scoped direct/membership roles, automatic query/mutation predicates, field/validation composition, route/invoke handling, service-principal enforcement, audit, and multi-company SQLite evidence. Temporal/testing provides the runtime, clocks, deadlines, typed fixtures, and callable reports. The complete golden todo still requires service/JWT adapters, broader principal mappings and the undecided SERVICE/ASYNC contracts; protected approval and P10R remain external exits; broader PostgreSQL coverage is still open. |
+| P12   | Order/payment application and TS baseline | not started | Use the order/payment application to pressure-test WORKFLOW-001 multi-authority state, idempotency, compensation, reconciliation, and outcome uncertainty. External sessions and protocol freeze precede final comparative trials and the continuation decision. |
 
 The bounded module core now parses explicit logical module headers and selective
 imports, enforces private-by-default visibility, and rejects dependency cycles.
@@ -585,8 +609,10 @@ cross the adapter boundary.
 typed create/read/update/delete expressions, rejects persistence operations from
 functions, emits matching Postgres/SQLite fresh schemas and parameterised
 statements, validates database rows before trust, normalises raw driver errors,
-and infers one transaction for every transitively mutative action. Nested
-mutative calls reuse the scoped adapter, read-only actions avoid write
+and infers one transaction for every transitively mutative action. That records
+the executable prototype's P10 evidence; TX-001 supersedes silent widening for
+the accepted entity/workflow model without erasing the historical test result.
+Nested mutative calls reuse the scoped adapter, read-only actions avoid write
 transactions, and required-mutation cardinality checks remain inside the same
 boundary. Fixed-shape multi-field updates are nominally checked and lower to
 one parameterised statement. Named compound uniqueness is checked and emitted
@@ -682,8 +708,9 @@ must not be used to silently reduce the application to what it already supports.
 Create a small normative policy/proof specification before implementing policy.
 It must define:
 
-- the supported actor, role, tenant, ownership, field, route, lifecycle, public
-  access, and external-effect predicates;
+- the supported principal, qualified scoped-role, membership/direct-binding,
+  entity-effect, field, route, public-access, and external-effect facts while
+  keeping lifecycle/business predicates separate;
 - the exact proof obligations created by every query, mutation, projection,
   route, relationship traversal, service call, and policy weakening;
 - the facts that may be introduced by authentication, validated input, guarded
@@ -961,22 +988,27 @@ The remaining gate is review evidence, not more unreviewed surface area: resolve
 ambiguities found by independent contract review, freeze digests and fixtures,
 conduct the five structured first-user reviews, and record the freeze decision.
 
-### P10.6 — Recoverable problems, routes, and entity boundary revision
+### P10.6 — Recoverable problems, routes, and entity/type/persistence boundary revision
 
-**Status:** unblocked syntax, failure-flow, route, artifact, and target work is
-implemented; the explicitly unresolved operational mapping,
-compound-persistence spelling, and protected policy-authority choices remain
-open. The former handler-arm question is resolved as outcome matching and moves
-to P10.7 so the completed `attempt` propagation slice is not rewritten without
-its own fixtures and exit gate.
+**Status:** failure-flow, route, prelude, artifact, target, and the bounded
+DATA-007 entity/query foundation are implemented. The existing `type`/`persist`
+prototype remains supported compatibility evidence. Entity dossiers, optional
+persistence, `.Ref` types, receiver kinds, operations, named queries, mutation
+ownership, project roles, authority/representation declarations, freshness,
+and entity audits pass fixtures. Operational mapping, compound-persistence
+spelling, policy/lifecycle syntax, and physical multi-store adapters remain
+separately parked.
 
 **Why this phase exists:** first-user review of the implemented P7 and P10
 surfaces found two related abstraction leaks before P11. The failure model
 closes expected domain rejection but leaves recoverable operational conditions
-outside the callable contract. The entity model also makes persistence part of
-the meaning of `entity`, forcing domain identity, storage, and policy into one
-assumption. P10.6 revises those boundaries before authentication and policy
-make them harder to change.
+outside the callable contract. The current compiler then tested one authored
+`type` model plus a separate `persist` declaration. That implementation exposed
+a broader question: whether a non-persistent entity should still be an
+identity-bearing domain and capability boundary. DATA-007 answered yes and
+fixed explicit operation, query, mutation-ownership, layout, and transaction
+rules. P10.6 must now implement that accepted boundary before authentication
+and policy make the prototype harder to replace.
 
 #### Failure declaration and disclosure decisions
 
@@ -1113,13 +1145,14 @@ action load_customer(id: Customer.id) -> Customer
 
 #### Entity, persistence, and policy decisions
 
-**Superseded by the accepted consistency revision below:** the earlier
-`entity`-with-optional-embedded-`persistence` direction remains here as decision
-history, not current grammar authority.
+**Accepted as DATA-007:** the authoritative semantic contract is the
+[entity, query, and transaction model](entity-query-model.md). The bounded
+punctuation is now executable and fixture-backed. The implemented `type` plus
+top-level `persist` prototype below remains comparison and migration evidence.
 
-- Redefine `entity` as identity-bearing domain data rather than data that is
-  necessarily stored in a database. Keep `value` for structured data without
-  entity identity.
+- Define `entity` as identity-bearing domain data rather than data that is
+  necessarily stored in a database. Keep ordinary object types for structured
+  data without identity.
 - Permit ordinary construction and use of an entity without a persistence
   capability.
 - Make persistence an optional explicit part of an entity contract. Only an
@@ -1135,24 +1168,80 @@ history, not current grammar authority.
   strategy, public routes, cross-entity rules, external effects, secrets, jobs,
   and deployment behaviour.
 - Preserve the human-approval boundary for policy changes even if policy is
-  semantically colocated with an entity. The implementation must decide whether
-  physical colocation, protected source regions, or a checked augmentation form
-  best preserves that authority.
+  semantically colocated with an entity. Approval binds to the semantic policy
+  change/digest rather than granting authority through ordinary file edits.
+- Give every entity one authoritative file under `entities/`, with no partial
+  declarations, extension methods, inheritance, overrides, or initial receiver
+  overloads. Paths organise source but do not define schema identity.
+- Make entity functions/actions checked qualified operations with dot-call
+  syntax. Receivers explicitly require either the compiler-owned entity
+  reference or a complete immutable entity value. Value-to-reference projection
+  is permitted; reference-to-value loading is never implicit. A mutating value
+  receiver must reload/lock current authority state or use a checked revision
+  or conditional-write guard.
+- Make reads named compiler-understood query declarations. Entity-centred reads
+  live with the entity; genuinely cross-entity projections live under
+  `queries/`. Routes, functions, workflows, jobs, policy, and configuration do
+  not contain raw query expressions. Queries over derived state declare
+  authoritative, read-your-writes, bounded-staleness, or eventual freshness.
+- Allow only entity-owned actions to directly mutate that entity. Multi-entity
+  application actions under `workflows/` compose entity actions rather than
+  bypassing their invariants or policy.
+- Make transaction intent explicit. Entity actions are independently
+  failure-atomic, but reaching multiple mutation scopes requires an authored
+  atomic or durable-workflow disposition. Within an explicit
+  atomic boundary, nested entity actions and queries share one same-domain
+  transaction and locally handled nested failures roll back to compiler-owned
+  savepoints. Nested success remains provisional until outer commit, and policy
+  or invariant reads guarding writes share the same transaction plan.
+- Give every mutable fact one authority. Treat caches, graph views, search
+  indexes, and denormalised records as declared derived representations. Commit
+  an authority change and durable change record together, then generate
+  ordered, idempotent, replayable, watermark-visible, reconcilable delivery.
+- Distinguish local atomic, prepared atomic, durable projection, and durable
+  workflow. Multi-authority changes use persisted idempotent steps, retries,
+  authored compensation, reconciliation, and explicit outcome uncertainty.
+  Cross-domain `atomic` is accepted only for adapters proving one compatible
+  prepare/commit and recovery protocol; it never degrades silently.
 
-An illustrative direction, not final grammar, is:
+The implemented bounded semantic shape is:
 
 ```text
 entity Customer {
     id: Uuid
     email: Email
 
+    identity: id
+
     persistence {
-        identity id
-        unique email
+        store: primary
+        role: authority
+        unique: email
+    }
+
+    cache hot {
+        store: redis
+        from: primary
+        strategy: invalidate
+        delivery: durable
+    }
+
+    projection relationships {
+        store: graph
+        from: primary
+        delivery: durable
     }
 
     policy {
         // Entity-specific access, field, and lifecycle rules.
+    }
+
+    query by_email(email: Email) -> Customer? {
+        // Declarative read.
+    }
+
+    action change_email(self: ref, email: Email) -> Customer {
+        // Explicit Customer mutation.
     }
 }
 ```
@@ -1160,7 +1249,12 @@ entity Customer {
 An entity without `persistence` remains constructible domain data but has no
 generated storage operations.
 
-#### Accepted type and persistence consistency revision
+#### Implemented type and persistence consistency prototype — superseded
+
+The following revision is executable and remains useful comparison,
+compatibility, and migration evidence, but DATA-007 has superseded it as the
+accepted source boundary. Do not extend or canonicalise it as a substitute for
+fixture-first implementation of the accepted entity/query model.
 
 - Use `type` for every authored scalar, object, and enum shape. Remove
   declaration-role duplication across `value`, `input`, `output`, `entity`, and
@@ -1312,33 +1406,60 @@ route POST /orders {
 
 - focused parser, semantic, failure-flow, and target fixtures for explicit
   `kind`, flat context construction, and exact context checking;
-- direct, transitive, handled, mapped, and propagated operational-problem
-  fixtures across functions and actions;
+- direct, transitive, and propagated operational-problem fixtures across
+  functions and actions; local handling and mapping belong to P10.7;
 - exhaustive `attempt` propagation fixtures; local recovery, mapping, and
   fallback operations move to the P10.7 outcome-match evidence;
 - runtime cases for unavailable reads, definitely-not-executed writes, unknown
-  write outcomes, safe idempotent retry, and unsafe fallback rejection;
+  write outcomes, and their safe generic boundary mappings; retry and fallback
+  decisions belong to P10.7 outcome matching;
 - route/OpenAPI/audit agreement for named failures and generic operational
   problems;
 - route fixtures proving authenticated default, exact `auth: none` opt-out,
   inline-action problem checking, mutually exclusive inline/`run:` behaviour,
   exact multi-placeholder path binding and namespacing, transport binding,
   named-action extraction, and whitespace-insensitive brace structure;
-- constructible non-persistent entity fixtures and diagnostics rejecting
-  persistence operations against them;
-- persistent entity parity with the existing SQLite/PostgreSQL evidence; and
-- entity-local policy fixtures plus approval/proof evidence showing that
-  colocation cannot bypass human-owned policy authority.
+- fixtures distinguishing complete identity-free values, non-persistent
+  identity-bearing entities, compiler-owned entity references, and persistent
+  entity capabilities;
+- one-authoritative-file project-role diagnostics for `entities/`, `values/`,
+  `queries/`, `workflows/`, and `routes/`, without making paths schema identity;
+- entity function/action fixtures for reference and value receivers, checked
+  dot/qualified calls, value-to-reference projection, rejected implicit loads,
+  rejected overload/extension forms, and explicit return-and-rebind;
+- named entity and top-level cross-entity query fixtures proving read-only
+  effects, cardinality, bounds, policy, audit/index inventory, and rejection of
+  raw query expressions in routes, functions, workflows, jobs, policy, and
+  configuration;
+- mutation-ownership fixtures proving only an entity's actions directly create,
+  update, or delete it, while workflows compose entity actions;
+- persisted-entity parity with the existing SQLite/PostgreSQL guarantees; and
+- an explicit P11 handoff retaining human approval of entity-policy weakening,
+  the accepted AUTH-001 and CONFIG-001 architectures, and the now-approved
+  POLICY-001 contract for later implementation.
 
-**Exit gate:** every recoverable problem is mechanically handled, mapped, or
-propagated; no raw adapter exception enters authored source; defects remain
-contained; non-persistent entities work without storage; persistent entities
-retain the existing database guarantees; and entity-local policy composes with
-the application policy and approval model.
+**Exit gate:** every recoverable problem in the executable P10.6 subset is
+normalized and either propagated through the exact callable contract or mapped
+at a generated boundary; P10.7 owns local handling and application mapping. No
+raw adapter exception enters authored source; defects remain contained;
+ordinary value types and non-persistent entities work without storage;
+persisted entities retain the existing database guarantees; the accepted
+DATA-007 entity/query/mutation/layout boundary is executable and auditable; and
+P11 receives the accepted policy/capability ownership boundary.
 
 ### P10.7 — Callable execution, outcome matching, and IDE outcomes
 
-**Status:** accepted design; implementation not started.
+**Status:** in progress. The fixture-backed call matrix, fixed-point internal
+suspension slice, exhaustive outcome recovery/mapping/propagation, explicit
+authored `async`/`await` rejection, callable plus inline-action outcome
+presentation, handled/mapped/propagated call-site state, failure-arm navigation,
+and persistence-free HTTP runtime sequencing are implemented. The unattended
+TX-001 slice is also implemented: explicit atomic intent, independent
+entity-action failure atomicity, nested joining with compiler-owned savepoints,
+same-domain enforcement, value-receiver guards, audited isolation/locking/retry
+plans, and authority-change-record atomicity have compiler and SQLite runtime
+evidence. Equivalent live-PostgreSQL savepoint evidence and adapter-dependent
+cross-store execution remain outstanding.
 
 **Why this phase exists:** exposing target-level `async` and `await` would create
 a second, contagious effect system beside the existing function/action boundary
@@ -1520,10 +1641,13 @@ entry.
 4. Add internal suspension analysis to the semantic graph, propagate it to a
    fixed point through action calls, and generate target-level asynchronous code
    without changing authored signatures.
-5. Add SQLite and live-PostgreSQL runtime cases for nested suspending actions,
-   transaction-context preservation, mapped and propagated failures across
-   suspension, deterministic sequencing, semantic traces, and absence of
-   unhandled target promises or rejections.
+5. Add SQLite and live-PostgreSQL runtime cases for independently
+   failure-atomic entity actions, the diagnostic for multiple mutations without
+   an explicit consistency disposition, explicitly atomic nested suspending
+   actions, transaction-context preservation, handled-failure savepoints,
+   mapped and propagated failures across suspension, same-domain rejection,
+   audited isolation/locking/retry plans, deterministic sequencing, semantic
+   traces, and absence of unhandled target promises or rejections.
 6. Add central human/agent/IDE diagnostics for bare fallible calls, incomplete
    outcome matches, function-to-action calls, invalid authored `async`/`await`,
    and affected-caller guidance when promoting a function to an action.
@@ -1540,8 +1664,104 @@ functions remain pure and cannot invoke actions; every action call completes or
 produces a declared failure before its caller continues; every fallible
 expression is acknowledged by `attempt` or exhaustive outcome `match`; inferred
 and authored `fails` sets agree exactly; generated asynchronous execution
-preserves transactions and semantic traces; and every IDE hover presents the
-complete successful and failure outcome contract from the compiler graph.
+preserves declared atomic boundaries and semantic traces without silently
+widening transactions; TX-001 concurrency and retry plans are auditable; and
+every IDE hover presents the complete successful and failure outcome contract
+from the compiler graph.
+
+### WASM-EXP1 — Bounded Wasm runtime experiment
+
+**Status:** not started; scheduled by the project owner on 2026-09-29.
+
+**Placement:** after completion of the agreed authentication scope and the
+subsequent comprehensive validation phase, as clarified by the owner on
+2026-09-29. The first-party checkpoint alone does not trigger this experiment.
+Begin with the small compilation-route probes and reassess before expanding
+the experiment. Decision work on other contracts can continue. This is
+exploratory work under the P10R deferral;
+scheduling the experiment does not select Wasm as the production target.
+
+**Question:** can a Wasm application with a compiler-owned Jadpo runtime and
+explicit host capabilities preserve the language's guarantees while improving
+portability, deployment packaging, or execution enough to justify another
+backend? Performance and simpler builds are hypotheses to measure.
+
+**Compilation-route question:** compare `Jadpo -> generated Rust -> Wasm`
+with `Jadpo -> Wasm` generation from the checked semantic model. Neither route
+is selected in advance. The comparison concerns application code generation;
+direct Wasm generation may still link a compiler-owned runtime implemented in
+Rust or another language, and does not require writing an optimiser from scratch.
+
+**Bounded scope:**
+
+- Keep the TypeScript/Bun target as the working baseline. Compile one small
+  representative Jadpo application from the existing checked semantic model
+  into Wasm; a handwritten equivalent alone is not compiler evidence.
+- Start with equivalent small lowering probes for both compilation routes,
+  including typed values, a domain outcome and an asynchronous host boundary.
+  Use their evidence to choose the route for the complete slice within the
+  same effort budget. Record an inconclusive comparison explicitly rather than
+  treating the first route implemented as the winner.
+- Exercise request and database-result validation, a policy-scoped database
+  read/write, a handled domain failure, an unexpected host failure, and an
+  asynchronous host call. Include rollback and request-context isolation.
+- Use fixture principals at the test boundary to exercise policy without
+  inventing real authentication adapters or claiming protected-route support.
+- Run the slice in a local Wasm host and Cloudflare Workers with generated
+  host glue. Keep I/O behind explicit capabilities for storage, HTTP, clocks,
+  randomness and configuration; implement only those needed by the slice.
+- Record actual host guarantees and reject unsupported transaction/freshness
+  requirements. Cloudflare storage need not match the local adapter, but any
+  semantic difference or unsupported operation must be visible.
+- Assess AWS and Fastly compatibility on paper only. Additional host adapters,
+  a production backend replacement, new language syntax, parallel execution,
+  durable workflows, and a replicated database/queue platform are outside this
+  experiment. Embedded local storage is not distributed-storage evidence.
+
+**Protocol and deliverables:**
+
+1. Before implementation or measurement, checkpoint the Bun baseline, source,
+   acceptance cases, compiler/runtime versions, host configuration, measurement
+   procedure, and evaluation thresholds. Record a bounded effort budget and
+   stopping point; do not tune success criteria after seeing results.
+2. Produce reproducible build/run instructions, the generated Wasm artifact,
+   compiler-owned runtime/glue, and a host-capability inventory. Document
+   memory/value representation, suspension, error translation, and mapping
+   runtime failures back to Jadpo source and semantic operations.
+   Include a route comparison covering compiler implementation and maintenance
+   complexity, build-toolchain/dependency burden, optimisation/library reuse,
+   memory ownership, async lowering, source diagnostics, and required runtime
+   functionality. Probe Cloudflare compatibility for both routes: emitted Wasm
+   features, imports, generated glue, host bindings and deployment limits.
+   Distinguish code-generation limitations from host limitations; neither route
+   may assume that changing the compiler pipeline supplies a missing host API.
+3. Run identical applicable acceptance cases against Bun and Wasm. Preserve
+   policy, validation, failure disclosure, transaction and secret-redaction
+   guarantees; report unsupported cases rather than weakening the test.
+4. Measure build time, artifact/dependency footprint, startup, memory where
+   observable, throughput and latency distributions for a small CPU workload
+   and the I/O slice. Record host-call/serialization overhead and implementation
+   effort. Use repeated comparable runs; separate target effects from provider,
+   database and network effects, and mark unavailable metrics explicitly.
+5. Write a short results report with raw evidence, limitations, remaining
+   backend work, and an adopt/extend/defer/reject recommendation. Separately
+   recommend Rust-mediated or direct Wasm generation, or record the evidence
+   still needed to choose. Any extension
+   needs a new bounded question; a successful slice does not imply readiness
+   to replace the complete Bun target.
+
+**Exit gate:** local and Cloudflare evidence is recorded, semantic parity and
+limitations are explicit, and both the target recommendation and compilation-
+route disposition are reviewed and recorded. Correctness and preserved guarantees are mandatory; adoption also
+needs a demonstrated benefit against the preregistered criteria. A negative
+result is a valid completed experiment. If the effort budget is exhausted or
+Cloudflare access is unavailable, retain the partial report and named blocker;
+do not label the missing host evidence complete or keep expanding the spike.
+
+**Follow-through:** an accepted target change must update the decision register,
+runtime architecture, adapter plans and roadmap before a broader migration.
+Otherwise resume P11 on Bun with the findings retained. This experiment does
+not satisfy P10R, DX2 external trials, or P12 comparative validation.
 
 ### P11 — Authentication, policy, and golden todo
 
@@ -1557,9 +1777,10 @@ the test to match the compiler.
 - multiple authentication strategies behind one generated adapter boundary,
   with deterministic selection, validated claim mapping, no implicit privilege
   merging, and fail-closed errors;
-- a provider-independent typed actor containing identity, tenant, allowlisted
-  user information, permissions/capabilities, and authentication strength;
-- current actor and ownership scope visible to actions and policy without
+- a provider-independent typed principal containing identity, allowlisted user
+  information, and authentication strength, with roles resolved separately
+  from authoritative POLICY-001 bindings;
+- current principal and derived ownership/membership scope visible to policy without
   exposing provider SDKs, tokens, or session mechanics;
 - a typed configuration contract, secret-safe environment binding, and
   fail-closed startup/readiness behaviour;
@@ -1804,22 +2025,25 @@ the P12 tooling freeze.
 
 Configuration is part of the application contract, not an untyped collection
 of process strings. Design it against the P11 golden todo application and
-freeze its minimum tool/runtime behaviour before the P12 comparison. Exact
-source syntax remains open under `CONFIG-001`; the required semantics do not.
+freeze its minimum tool/runtime behaviour before the P12 comparison. The
+approved `CONFIG-001` plan fixes the v0.1 source and tool/runtime shape.
 
 **Authored contract and discoverability:**
 
 - declare each value once with its semantic type, requiredness, optional
   default, constraints, documentation, and whether it is secret;
+- keep each explicit environment binding beside its typed field in one
+  structured source declaration, with fields required unless they have a
+  checked non-secret literal default;
 - give tooling and deployment systems a generated machine-readable manifest
-  containing names, types, constraints, descriptions, requiredness,
-  environment applicability, expected source, and safe validation checks—but
-  never secret values;
+  containing names, types, constraints, descriptions, requiredness, binding
+  names, and safe validation checks—but never secret values;
 - generate human documentation, local-development templates, IDE hover and
   completion data, and compact agent context from that same manifest;
-- keep development, test, staging, and production differences in explicit
-  value bindings or overlays rather than application-logic branches, and never
-  silently substitute a development default in production; and
+- use only `.env.local` for local development, explicit test-harness values for
+  tests, and the same declared binding names in deployment environments; do not
+  define implicit overlays or silently substitute local defaults in production;
+  and
 - track value provenance so diagnostics can identify the missing or invalid
   binding without printing its contents.
 
@@ -1828,12 +2052,11 @@ source syntax remains open under `CONFIG-001`; the required semantics do not.
 - ordinary source `check` validates declarations, references, types,
   constraints, conflicting defaults, and environment coverage without needing
   access to production secrets;
-- an environment-bound preflight validates the actual deployment bindings and
-  exits deterministically with structured diagnostics when a required value is
-  absent or malformed;
-- runtime startup repeats validation before binding a public listener or
-  reporting readiness, so bypassing preflight cannot create a partially
-  configured service;
+- `jadpo config set <field>` obtains a local value through a secret-safe prompt,
+  and `jadpo config check` reports only safe presence/validity status;
+- `jadpo dev`, generated deployment integration, and runtime startup validate
+  actual values automatically before binding a public listener or reporting
+  readiness;
 - parsing and local constraints are distinct from bounded live checks: for
   example, a database URL can be structurally valid yet fail a timed connection
   or minimum-capability probe; and
@@ -1852,20 +2075,20 @@ source syntax remains open under `CONFIG-001`; the required semantics do not.
   value's type;
 - health endpoints expose stable status/check identifiers and safe reasons,
   not configuration or secret values; and
-- preflight exit status plus readiness provide the hosting platform with a
-  deterministic promotion gate. The deployment controller owns rollback to
+- automatic deployment validation plus readiness provide the hosting platform
+  with a deterministic promotion gate. The deployment controller owns rollback to
   the prior healthy revision; the application supplies the evidence and never
   claims it performed a rollback itself.
 
-Rotation and reload require an explicit semantic decision: each value must be
-restart-bound or safely reloadable, with atomic validation before replacement
-and a defined response when a rotated value cannot pass its live check. Do not
-add ambient reads of `process.env` to authored or generated application logic;
-the compiler-owned boundary is the only place raw bindings become typed trusted
-configuration.
+Every v0.1 value is startup-bound. A valid `.env.local` change causes a
+controlled `dev` restart; production rotation uses a process restart or rolling
+deployment. Live reload is deferred until an application demonstrates the need.
+Do not add ambient reads of `process.env` to authored application logic; the
+compiler-owned generated boundary is the only place raw bindings become typed
+trusted configuration.
 
 **Executable exit evidence:** fixtures and runtime/deployment-harness tests
-cover missing required values, malformed values, invalid environment overlays,
+cover missing required values, malformed values, duplicate bindings,
 secret redaction, startup before listener binding, readiness success/failure
 and timeout, liveness independence, live dependency recovery, and a failed new
 revision that is not promoted (or is rolled back) while the prior revision
@@ -2107,6 +2330,11 @@ evidence or status:
 A phase may move backwards if a golden application invalidates its assumptions.
 
 ## 11. Progress log
+
+This log preserves implementation and decision history; entries are not current
+authority and same-day workstreams are not guaranteed to appear in commit-time
+order. When an entry is superseded, the progress summary, phase contract, and
+decision register above determine current work.
 
 ### 2026-09-25 — P0 complete
 
@@ -2597,16 +2825,17 @@ A phase may move backwards if a golden application invalidates its assumptions.
 - Added a P11/P12 workstream for one typed configuration contract shared by
   source checking, generated documentation, IDE/LLM context, CI, runtime, and
   deployment systems.
-- Separated static compiler checks from environment-bound preflight so normal
-  source analysis does not require production secrets while an actual revision
-  cannot start with absent or malformed values.
-- Required secret-safe provenance and diagnostics, explicit environment
-  overlays, no production fallback to development defaults, and an explicit
-  restart-versus-reload decision for rotation.
+- Initially separated static compiler checks from an environment-bound
+  preflight so normal source analysis would not require production secrets.
+  The later approved CONFIG-001 design keeps that separation but makes real
+  value validation automatic in development, deployment, and startup.
+- Initially queued environment overlays and a restart-versus-reload decision.
+  The approved design instead has one `.env.local`, no implicit overlays, and
+  startup-bound values only.
 - Split liveness from readiness and required bounded dependency capability
   checks without exposing configured values.
 - Defined rollback as a deployment-controller action driven by deterministic
-  preflight/readiness evidence, with an executable no-promote/rollback test.
+  validation/readiness evidence, with an executable no-promote/rollback test.
 
 ### 2026-09-25 — Assurance and validation reset inserted
 
@@ -2881,10 +3110,10 @@ A phase may move backwards if a golden application invalidates its assumptions.
 - Selected `{name}` path placeholders with a typed `path: { name: Type }` group,
   `path.name` access, and exact one-to-one compiler checks across multiple path
   parameters. Query, header, and body field spelling remains open.
-- Accepted `entity` as identity-bearing domain data with optional explicit
-  persistence, ordinary construction without a database, and entity-local
-  access/field/lifecycle policy. Cross-cutting policy and human approval remain
-  application-level concerns.
+- Initially accepted `entity` as identity-bearing domain data with optional
+  persistence and entity-local policy. The unified authored type revision later
+  the same day superseded this data-model portion with `type` plus separate
+  `persist`; it did not settle P11 policy ownership or approval syntax.
 - Added P10.6 before P11 to implement and pressure-test the revised contracts
   without rewriting the already-recorded P7/P10 evidence.
 
@@ -2930,36 +3159,485 @@ A phase may move backwards if a golden application invalidates its assumptions.
   sole syntax decision still requiring confirmation; no new canonical spelling
   is published in the grammar.
 
+### 2026-09-26 — Roadmap alignment and DX0.5 completion
+
+- Completed last-known-good runtime rollback: a candidate build preserves the
+  ready generated revision until readiness, and failed startup restores and
+  proves the prior runtime ready again.
+- Added portable signal-driven `shutdown` lifecycle output after watcher and
+  child cleanup, plus protocol coverage for coalesced edits, invalid-edit
+  continuity, recovery, source creation/deletion, missing Bun, failed candidate
+  startup, rollback, and listener cleanup.
+- Reconciled the roadmap with the unified `type` plus `persist` decision by
+  removing entity-local policy from P10.6's exit gate and assigning policy
+  ownership/protected-source/approval syntax to P11.
+- Reconciled the syntax and semantic model with the accepted P10.7 boundary:
+  functions are pure and non-suspending, `attempt` propagates, and exhaustive
+  outcome `match` owns local recovery and mapping.
+- Added unattended implementation triage: assess each slice before work, park
+  unresolved product/design/security decisions with a named question and exit-
+  gate impact, and continue only with independent fixture-backed work whose
+  semantics are already accepted.
+
+### 2026-09-26 — P10.7 call and suspension slice implemented
+
+- Added fixture coverage for function-to-function, action-to-function, and
+  action-to-action calls, complementing the existing rejected
+  function-to-action case.
+- Added fixed-point suspension metadata to the checked callable outcome graph
+  and generated callable inventory.
+- Kept pure functions and effect-free action chains synchronous in generated
+  TypeScript while propagating required `async`/`await` and one persistence
+  capability through suspending action calls only.
+- Added compiler-backed declaration, reference, and call hover plus signature
+  documentation for callable parameters, success type, complete declared
+  failures, and derived completion/suspension semantics without exposing target
+  `Promise` or `Result` wrappers.
+- Added statically known `attempt` propagation state to fallible call-site hover.
+
+### 2026-09-26 — Entity boundary reopened and dependent work parked
+
+- Reopened the implemented unified `type` plus separate `persist` boundary as
+  DATA-007 rather than treating the prototype as final language authority.
+- Recorded the competing model: a first-class identity-bearing `entity` that
+  need not persist and may provide one explicit capability surface for policy,
+  lifecycle, behaviour/display, caching, graph participation, and multiple
+  database adapters.
+- Parked all extensions to entity/type/persist syntax and semantics, identity,
+  relationships, migrations, storage adapters, entity policy, and dependent
+  golden-model work until owner discussion. Existing implementation and tests
+  remain comparison evidence; they are not being rolled back implicitly.
+
+### 2026-09-26 — P10.7 exhaustive outcome slice implemented
+
+- Added expression-level exhaustive outcome matches with one `success(value)`
+  arm and one exact arm for every declared failure.
+- Added local compatible-value recovery, explicit `reject` mapping, and
+  `propagate`, with exact escaping-failure inference and generated TypeScript
+  failure dispatch for synchronous and internally suspending calls.
+- Added focused diagnostics and fixtures for invalid subjects, infallible
+  subjects, missing and duplicate success arms, missing, duplicate, unknown,
+  and wildcard failure arms, and success arms without a value.
+- Rejected authored `async` and `await` explicitly while recovering through the
+  ordinary action and call grammar.
+- Added inline-action hover using the same route success/failure and derived
+  completion contract as named callables.
+- Added call-site hover for every locally handled, explicitly mapped, or
+  propagated failure, plus definition navigation from exact failure arms.
+- Added a persistence-free generated HTTP example and four Bun acceptance cases
+  proving successful continuation, compatible recovery, explicit mapping, and
+  exact propagation at runtime.
+
+### 2026-09-26 — P11 unattended assessment parked on owner decisions
+
+- Reassessed authentication-only work after the independent P10.7 slices
+  completed; no implementation was started because the remaining boundary is a
+  security and product decision rather than a mechanical compiler extension.
+- Parked authentication provider selection, claim validation, ambiguity and
+  privilege-conflict handling, actor/tenant/capability mapping, and route
+  strength overrides on AUTH-001.
+- At that point, parked typed secret/config sources, local-value handling,
+  readiness probes, and lifecycle behaviour on CONFIG-001; those decisions are
+  now approved in the 2026-09-27 CONFIG-001 entry below.
+- Kept policy/proof syntax and approval ownership on POLICY-001, and entity
+  ownership/lifecycle/capability plus golden-todo modelling on DATA-007.
+- Confirmed that jobs/events, time injection, service import, and richer test
+  harness work also have unresolved scheduled decisions and are not safe
+  fallback slices.
+
+### 2026-09-26 — DATA-007 entity/query boundary accepted
+
+- Accepted one first-class `entity` concept for stable domain identity whether
+  or not the entity is persisted; persistence is an optional explicit
+  capability rather than a separate species of entity.
+- Accepted one authoritative entity dossier per file under `entities/`, with
+  explicit identity, capabilities, policy/lifecycle, named queries, functions,
+  and actions; paths organise source but do not define semantic/schema identity.
+- Accepted checked entity dot calls as qualified calls with explicit reference
+  or complete-value receivers, no implicit load/save/mutation, no arbitrary-key
+  receivers, and no initial extensions, inheritance, overloads, or dynamic
+  dispatch.
+- Accepted named read-only queries: entity-centred reads live with the entity;
+  genuinely cross-entity projections live under `queries/`; raw query
+  expressions do not appear in routes, functions, workflows, jobs, policy, or
+  configuration.
+- Accepted mutation ownership: only an entity's actions directly mutate that
+  entity. Multi-entity application actions under `workflows/` compose entity
+  actions without bypassing invariants or policy.
+- Accepted explicit atomic intent with compiler-managed mechanics. Entity
+  actions are independently failure-atomic; multiple mutation scopes require an
+  authored atomic or durable-workflow disposition rather
+  than silently widening a transaction from the call graph. Inside an explicit
+  same-domain atomic boundary, nested entity actions and queries join it and a
+  handled nested failure rolls back to a compiler-owned savepoint. Unproven
+  atomicity across databases or external services is rejected.
+- Opened TX-001 fixture work for the canonical intent spelling and the initial
+  PostgreSQL/SQLite isolation, locking or conditional-write, deterministic
+  lock-ordering, safe-retry, and savepoint matrix. These must be visible in the
+  audit before multi-entity atomicity is claimed.
+- Recorded the full decision in
+  [entity, query, and transaction model](entity-query-model.md). Compiler
+  implementation, exact punctuation, fixtures, migration, and runtime evidence
+  remain incomplete and are the next technical slice.
+
+### 2026-09-26 — Cross-store consistency boundary accepted
+
+- Accepted exactly one authority for every mutable fact. Redis caches, graph
+  views, search indexes, analytics stores, and denormalised tables derived from
+  that authority are compiler-managed representations, not additional
+  application write targets.
+- Accepted authority-plus-durable-change-record commit as the default
+  cross-store mechanism. Generated delivery is at-least-once, idempotent,
+  revisioned, ordered per entity, retryable, replayable, rebuildable,
+  watermark-visible, and reconcilable.
+- Accepted authoritative, read-your-writes, bounded-staleness, and eventual
+  query freshness. A stronger plan may satisfy a declaration; a weaker plan may
+  not. Within one operation graph the compiler propagates the commit revision.
+- Separated local atomic, prepared atomic, durable projection, and durable
+  workflow contracts. Cross-domain atomicity is allowed only when all adapters
+  prove one prepare/commit and durable-recovery protocol; it never silently
+  degrades to a saga or best-effort sequence.
+- Accepted persisted durable workflows for multiple real authorities, with
+  idempotent steps, retry, timeout, authored compensation, reconciliation,
+  operator-visible terminal states, and explicit outcome uncertainty.
+- Tightened the entity/transaction boundary: mutating value receivers require
+  a stale-write guard; nested success is provisional until outer commit; and
+  policy, lifecycle, and invariant reads guarding writes share the transaction
+  and concurrency plan.
+- Opened CONSISTENCY-001 and WORKFLOW-001 fixture work. Exact declaration
+  syntax, adapter capability proofs, runtime state storage, operational
+  controls, and generated evidence remain implementation work.
+
+### 2026-09-27 — Unattended entity/query/transaction foundation implemented
+
+- Added executable entity dossiers with stable identity, optional authority
+  persistence, cache/projection declarations, compiler-owned entity references,
+  reference/value receivers, mutation guards, and nested entity operations.
+- Added first-class named `query` callables with required freshness contracts,
+  read-only effect enforcement, qualified/dot calls, and rejection of raw query
+  expressions outside named queries.
+- Added mutation-ownership and persistence-capability checks, recognised source
+  role validation, explicit `atomic`/`durable_workflow` dispositions,
+  same-domain enforcement, and guarded value-receiver writes.
+- Added compiler-managed nested savepoints, entity/transaction audit artifacts,
+  per-entity revisioned authority change records, and an SQLite runtime case
+  proving that handled nested failure rolls back both the write and change
+  record while the outer transaction can still commit.
+- Added thirteen compile fixture pairs, bringing the corpus to 132, and kept target
+  generation fail-closed for unimplemented physical stores and durable
+  workflows.
+- Parked physical derived-store delivery, replay/rebuild, watermarks,
+  reconciliation, revision-token propagation, and the persisted workflow
+  runtime because their adapter, state, and operational-control contracts still
+  require owner decisions. AUTH-001, CONFIG-001, POLICY-001, P10R review, and
+  DX2 external trials remain parked for the same reason or because they require
+  human evidence.
+
+### 2026-09-27 — AUTH-001 decision and implementation plan prepared
+
+- Consolidated the golden todo, `AUTH-EXACTLY-ONE`, route-default, threat,
+  acceptance, and audit candidates into one authentication plan.
+- Made twelve owner choices explicit, including the initial strategy set,
+  dependency/trusted-computing-base boundary, multi-credential selection,
+  provider subject namespace, authoritative user resolution, actor shape,
+  route requirements, session and OIDC validation, failures, and configuration
+  ownership.
+- Sequenced implementation as AUTH-P0 through AUTH-P7 with fixture-first
+  compiler modeling, typed actor resolution, a strategy-independent selector,
+  signed-session and OIDC adapters, artifacts/tooling, and the golden exit run.
+- Defined adversarial cases, diagnostics, `audit/authentication.json`,
+  dependencies on CONFIG-001/POLICY-001/TIME-001, and fail-closed stop
+  conditions. No security semantics were silently selected by implementation.
+
+### 2026-09-27 — AUTH-001 architecture approved and expanded
+
+- Approved authentication as a common principal boundary for browsers,
+  user-operated API clients, and service-to-service clients.
+- Separated credential transport (cookie or bearer) from validation and
+  revocation semantics (immediate authority lookup or bounded short-lived
+  credential), with per-route fresh-authority checks and no cache dependency.
+- Made services first-class principals with owned, expiring, rotatable,
+  revocable credentials, direct opaque-key authentication, and confidential
+  credential exchange for short-lived bearer access.
+- Kept permissions in POLICY-001 rather than credentials, selected Bun-native
+  primitives for Jadpo-issued envelopes, and retained OIDC behind a pinned
+  compiler-owned standards adapter rather than an application dependency.
+- Replaced the earlier AUTH-P0–P7 user-only sequence with AUTH-P0–P8 and an
+  expanded browser/API/service adversarial matrix.
+
+### 2026-09-27 — Optional JWT dependency boundary approved
+
+- Kept browser sessions, opaque bearer credentials, API keys, and Jadpo-issued
+  envelopes on Bun-native primitives with no package dependency.
+- Made JWT bearer validation an explicit source capability. Only that choice
+  adds the compiler-selected, exactly pinned `jose` package; its selected
+  release must have zero transitive dependencies.
+- Kept library, version, algorithms, validation policy, JWKS behavior, and
+  resource limits compiler-owned rather than developer choices.
+- Required non-JWT output to contain no external import, package metadata,
+  dormant JOSE code, or install step, while JWT output records exact integrity,
+  provenance, license, advisories, and dependency closure.
+- Refined the product claim to: zero package dependencies by default; enabling
+  JWT authentication adds one pinned dependency with zero transitive
+  dependencies.
+
+### 2026-09-27 — CONFIG-001 architecture approved
+
+- Put each explicit environment binding beside its typed field in a structured
+  declaration, eliminating separate per-environment binding files and
+  space-separated lifecycle modifiers.
+- Selected one local `.env.local`, no implicit environment overlays, and
+  startup-bound values only. Local changes restart `dev`; production changes
+  use an ordinary restart or rolling deployment.
+- Added the agent-to-human `jadpo config set <field>` flow: the user enters a
+  secret through a hidden terminal prompt rather than chat or a command-line
+  argument. `jadpo config check` reports only safe local presence/validity.
+- Kept `jadpo check` as the single authoritative full semantic check. `build`,
+  `test`, `watch`, and `dev` reuse it; `dev`, deployment integration, and
+  startup validate real values automatically, so no manual preflight ritual is
+  required.
+- Retained package-free Bun loading, explicit empty environment-file launches, secret flow,
+  required/advisory readiness, outage recovery, and fail-closed traffic.
+- Sequenced CONFIG-P0–P6 with adversarial evidence and stop conditions;
+  CONFIG-P0 is unblocked.
+
+### 2026-09-27 — CONFIG-001 compiler/runtime core implemented
+
+- Added the structured declaration, semantic graph nodes, typed
+  `config.<field>` access, checked defaults/bindings, secret-flow rejection,
+  and value-free configuration audit.
+- Added package-free generated Bun decoding and validation before listener
+  startup, with automatic environment-file discovery disabled.
+- Added hidden prompted local entry, value-safe local checking, atomic
+  `.env.local` updates, declared-only process forwarding, and valid-change/
+  last-known-good `dev` restart behavior.
+- Added compiler, CLI, generated-runtime, LSP, editor, fixture, example, and
+  secret-canary evidence. Real adapter sinks, dependency readiness/recovery,
+  platform deployment hooks, and the golden integration remain pending their
+  owning AUTH-001, SERVICE-001, TIME-001, or platform contracts.
+
+### 2026-09-27 — AUTH-P0 decision freeze completed
+
+- Pinned the approved authentication contract digest and propagated its
+  user/service principal, exactly-one credential, revocation, fresh-authority,
+  cache-independence, and dependency boundaries through the decision, proof,
+  threat, golden-audit, and TypeScript-baseline surfaces.
+- Expanded the golden acceptance contract with browser, opaque/JWT user API,
+  service API-key/exchange, bounded ordinary request, fresh-authority,
+  disabled-service, and public-liveness cases and linked them into the assurance
+  evidence map.
+- Migrated the golden configuration to the implemented structured syntax and
+  recorded the fixture-first authentication source shape for AUTH-P1.
+- Added explicit executable evidence that a non-JWT target contains no package
+  manifest, lockfile, JOSE code, install instruction, or external dependency
+  footprint.
+
+### 2026-09-27 — AUTH-P1a application and principal model implemented
+
+- Added top-level `application` and `principal` declarations with span-preserving
+  AST nodes and deterministic semantic-manifest nodes.
+- Made the application authentication default resolve exactly one declared
+  principal and accept either immediate revocation or bounded revocation with a
+  positive maximum delay.
+- Made the principal a closed contract containing exactly one user and one
+  service variant, with stable variant and field identities.
+- Added authored diagnostics and three compile fixture pairs covering the valid
+  graph plus duplicate applications/principals, missing or duplicate variants,
+  and missing, forbidden, or zero revocation delays. The corpus now contains
+  138 pairs.
+- Kept credential strategies, reserved transport slots, claim mappings,
+  authoritative resolution, and unauthenticated-principal reachability in the
+  remaining AUTH-P1 work. Protected target generation remains fail-closed.
+
+### 2026-09-27 — AUTH-P1b credential strategy topology implemented
+
+- Added span-preserving named authentication strategies with one reserved
+  cookie or authorization-header slot and one or more named validators.
+- Added explicit `signed`, `opaque`, `api_key`, and `jwt` validation-mode
+  metadata and closed user/service principal-variant links without exposing raw
+  credentials or provider objects to authored code.
+- Added stable strategy, credential-slot, and validation semantic nodes plus
+  authored diagnostics for duplicate strategies, slots, and validators; empty
+  validator sets; unknown modes or variants; and bearer credentials in path or
+  query locations.
+- Added positive and adversarial compiler fixtures, bringing the corpus to 141
+  source/expectation pairs, while keeping protected target generation
+  fail-closed until AUTH-P3 and concrete adapters are implemented.
+- Left claim mappings, authoritative resolution declarations, reserved
+  route-input enforcement, and unauthenticated-principal reachability in the
+  remaining AUTH-P1 work.
+
+### 2026-09-27 — AUTH-P1c mapping/resolution graph and initial AUTH-P2 checks implemented
+
+- Added canonical claim mappings and explicit user/service authority-resolution
+  declarations with source spans and stable semantic nodes.
+- Added fail-closed validation for duplicate or invalid mapping targets,
+  duplicate resolutions, malformed authority fields, and empty mappings.
+- Added initial typed resolution checks for unique lookup authority, Boolean
+  active-state predicates, nominal mapping compatibility, complete closed
+  principal construction, and rejection of credential claims that attempt to
+  populate authoritative identity fields.
+- Added the 141st compiler fixture pair for adversarial resolution typing.
+  Exact provider claim schemas, complete lifecycle/cardinality typing, reserved
+  route-input enforcement, and unauthenticated-principal reachability remain.
+
+### 2026-09-27 — TIME-001 and TEST-001 contract approved
+
+- Approved and digest-pinned the complete clock, time-type, manipulation,
+  formatting, persistence, and deterministic-integration-test contract in the
+  [TIME-001/TEST-001 plan](time-testing-plan.md).
+- Replaced ambiguous `DateTime` with UTC-millisecond `Instant`, restricted
+  date-only authority to `CalendarDate`, defined resolved zone-aware `Time`,
+  generated `Zone`/`Locale` enums, and froze the consistent `temporal` API.
+- Assigned lifecycle timestamp ownership to generated application persistence,
+  prohibited competing database defaults/triggers, and fixed database decoding
+  directly into validated Jadpo values.
+- Froze absolute and conversational friendly formatting, typed isolated
+  fixtures, real-database evidence, clock/entropy/capability fakes, and distinct
+  direct-call, route, job, generated, authored, and external evidence classes.
+- Authorised TIME/TEST-P0 through P5 for fixture-first unattended
+  implementation after the decision sprint; no compiler implementation was
+  performed by this approval step.
+
+### 2026-09-27 — language-wide naming and qualification contract approved
+
+- Promoted callable spelling from a Temporal-specific choice into one
+  digest-pinned language rule based on semantic ownership.
+- Kept authored free callables unqualified in current/selective-import scope,
+  entity operations entity- or receiver-qualified, and compiler standard
+  libraries under mandatory lowercase namespaces such as `temporal.*` and
+  `collection.*`.
+- Froze casing, module names, imports, constructors, variants, capability/data
+  access, parameter-order conventions, reserved-name handling, diagnostics,
+  and the prohibition on alternate aliases or method/free-function duplicates.
+- Queued NAME-P0–P2 to run with the first standard-library implementation; no
+  compiler behavior was changed by the documentation freeze.
+
+### 2026-09-27 — POLICY-001 contract approved
+
+- Approved and digest-pinned the complete scoped-role, membership, entity and
+  field policy, automatic query/mutation enforcement, validation, concealment,
+  audit, and approval contract in the [POLICY-001 plan](policy-plan.md).
+- Selected qualified resource-oriented roles such as `CompanyRole.owner`, one
+  membership declaration or direct relationship binding as role authority, and
+  one role-first entity matrix over compiler-derived
+  `create`/`read`/`update`/`delete` effects.
+- Removed routine action-level access declarations, manual `require policy`
+  calls, repeated tenant predicates, dynamic field stripping, and lifecycle
+  predicates from the policy model.
+- Required closed input validation, supplied-field checks, write ownership,
+  policy-scoped persistence, database result validation, authorised
+  projections, and exact output validation to compose as separate fail-closed
+  gates.
+- Queued POLICY-P0–P6 for fixture-first unattended implementation after the
+  decision sprint; no compiler behavior was changed by this approval step.
+
+### 2026-09-27 — approved unattended compiler/runtime cores implemented
+
+- Completed AUTH-P1 route/boundary reachability, exact principal and resolution
+  typing, and the AUTH-P3 strategy-independent credential selector. Ten Bun
+  cases cover zero/one/multiple credentials, kind confusion, malformed or
+  widened values, authority substitution, adapter exceptions, and bounded or
+  fresh resolution behavior.
+- Completed NAME-P0–P2 enforcement for the current language surface, including
+  casing, reserved standard ownership, canonical qualification, import/module
+  conflicts, semantic ownership, and compiler-backed tooling behavior.
+- Implemented the Temporal runtime and typed callable-fixture core: strict
+  canonical values, closed zones/locales/policies, DST-aware resolution and
+  bounds, calendar/elapsed arithmetic, human formatting, operation clocks,
+  monotonic deadlines, generated timestamps and authority-change evidence
+  from the same operation instant without database defaults, database decoding, isolated
+  SQLite, fixed/advanceable clocks, typed configuration, and secret fixture
+  containment.
+- Implemented POLICY-P0–P4 and the executable P5 core: direct and membership
+  roles, effect derivation, operation exceptions, field narrowing, automatic
+  SQL scoping for reads/mutations/create, concealment, validation composition,
+  route and non-entity invoke policy, user/service principals, and audit facts
+  including derived restricted-field reads.
+- Expanded the compile corpus to 179 pairs and passed the complete Rust
+  workspace plus 70 local generated/runtime cases. Live PostgreSQL was not rerun
+  because no `DATABASE_URL` was supplied; protected policy approval and
+  service/job/golden exits remain behind their declared external or design
+  gates.
+
+### 2026-09-29 — Bounded Wasm runtime experiment scheduled
+
+- Scheduled WASM-EXP1 before further concrete P11 adapter expansion, following
+  the owner's request to evaluate Wasm as an alternative executable target.
+- Bounded the work to one generated slice, a Bun comparison, local execution,
+  and Cloudflare host evidence; broader hosting and distributed infrastructure
+  remain outside the experiment.
+- Required a frozen comparison protocol, explicit host capability limits, and
+  a recorded target recommendation without presuming migration or speed gains.
+
+### 2026-09-29 — First-party authentication and protected routes checkpoint
+
+- Implemented configured signed and opaque user credentials over cookie/bearer
+  transports, generated user/session authority checks, stable operation-time
+  expiry, bounded refresh, revocation, overlapping key rotation, and
+  origin/session-bound CSRF checks (including compiler-detected GET writes).
+- Protected routes authenticate before input decoding, then pass the exact
+  principal into existing invoke and persistence policy. Unsupported JWT,
+  service validators, richer principal mappings and incomplete configuration
+  still fail target generation.
+- Added [the executable example](../examples/first-party-authentication/README.md),
+  typed secret configuration sinks, authentication audit/OpenAPI security
+  output, and 20 local runtime acceptance cases. A new negative compiler
+  fixture brings the corpus to 180. The Rust workspace and local SQLite/HTTP
+  evidence pass; live PostgreSQL was not run because no database URL was supplied.
+- Kept trusted host credential issuance separate from authored code and HTTP
+  routes. Human login, account provisioning, service/JWT support, full AUTH-P8,
+  extended fuzzing, deployment readiness and independent security review remain
+  outside this checkpoint. AUTH-P4/P7 are not claimed complete in their entirety.
+- Followed owner direction to complete this path before beginning Wasm probes.
+
+### 2026-09-29 — Browser/API authentication completion
+
+- Closed the scoped first-party milestone with 24 passing runtime cases in each
+  SQLite/PostgreSQL mode, covering all four credential/transport combinations.
+  Startup-failure subprocess cases use SQLite in both runs.
+- Fixed concurrent initialization ordering and session-schema startup failure
+  handling; added separate-process persistence/revocation and identity-reuse
+  regression evidence.
+- Fixed the legacy public-auth diagnostic and verified both human-owned repairs.
+- Retained [raw verification results](../tests/assurance/auth-first-party-2026-09-29/README.md).
+  Service/JWT, broader principal mappings, full AUTH-P7/P8 and external review
+  are not included in this completion claim.
+- The next phase is comprehensive validation; Wasm remains queued behind it.
+
+### 2026-09-29 — Unified validation foundation
+
+- Added [one verification command](../tests/validation/README.md) with a checked
+  example/suite inventory, per-run logs, tool versions, explicit quick-profile
+  skips and a separate failing full-golden gate. Prepared GitHub Actions to run
+  the same command; no remote workflow or protected CI requirement is established.
+- The full local run passes 198 Rust tests, 180 CLI fixture pairs, four editor
+  tests, all ten supported example builds, authored tests, 92 SQLite/local
+  runtime cases, 22 PostgreSQL persistence cases and 24 PostgreSQL-mode auth cases.
+- The first unsandboxed run exposed a previously skipped dev rollback test whose
+  fake Bun launcher inspected the wrong argument. It now requires its socket and
+  Python prerequisites explicitly, validates the launch flags, bounds event waits,
+  and shuts down its child runtime on failed assertions.
+- The golden app still emits 60 diagnostics. All 44 behavioural obligations are
+  explicitly unexecuted, including four auth-contract conflicts and one query
+  budget clarification. No candidate expectation or policy was weakened.
+- Prepared coherent independent test-authoring work packages by semantic area.
+  Test-authoring agents and the separate fresh-agent usability trial have not run.
+
 ## 12. Immediate next action
 
-P10 is complete. The candidate P10R package now contains the canonical todo
-source, black-box suite, adversarial sequence, expected audit, policy/proof
-kernel, threat model, approval protocol, first-user hypothesis, comparison
-protocol, TypeScript baseline, and language-friction ledger. Independently
-review the package, resolve contradictions once, freeze artifact digests and
-fixtures, conduct and record five first-user reviews, and make the P10R freeze
-decision before any P11 assurance claim. By explicit project-owner direction,
-the five sessions now follow feature-complete implementation; technical work
-may continue through P11 and the P12 reference implementations but remains
-exploratory until that evidence exists. Omission-aware patches and the
-GF-013B patch-dependent reminder reset now have finite generated SQL shapes.
-Direct optional/required owning-parent traversal now has a bounded generated
-plan and runtime evidence, as does optional inverse-one loading and its bounded
-depth-two composition. The owning-reference surface review selected an explicit
-logical `as` name while preserving the stored key, and the remaining shape
-review now has an explicit bounded disposition. Rename-stable identities,
-shape-aware changes, exact-bound decisions, adapter review plans, the additive
-SQL review subset, compatible reference/compound-preserving multi-addition
-SQLite rebuilds, reversible nullability widening, and explicit query-backed
-index acceptance, plus the bounded module/import and immutable-value/local-
-rebinding cores are implemented. P10.5's bounded implementation is complete.
-Module aliases, re-exports, relative imports, same-name namespaces,
-caller-visible mutation, and authored reference notation remain unsupported
-until golden-application evidence shows they are necessary; other migration
-transforms continue to fail closed. The language-learning slice, initial DX1
-language service, P10.6 failure/route contract, DX2 diagnostic presentation,
-and unified authored type/persistence model are complete. The next technical
-work returns to DX0.5 startup-failure restoration, portable structured
-shutdown, and the remaining edit-recovery protocol cases, then implements the
-fixture-first P10.7 callable execution, exhaustive outcome matching, internal
-suspension, and IDE outcome-hover contract before P11 application authoring.
+Continue VAL-001 from the unified verification foundation. Expand tests by
+semantic area against accepted contracts, challenge them with independent review
+and mutations, and add cross-feature runtime cases. Reconcile the recorded golden
+contract contradictions and migrate its source without weakening policy. Keep
+unsupported capabilities and the complete behavioural gate visibly open.
+
+The scoped browser/API milestone is complete; service/JWT, broader principal
+mappings and full AUTH-P7/P8 remain separate exits. Wasm follows the broader
+validation phase, with Bun retained as the working target.
+
+Protected approval requires external CI/review attestation; broader PostgreSQL
+behavior and deployment hooks still need their own evidence. P10R still needs
+outside review and five first-user sessions, and DX2 needs fresh-agent/user
+repair-cycle evidence. These gates remain open; passing local authentication
+and compiler tests does not create a release-equivalent assurance claim.

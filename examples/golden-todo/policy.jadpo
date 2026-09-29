@@ -4,7 +4,12 @@
 policy TodoPolicy version "todo-policy-v0.1" {
     authentication {
         default required
-        strategies session_cookie, oidc_bearer
+        credential_slots browser_session, api_bearer
+        principal user_or_service
+        revocation {
+            mode bounded
+            maximum_delay 5m
+        }
         select exactly_one
         conflicting_credentials reject
         ambiguous_identity reject
@@ -12,8 +17,8 @@ policy TodoPolicy version "todo-policy-v0.1" {
     }
 
     User {
-        read when actor.user_id == User.id
-        disable when actor.user_id == User.id
+        read when principal.user.user_id == User.id
+        disable when principal.user.user_id == User.id
 
         fields {
             id: server_identity immutable
@@ -32,10 +37,10 @@ policy TodoPolicy version "todo-policy-v0.1" {
     }
 
     Todo {
-        create when actor.user_id == new.owner_id
-        read when actor.user_id == Todo.owner_id and Todo.deleted_at == none
-        update when actor.user_id == Todo.owner_id and Todo.deleted_at == none
-        delete when actor.user_id == Todo.owner_id and Todo.deleted_at == none
+        create when principal.user.user_id == new.owner_id
+        read when principal.user.user_id == Todo.owner_id and Todo.deleted_at == none
+        update when principal.user.user_id == Todo.owner_id and Todo.deleted_at == none
+        delete when principal.user.user_id == Todo.owner_id and Todo.deleted_at == none
 
         fields {
             id: server_identity immutable

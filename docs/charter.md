@@ -33,24 +33,32 @@ and then decide whether its own findings matter.
 11. A concrete typed object always contains all of its declared fields.
 12. Types are executable contracts, not annotations.
 13. Values are validated whenever they cross an untrusted boundary.
-14. Database access and mutation are compiler-understood language operations.
-15. Postgres is the initial opinionated database assumption.
-16. Raw SQL and arbitrary network calls are outside ordinary application code.
-17. Expected domain failures are typed and declared.
-18. Infrastructure failures are handled by declared operational policy rather
+14. Identity-bearing entities are first-class domain subjects independently of
+    persistence; persistence is an optional explicit capability.
+15. Named queries own reads, entity actions own entity mutations, and
+    application actions compose multi-entity workflows and consistency intent.
+16. Every mutable fact has one authority; caches, graph views, search indexes,
+    and other copies are declared derived representations.
+17. The compiler distinguishes atomic transactions, durable projections, and
+    compensating workflows and never silently weakens one into another.
+18. Database access and mutation are compiler-understood language operations.
+19. Postgres is the initial opinionated database assumption.
+20. Raw SQL and arbitrary network calls are outside ordinary application code.
+21. Expected domain failures are typed and declared.
+22. Infrastructure failures are handled by declared operational policy rather
     than retry/timeout plumbing in business logic.
-19. Authentication, validation, rate limits, safe output, and other protections
+23. Authentication, validation, rate limits, safe output, and other protections
     default on or to safe behaviour.
-20. Removing protection is explicit and conspicuous.
-21. Human-owned policy is distinct from the derived audit.
-22. CI refuses to build when policy and implementation disagree.
-23. The compiler generates or derives schemas, migrations, validators, OpenAPI,
+24. Removing protection is explicit and conspicuous.
+25. Human-owned policy is distinct from the derived audit.
+26. CI refuses to build when policy and implementation disagree.
+27. The compiler generates or derives schemas, migrations, validators, OpenAPI,
     documentation, tests, route inventory, and security audit information.
-24. Generated target code is an implementation detail and is never the normal
+28. Generated target code is an implementation detail and is never the normal
     debugging surface.
-25. Compiler diagnostics are structured work items suitable for an agent's
+29. Compiler diagnostics are structured work items suitable for an agent's
     reasoning loop.
-26. Generated applications require only the selected runtime's built-in
+30. Generated applications require only the selected runtime's built-in
     capabilities; ordinary builds and execution do not install packages.
 
 ## Success condition

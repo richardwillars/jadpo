@@ -1,6 +1,6 @@
 # Developer tooling and LLM presentation workstream
 
-**Status:** DX0.5 in progress; DX1 compiler-backed LSP and VS Code client implemented  
+**Status:** DX0.5 and DX1 compiler-backed local tooling implemented
 **Timing:** thin highlighting may begin during P10–P11; DX0.5 is required
 during P10.5 before P11 application authoring; the minimum tooling baseline
 must be frozen before the P12 comparison
@@ -60,9 +60,15 @@ The package now lives in `editors/vscode`. It supplies `.jadpo` file
 association, TextMate highlighting, brackets/comments/indentation, and snippets.
 Its persistent client starts `jadpo lsp` and receives live diagnostics for
 unsaved text, document/workspace symbols, cross-file definitions and references,
-inferred-type hover, contextual member completion, callable signature help,
-semantic tokens, conservative compiler-indexed rename, and the canonical
-formatter. Source declarations also link to the relevant generated validation,
+inferred-type hover, compiler-backed callable outcome hover and signature help,
+contextual member completion, semantic tokens, conservative compiler-indexed
+rename, and the canonical formatter. Callable declaration, reference, and call
+hover shows the successful type, complete declared failures, and derived
+completion/suspension semantics without exposing generated wrappers; attempted
+call sites identify propagation, while exhaustive-match call sites identify
+each statically known handled, mapped, or propagated failure. Inline actions
+show their route-derived success and exact failure contract. Source
+declarations also link to the relevant generated validation,
 callable, failure-audit, or OpenAPI artifact. The extension contains no parser
 or type checker.
 
@@ -279,8 +285,25 @@ canonical edit-feedback-run loop without adding a second semantic path:
 - shutdown cleans up the watcher and child process without leaving an orphaned
   listener.
 
-The first two DX0.5 slices are implemented. Passing `--diagnostic-format=json` to
-`jadpo check <project>` writes exactly one version-1 `diagnostic_report`
+Configuration extends this same loop without adding a partial compiler check:
+
+- `jadpo config set <field>` runs inside the project, resolves the checked
+  field, and prompts the developer directly. Secret input has terminal echo
+  disabled and is never accepted as an argument or printed;
+- the command validates before atomically updating owner-only `.env.local`,
+  preserves unrelated entries, refuses symbolic-link targets, and detects a
+  concurrent change;
+- `jadpo config check` reports only field names and `set`, `default`, `missing`,
+  or `invalid` state;
+- agents run the ordinary JSON `check` after coherent source edits, ask the
+  user to run `config set` rather than paste a secret into chat, and need not
+  repeat `check` immediately before `build`, `test`, or a running `dev`; and
+- `dev` watches `.env.local`, validates a complete local snapshot, passes only
+  declared bindings to Bun with automatic environment-file loading disabled,
+  and preserves the last ready revision after an invalid replacement.
+
+DX0.5 is implemented. Passing `--diagnostic-format=json` to
+`jadpo check <project>` writes exactly one version-2 `diagnostic_report`
 object to standard output and uses the ordinary success/failure exit code. The
 envelope records `command`, `status`, the supplied project path, optional source/
 declaration/node counts, and an ordered `diagnostics` array. Every diagnostic
@@ -298,7 +321,7 @@ for a 75 ms quiet window before treating rapid writes as one revision. Each
 revision uses the same check, target derivation, and artifact-writing functions
 as one-shot commands. Output is completed in a sibling staging directory before
 directory promotion; a staging or promotion failure preserves or restores the
-last complete `build/` revision. Human events and version-1 JSON
+last complete `build/` revision. Human events and version-2 JSON
 `lifecycle_event` objects distinguish checking, build success, build failure,
 watch-input failure, monotonic sequence/revision IDs, and whether the retained
 build is stale. Source creation/deletion and registry edits participate in the
@@ -317,11 +340,16 @@ generated server passed readiness and an HTTP request on Bun 1.2.20, and
 terminal interruption left no listener. Generated runtime and startup faults
 now use compact versioned JSON diagnostics; raw generated-target stacks are
 available only through the explicit `JADPO_DEBUG_TARGET_STACKS=1` debugging
-escape hatch. Startup-failure rollback to the prior generated/runtime revision,
-an explicit portable shutdown event, and the full edit/recovery protocol suite
-remain.
+escape hatch. Before a ready runtime is replaced, the supervisor preserves its
+generated revision. A candidate becomes current only after readiness; failed
+startup atomically restores the preserved artifacts and proves the prior
+runtime ready again. Portable interruption emits an explicit `shutdown` event
+after terminating and waiting for the child process. Protocol tests cover
+rapid-write coalescing, invalid-edit retention, recovery, source creation and
+deletion, candidate startup failure, last-known-good restoration, and clean
+listener shutdown.
 
-Protocol-level acceptance tests must cover a valid edit, an invalid edit,
+The protocol-level acceptance suite covers a valid edit, an invalid edit,
 recovery to valid source, rapid/coalesced writes, source creation/deletion, a
 generated-target failure, Bun startup failure, last-known-good continuity, and
 clean shutdown. The watcher must ignore compiler-owned `build/` output so its
@@ -342,9 +370,11 @@ model rather than scrape terminal prose or create an editor-only watcher.
 standard Content-Length-framed JSON-RPC over stdio with full-document sync.
 Compiler byte ranges are converted to LSP UTF-16 positions, including non-ASCII
 source. Protocol tests cover live malformed unsaved text, tagged variants and
-payload symbols, contextual enum/record completion, callable signature help,
-rename/reference sets, semantic tokens, authored tests, and imported definitions
-across files. Schema-identity and index-advice diagnostics reuse the same
+payload symbols, contextual enum/record completion, callable outcome hover and
+signature help, handled/mapped/propagated call-site state, inline actions,
+failure-arm navigation, rename/reference sets, semantic tokens, authored tests,
+UTF-16 range conversion, and imported definitions across files. Schema-identity
+and index-advice diagnostics reuse the same
 compiler checks after a valid frontend pass. Initial declaration-to-artifact
 links cover validation plans, callable inventories, failure audits, and OpenAPI.
 Diagnostic documentation is generated from the compiler-owned DX2 catalogue;

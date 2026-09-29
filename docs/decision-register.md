@@ -1,7 +1,7 @@
 # Decision register
 
 **Status:** current design authority  
-**Last consolidated:** 2026-09-26
+**Last consolidated:** 2026-09-27
 
 This register separates decisions from attractive ideas. Changing an accepted
 item should update the charter, affected specifications, and examples.
@@ -60,12 +60,15 @@ item should update the charter, affected specifications, and examples.
 ### Types and boundaries
 
 - Types are executable contracts rather than annotations.
-- Every authored data shape is declared with `type`. Scalar refinements use
-  `type Name = Parent { ... }`, structured records use
-  `type Name = Object { ... }`, and closed alternatives use
-  `type Name = Enum { ... }`. The former top-level `value`, `input`, `output`,
-  `entity`, and `enum` declaration forms are superseded rather than retained as
-  equivalent canonical spellings.
+- An ordinary object type is complete identity-free value data. An `entity` is
+  a nominal identity-bearing domain subject whether or not it is stored.
+  Persistence is an optional explicit entity capability rather than the source
+  of entityhood. A complete entity value is an immutable validated snapshot,
+  not a lazy or mutable ORM proxy. See the accepted
+  [entity/query model](entity-query-model.md).
+- Every entity exposes a compiler-owned nominal reference derived from its
+  declared identity. A complete entity value may project to that reference; a
+  reference never loads a complete entity implicitly.
 - `input:` and `output:` are boundary roles that reference any declared type;
   they are not type categories. Input use derives recursive closed decoding and
   validation, while output use derives recursive closed validation and
@@ -75,15 +78,13 @@ item should update the charter, affected specifications, and examples.
   recursively validated arrays, including `List<Object { ... }>`; compiler-
   synthesized nested identities remain anchored to the containing field rather
   than introducing structural compatibility between unrelated objects.
-- Persistence is a separate opt-in declaration, `persist Type { ... }`. A
-  normal object type is never stored merely because it has an `id` field.
-  `persist` owns identity, uniqueness, indexes, references, inverse
-  relationships, and migration consequences. Omitting it leaves a fully usable
-  non-persistent application type.
-- The initial prelude contains representation/time types `Bool`, `Int`,
-  `Decimal`, `Text`, `Bytes`, `Uuid`, `Date`, `Time`, `DateTime`, `Duration`, and
-  `Unit`; containers `Object`, `List<T>`, `Set<T>`, and `Map<K, V>`; and the
-  compiler-owned validated semantic types `Email`, `Url`, and `IpAddress`.
+- The accepted prelude contains representation/time types `Bool`, `Int`,
+  `Decimal`, `Text`, `Bytes`, `Uuid`, `Instant`, `CalendarDate`, `Time`,
+  `Duration`, and `Unit`; containers `Object`, `List<T>`, `Set<T>`, and
+  `Map<K, V>`; the compiler-generated IANA `Zone` enum; the application-bounded
+  `Locale` enum; and the compiler-owned validated semantic types `Email`,
+  `Url`, and `IpAddress`. The current `Date`, zone-less `Time`, and `DateTime`
+  implementation is migration input, not the accepted target model.
   Policy-dependent concepts such as username, slug, phone number, postcode,
   money, and country code remain authored domain types rather than vague
   built-ins.
@@ -97,6 +98,42 @@ item should update the charter, affected specifications, and examples.
 - Runtime validation occurs at HTTP input/output, database read/write,
   environment/config, queues/events, external responses, and deserialised cache
   boundaries.
+- Callable spelling follows ownership. Authored free functions, actions, and
+  queries are unqualified in their current or selective-import scope;
+  entity-owned operations are qualified by the entity or an accepted receiver;
+  compiler standard-library families use mandatory lowercase domain namespaces
+  such as `temporal.*` and `collection.*`. Standard namespaces cannot be opened,
+  aliased, or mirrored with method/free-function synonyms. Type construction,
+  enum variants, contextual capabilities such as `clock.now`, and data access
+  such as `config.mail_sender` are distinct forms rather than callable aliases.
+- The accepted [naming and qualification contract](naming-and-qualification.md)
+  is bound to section-2 digest
+  `sha256:914e6c32c3d349cccfc9184dfc1dc40eb9671b247b4664d41d964c338901c0b4`.
+  It applies the same casing, ownership, import, namespace, parameter-order,
+  and one-canonical-spelling rules to every present and future language family.
+- The approved [TIME-001/TEST-001 contract](time-testing-plan.md) is bound to
+  section-2 digest
+  `sha256:17b8ac38c645f6e3f42abf9a7644b9c6f67451d0c3407f7bf108ec057a931f01`.
+  `Instant` is the ordinary UTC-millisecond timestamp; `CalendarDate` is only a
+  genuinely date-only fact; resolved `Time` contains an instant plus one
+  compiler-generated `Zone` enum value. Clock fragments are contextual inputs
+  to `temporal.resolve`, never independent authority values.
+- Authored code has one canonical `temporal` namespace. Operations put the
+  primary value first, zone then locale context next, and named policy/options
+  last. The compiler rejects host date libraries, synonyms, reversed overloads,
+  implicit time conversions, free-form zone strings, and hidden clock/locale
+  defaults.
+- Human formatting accepts `CalendarDate` or resolved `Time`, returns
+  presentation-classified text, and cannot become database/query/time
+  authority. Absolute styles and the v0.1 conversational friendly profile are
+  closed contracts; friendly output always receives an explicit reference
+  instant.
+- The generated runtime captures one stable operation instant and uses an
+  internal monotonic source for elapsed deadlines. Explicit compiler-owned
+  `on: create`/`on: create_or_change` field roles receive operation time;
+  callers, authored mutations, database defaults, generated expressions, and
+  triggers cannot own those values. Historical migrations never invent an
+  unreviewed current time.
 - A successfully typed application value has actually been validated.
 - Domain constraints should drive all relevant static, runtime, database, API,
   documentation, and test representations.
@@ -114,15 +151,46 @@ item should update the charter, affected specifications, and examples.
 
 - Database operations are compiler-understood constructs.
 - Postgres is the initial opinionated database.
-- Persistent creation uses `create Entity { ... }`, is permitted in actions but
-  not functions, requires nominal entity-field values, and returns a validated
-  entity rather than a driver result.
+- Every entity has exactly one authoritative declaration under `entities/`.
+  Persistence, entity-specific policy, lifecycle, queries, functions, and
+  actions are explicit sections or capabilities in that entity dossier. The
+  initial language has no partial entities, extension methods, inheritance,
+  overrides, or receiver overloads.
+- Dot syntax on an entity value or reference is statically resolved qualified
+  call syntax. It never implies dynamic dispatch, hidden mutation, loading,
+  saving, exceptions, or transaction creation. Entity operations declare
+  whether their receiver requires the reference or complete value. A mutating
+  value receiver is an observation rather than concurrency authority and must
+  reload/lock current state or use a checked revision/conditional-write guard.
+- A named `query` is a restricted read-only runtime operation. It may suspend
+  and fail operationally, but cannot mutate, call actions or services, emit
+  events, or access secrets. Entity-centred queries live with the entity;
+  genuinely cross-entity projections are named top-level queries under
+  `queries/` and return complete values. A query over a derived representation
+  declares an authoritative, read-your-writes, bounded-staleness, or eventual
+  freshness requirement; the compiler may satisfy it with a stronger plan but
+  never silently with a weaker one.
+- Raw query expressions do not appear in routes, functions, ordinary top-level
+  actions, workflows, jobs, policy, or configuration. Those declarations call
+  named queries.
+- Only actions owned by an entity may directly create, update, or delete that
+  entity. Routes and workflows call named entity actions and cannot bypass
+  entity invariants, lifecycle, or policy.
+- Every mutable fact has one declared authority. Caches, search indexes, graph
+  read models, and other derived representations are not independently
+  writable application state. An authoritative mutation and its durable change
+  record commit together; generated delivery is ordered, idempotent, replayable,
+  observable through watermarks, and repairable from authority.
+- Persistent creation currently uses `create Entity { ... }` in the executable
+  prototype. Fixture-first implementation of the accepted entity dossier will
+  determine the final construct spelling while preserving nominal field
+  validation and a validated entity result rather than a driver result.
 - Persistence SQL is compiler-generated and parameterised. Returned rows cross
   a generated validation boundary before becoming trusted entity values.
-- The first read form is `query optional Entity { where: field == value }`. It
-  returns `Entity?`, accepts one equality predicate on a non-nullable nominal
-  entity field, treats multiple rows as an operational invariant fault, and is
-  action-only in the initial effect model.
+- The first executable read form is `query optional Entity { where: field ==
+  value }`. It remains prototype evidence for cardinality, validation, and
+  operational containment while named entity and top-level query declarations
+  are implemented.
 - Required-one read uses the same predicate plus `missing: FailureName`; its
   result is non-nullable and the bound failure must be declared and derive from
   `NotFound`.
@@ -131,11 +199,25 @@ item should update the charter, affected specifications, and examples.
   validated affected entity rather than a row count.
 - Required mutations preflight cardinality and execute transactionally; a
   multiple-row match is an operational fault and commits no mutation.
-- Every action whose transitive effect graph contains a persistence mutation is
-  atomic by default. The compiler supplies one transaction-scoped persistence
-  context to all reads, writes, and nested callable invocations in that action.
-  Nested mutative calls reuse the active transaction; read-only actions do not
-  start a write transaction. Authors do not spell the routine boundary.
+- An entity action is independently failure-atomic when invoked directly, but
+  composition does not silently merge entity-action transactions. An enclosing
+  action reaching multiple mutation scopes must explicitly declare atomic
+  intent or a durable-workflow disposition; omission is a compile error. For an
+  explicit atomic boundary, the compiler supplies one transaction context to
+  nested entity actions and queries,
+  derives commit/rollback and handled-failure savepoints, keeps policy and
+  invariant reads inside that boundary, and rejects incompatible transaction
+  domains or external effects. A nested success is provisional until its outer
+  boundary commits. Isolation, locking/conditional-write strategy, deadlock
+  ordering, and safe retry behaviour remain visible checked/audited TX-001
+  contracts rather than hidden consequences of the call graph.
+- Cross-store consistency has four distinct contracts: local atomic,
+  compiler-verified prepared atomic, durable projection, and durable workflow.
+  `atomic` is accepted across domains only when every adapter proves a common
+  prepare/commit and durable-recovery protocol. One authority plus derived
+  stores uses an authority transaction plus durable change record; multiple
+  authorities use a persisted retry/compensation/reconciliation workflow.
+  These contracts never silently degrade into one another.
 - Raw SQL is not ordinary application code.
 - A stored owning reference may declare a separate logical traversal name with
   `references Target.field as relationship on_delete action`. The stored field
@@ -190,10 +272,11 @@ item should update the charter, affected specifications, and examples.
 - Required authentication is inherited by every route and is not repeated as
   `auth required` in canonical source.
 - Provider-specific authentication terminates at a generated boundary. Routes,
-  actions, and policy consume a stable authenticated actor, tenant, allowlisted
-  user data, permissions/capabilities, and authentication strength rather than
-  provider SDKs, tokens, or strategy names. Multiple configured strategies must
-  resolve deterministically and must not merge privileges implicitly.
+  actions, and policy consume one stable authenticated user or service
+  principal with identity, allowlisted user data, and authentication strength
+  rather than provider SDKs, tokens, strategy names, roles, or permissions.
+  POLICY-001 resolves roles from separate authoritative bindings. Multiple
+  configured strategies resolve deterministically and never merge privileges.
 - A route is the HTTP boundary, an action is a runtime-managed application
   operation that may perform effects, and a function is pure, non-suspending
   computation from its arguments. The three remain distinct even when
@@ -227,6 +310,20 @@ item should update the charter, affected specifications, and examples.
   boundary and are statically typed before the action runs. Authentication
   headers remain owned by the generated authentication boundary rather than
   ordinary action input.
+- Configuration fields use structured option bodies and keep their explicit
+  environment binding beside their typed declaration. They are required unless
+  they have a checked non-secret literal default; no parallel deployment
+  binding file or implicit environment overlay is part of v0.1.
+- Local configuration uses only `.env.local`. `jadpo config set <field>` accepts
+  prompted values without exposing secrets to chat, shell arguments, or output,
+  while `jadpo config check` reports only safe presence/validity status.
+- All v0.1 configuration is startup-bound. `jadpo dev` validates and restarts
+  after valid changes; deployment integration and runtime startup validate real
+  production values automatically. `jadpo check` remains the one full static
+  checker, and `build` never requires secret values.
+- Generated production targets disable Bun's automatic environment-file
+  discovery and add no configuration package. Liveness remains local while
+  bounded readiness reflects required dependency availability.
 - Route templates spell path placeholders as `{name}`. A brace-delimited
   `path: { name: Type }` group types them, and behaviour reads the validated
   values through `path.name`. Template placeholders and declarations must
@@ -251,17 +348,44 @@ item should update the charter, affected specifications, and examples.
   scaffolds must not present a guessed replacement as canonical.
 - Policy is human-owned; audit is compiler-derived.
 - CI blocks policy/implementation disagreement.
+- The digest-pinned [POLICY-001 implementation plan](policy-plan.md) is the
+  accepted authorisation contract. Roles are closed qualified enum values whose
+  facts come only from authoritative direct relationship or membership
+  bindings. Entity policy is one role-first matrix over compiler-derived
+  `create`/`read`/`update`/`delete` effects; routine named queries/actions
+  inherit automatic row scoping; exceptional field policy narrows but never
+  widens; non-entity operations use local `invoke` policy; and the only
+  compiler-owned non-role subjects are the explicit `Access.public` and
+  `Access.authenticated`.
+- POLICY-001 composes authentication, closed input validation, supplied-field
+  tracking, field write ownership, authoritative role resolution, lifecycle
+  and business rules, policy-scoped parameterised database access, database
+  constraints/result decoding, authorised projections, and exact output
+  validation as distinct fail-closed gates. It never silently strips input or
+  output fields.
+- Policy is semantically colocated with its entity, field, or non-entity
+  operation. Human authority comes from the protected approval protocol over
+  canonical policy and semantic-graph digests, so access expansion through an
+  input, field, projection, output, route, role binding, or call edge is
+  reviewable even when the visible policy block is unchanged.
+- The accepted POLICY-001 section-2 contract is pinned as
+  `sha256:66e7a8f586b62ed92c3a7220f524e25aee5808ca60b8504fb3c2d225ef2d68bd`;
+  POLICY-P0–P6 may implement but may not silently change its scoped-role,
+  automatic-enforcement, validation, database, output, or approval boundaries.
 - Generated target code is not normal developer-facing source.
 - `build/` is compiler-owned disposable output and is excluded from authored
   `.jadpo` discovery.
 - P8 derived JSON artifacts are deterministic, versioned, project-relative,
   and contain no timestamp, random identifier, or machine-specific path.
-- The first executable prototype is dependency-free TypeScript generated for
-  Bun beneath `build/target/app.ts`; `build/` is reproducible and not committed
-  by the canonical scaffold.
-- Generated Bun targets may import only `bun`, `bun:*`, and compiler-owned
-  relative TypeScript modules. They emit no package manifest, lockfile, or
-  `node_modules`, and must build and execute with Bun auto-install disabled.
+- The first executable prototype and every application that does not declare
+  JWT bearer validation are dependency-free TypeScript generated for Bun
+  beneath `build/target/app.ts`; `build/` is reproducible and not committed by
+  the canonical scaffold.
+- Generated Bun targets may import only `bun`, `bun:*`, compiler-owned relative
+  TypeScript modules, and the single compiler-selected `jose` package when JWT
+  bearer validation is explicitly declared. Only that capability may emit its
+  compiler-owned manifest and frozen lock/integrity record. Bun auto-install is
+  always disabled; all other external imports and dependency metadata reject.
 - Required-one queries bind absence explicitly with `missing:` to a failure
   declared by the enclosing action and derived from `NotFound`; they never
   convert absence into an untyped exception.
@@ -363,15 +487,13 @@ item should update the charter, affected specifications, and examples.
 ## 2. Provisional directions
 
 These are recommended but must survive the golden applications:
-
 - braces, no required semicolons, and canonical non-semantic formatting;
-- `UpperCamelCase` types/entities/events/failures and `lower_snake_case` values,
-  fields, functions, actions, and jobs;
 - explicit domain primitive types such as `Email`, `Money`, `Percentage`,
-  `DateTime`, and `Duration`;
+  `Instant`, `CalendarDate`, and `Duration`;
 - constrained-type blocks;
 - explicit `List<T>`/`Map<K,V>` style collection types;
-- free collection functions such as `count(items)` rather than prototype magic;
+- namespaced collection functions such as `collection.count(items)` rather
+  than prototype magic or unqualified global built-ins;
 - exhaustive `match` plus `if`/`else` as the main conditional forms;
 - data-carrying enum variants as nominal tagged sums when variant-specific
   payloads make invalid states unrepresentable, subject to P12 pressure tests
@@ -422,8 +544,23 @@ These are recommended but must survive the golden applications:
   [approval protocol](approval-protocol.md) and comprehension experiment; and
 - the [golden todo candidate](../examples/golden-todo/README.md) as the complete
   P10R pressure case, while its unsupported syntax remains design input rather
-  than accepted grammar.
-
+  than accepted grammar; and
+- the [AUTH-001 implementation plan](authentication-plan.md) as the approved
+  architecture for browser, user-API, and service-to-service authentication;
+  cookie and bearer transport remain independent of immediate or bounded
+  validation; user and service identities become one closed provider-independent
+  principal type; caches are optional; sensitive routes can require fresh
+  authority; and permissions remain the responsibility of POLICY-001. Jadpo's
+  own signed envelopes use Bun-native cryptographic primitives without an
+  application package dependency. JWT bearer validation is explicit opt-in and
+  adds exactly one compiler-selected, pinned `jose` package with zero transitive
+  dependencies; applications without JWT remain free of package metadata,
+  external imports, dormant JOSE code, and installation.
+  The accepted section-2 contract is pinned as
+  `sha256:5cf32778486586b4645d226f3e4c1ebcd636d0d868b443c2be768d492003fb0b`;
+  later syntax or implementation work may realise it but may not silently
+  change its principal, selection, revocation, cache-independence, or
+  dependency boundaries.
 ## 3. Rejected current alternatives
 
 - **A loose semantic language.** Rejected because ambiguity gives agents more
@@ -438,9 +575,11 @@ These are recommended but must survive the golden applications:
   or another primitive.
 - **Prototype/magic collection properties such as `items.empty`.** Rejected as
   ambiguous between data, method, and intrinsic.
-- **Entity-method persistence as the preferred model.** `Order.create` and
-  `order.update` obscure that persistence is a language-understood effect;
-  `create Order` and `update order` are preferred.
+- **Active-record magic behind entity calls.** Entity-owned actions and checked
+  dot calls are accepted, but `Order.create` or `order.update` may not imply
+  hidden loading, local mutation, saving, transaction creation, lazy fields, or
+  driver behaviour. Persistence remains a compiler-understood explicit effect
+  inside the owning entity action.
 - **JavaScript ambient exceptions for domain flow.** Rejected because signatures
   hide expected failure.
 - **Manual route-by-route status mapping.** Rejected because transport behaviour
@@ -460,12 +599,17 @@ These are recommended but must survive the golden applications:
 
 ## 4. Open language questions
 
+- the future bounded companion-file escape when one authoritative entity file
+  becomes too large; the initial dossier, receiver, named-query, freshness,
+  consistency, and mutation-guard punctuation is now fixture-backed;
 - file, module, import, namespace, visibility, and package semantics;
 - comment, documentation, intent, rule, and decision syntax;
 - exact primitive types and literal forms;
 - whether authored low-level functions need a conspicuous escape hatch for raw
   primitive parameters and results;
-- money/currency, decimal, time-zone, date, and duration semantics;
+- money/currency and decimal semantics; recurrence, holidays, business
+  calendars, natural-language time parsing, and custom friendly-format profiles
+  remain deferred beyond the approved bounded time contract;
 - generics and user-defined collection types;
 - value-representation optimisation for large data and foreign buffers,
   including copy-on-write, uniqueness, zero-copy views, and builders; any
@@ -475,8 +619,15 @@ These are recommended but must survive the golden applications:
 - resource and termination bounds;
 - query cardinality and exact not-found syntax;
 - pagination, aggregation, joins, and complex-query capabilities;
-- isolation selection, savepoints, deliberate boundary splitting, and the
-  interaction between database transactions and external effects;
+- adapter capability proofs and any extension to the implemented
+  `consistency: atomic|durable_workflow` spelling or the audited initial
+  PostgreSQL/SQLite isolation, concurrency, lock-ordering, savepoint, and
+  explicit-idempotent-retry matrix;
+- physical authority/projection delivery and durable-workflow adapters,
+  change-journal/workflow state storage, revision-token boundaries,
+  operational intervention, and generated repair controls; the
+  semantic distinction between atomic, durable projection, and compensation is
+  already accepted;
 - relationship, index, uniqueness, and lifecycle syntax;
 - partial-update mechanics;
 - exact policy for exposing declared failure context through an optional
@@ -487,14 +638,16 @@ These are recommended but must survive the golden applications:
 - output `none` as JSON `null` versus omission controls;
 - exact route query/header/body binding grammar, plus file and streaming
   semantics;
-- authentication identity, roles, tenancy, and ownership proofs;
+- authentication roles/tenancy extensions beyond the approved user/service
+  principal model, plus ownership/authorization proofs;
 - policy storage, protection, and approval mechanism;
 - external contract import/versioning/review;
 - events, jobs, concurrency, ordering, retries, and idempotency;
-- typed configuration declarations, environment binding/overlay rules, secret
-  classification and rotation, startup/preflight validation, dependency
-  readiness checks, and the deployment rollback signal;
-- test grammar and generated/authored boundary;
+- configuration source kinds beyond process-environment injection, live reload,
+  hosted secret-manager SDKs, and cloud-specific deployment contracts beyond
+  the approved [CONFIG-001 implementation plan](configuration-plan.md);
+- exact fixture punctuation for the approved typed test semantics; the
+  generated/authored evidence boundary itself is accepted;
 - escape hatches and extension model.
 
 ## 5. Open implementation questions

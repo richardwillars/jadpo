@@ -10,12 +10,12 @@ evidence even after support is added.
 
 | ID | Required construct | Current disposition | Issue |
 |---|---|---|---|
-| GF-001 | application declaration and secure authentication default | missing language capability | `AUTH-001` |
-| GF-002 | two authentication strategies normalised to one actor | missing language capability | `AUTH-001` |
-| GF-003 | exactly-one strategy selection and conflicting credential rejection | missing policy/proof rule | `AUTH-001`, `POLICY-001` |
-| GF-004 | authored actor declaration and authenticated user lookup | missing language capability | `AUTH-001` |
+| GF-001 | application declaration and secure authentication default | AUTH-P1a parser/graph and immediate/bounded revocation contract implemented; credential topology/runtime pending | `AUTH-001` |
+| GF-002 | browser, API, and service strategies normalised to one closed principal | architecture approved; compiler/runtime pending | `AUTH-001` |
+| GF-003 | exactly-one credential selection and conflicting credential rejection | normative rule approved; runtime selector pending | `AUTH-001` |
+| GF-004 | closed user/service principal and authoritative active-principal lookup | closed principal parser/graph implemented; typed authoritative resolution pending | `AUTH-001` |
 | GF-005 | enums, qualified defaults, and boundary decoding | provisional syntax, no compiler support | `TYPE-006` |
-| GF-006 | typed configuration, secrets, provenance, preflight, reload policy | missing language capability | `CONFIG-001` |
+| GF-006 | typed configuration, secrets, provenance, startup validation | compiler/runtime core implemented; adapter sinks/readiness pending | `CONFIG-001` |
 | GF-007 | compound non-unique indexes | missing persistence capability | `DATA-003` |
 | GF-008 | output projection from entities | partial semantic design only | `QUERY-001` |
 | GF-009 | path and query parameter declarations | missing route capability | `ROUTE-001` |
@@ -43,14 +43,17 @@ evidence even after support is added.
 | GF-028 | deployment-plane readiness distinct from application routes/auth | missing operational capability | `CONFIG-001` |
 | GF-029 | public liveness response with no dependency checks | target can expose public route, not health semantics | `CONFIG-001` |
 | GF-030 | rename-stable schema/migration identity | scheduled | `TOOL-001`, `DATA-003` |
+| GF-031 | first-class entity dossiers, named reads, entity-owned mutations, and multi-entity workflows | accepted design; compiler and golden-source migration pending | `DATA-007`, `QUERY-001`, `LAYOUT-001` |
 
 ## Required order
 
-P10.5 should address only the gaps already assigned to it: relationships,
-patches, pagination/query completion where needed by those features, migration
-identity, modules, and value/reference semantics. Authentication, policy,
-configuration, services, jobs, and approvals remain P11 or later and must be
-implemented against frozen proof/threat/approval contracts.
+P10.5 addressed only the gaps assigned to it: relationships, patches,
+pagination/query completion where needed by those features, migration identity,
+modules, and value/reference semantics. Before dependent P11 authoring, P10.6
+must implement the accepted DATA-007 entity/query/workflow contract fixture-first
+and migrate the golden source without changing its behavioural pressure case.
+Authentication, policy, configuration, services, jobs, and approvals remain P11
+or later and must be implemented against frozen proof/threat/approval contracts.
 
 The bounded value/reference item is now closed without adding a golden-todo
 capability: ordinary parameters and returned data are immutable values, and
