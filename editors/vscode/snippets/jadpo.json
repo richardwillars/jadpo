@@ -1,4 +1,42 @@
 {
+  "Authentication foundation": {
+    "prefix": "authentication-foundation",
+    "body": [
+      "application ${1:Application} {",
+      "    authentication {",
+      "        principal: ${2:Principal}",
+      "        revocation {",
+      "            mode: ${3:bounded}",
+      "            maximum_delay: ${4:5m}",
+      "        }",
+      "    }",
+      "}",
+      "",
+      "principal ${2:Principal} {",
+      "    user {",
+      "        subject: Text",
+      "        user_id: ${5:User.id}",
+      "    }",
+      "    service {",
+      "        subject: Text",
+      "        service_id: ${6:Service.id}",
+      "    }",
+      "}"
+    ],
+    "description": "Project authentication default and closed user/service principal"
+  },
+  "Configuration": {
+    "prefix": "config",
+    "body": [
+      "config ${1:ApplicationConfiguration} {",
+      "    ${2:api_key}: ${3:ApiKey} {",
+      "        binding: \"${4:API_KEY}\"",
+      "        secret: ${5:true}",
+      "    }",
+      "}"
+    ],
+    "description": "Typed startup configuration with an explicit environment binding"
+  },
   "Enum": {
     "prefix": "enum",
     "body": ["type ${1:State} = Enum {", "    ${2:ready}", "    ${3:failed}", "}"],
@@ -26,6 +64,32 @@
     "body": ["persist ${1:Customer} {", "    identity: ${2:id}", "}"],
     "description": "Opt an object type into persistence"
   },
+  "Entity dossier": {
+    "prefix": "entity-dossier",
+    "body": [
+      "entity ${1:Customer} {",
+      "    ${2:id}: ${3:Uuid}",
+      "    ${4:email}: ${5:Email}",
+      "",
+      "    identity: ${2:id}",
+      "",
+      "    persistence {",
+      "        store: ${6:primary}",
+      "        role: authority",
+      "    }",
+      "",
+      "    query ${7:by_id}(id: ${1:Customer}.${2:id})",
+      "        freshness: authoritative",
+      "        -> ${1:Customer}?",
+      "    {",
+      "        return attempt query optional ${1:Customer} {",
+      "            where: ${2:id} == id",
+      "        }",
+      "    }",
+      "}"
+    ],
+    "description": "Identity-bearing entity with optional authority persistence and a named query"
+  },
   "Fallible action": {
     "prefix": "action-fails",
     "body": ["action ${1:name}(${2:input}: ${3:Input})", "    fails ${4:DomainFailure}", "    -> ${5:Output}", "{", "    ${6}", "}"],
@@ -35,6 +99,16 @@
     "prefix": "match",
     "body": ["match ${1:value} {", "    ${2:State.ready} => {", "        ${3}", "    }", "    ${4:State.failed} => {", "        ${5}", "    }", "}"],
     "description": "Exhaustive match"
+  },
+  "Exhaustive outcome match": {
+    "prefix": "match-outcome",
+    "body": [
+      "match ${1:operation}(${2}) {",
+      "    success(${3:value}) => ${3:value}",
+      "    failure ${4:FailureName} => ${5:propagate}",
+      "}"
+    ],
+    "description": "Acknowledge every success and failure outcome"
   },
   "Test": {
     "prefix": "test",
@@ -59,9 +133,9 @@
     "prefix": "failure",
     "body": [
       "failure ${1:DomainFailure} {",
-      "    kind ${2:Rejected}",
-      "    code \"${3:domain_failure}\"",
-      "    message \"${4:Request failed.}\"",
+      "    kind: ${2:Rejected}",
+      "    code: \"${3:domain_failure}\"",
+      "    message: \"${4:Request failed.}\"",
       "}"
     ],
     "description": "Reusable application failure with an explicit standard kind"

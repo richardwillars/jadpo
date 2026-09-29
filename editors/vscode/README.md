@@ -6,7 +6,10 @@ language server. Unsaved edits receive live parse, semantic, type, failure, and
 effect diagnostics. Document/workspace symbols, go-to-definition, references,
 hover types, completion, conservative rename, semantic tokens, and deterministic
 formatting all use the same compiler syntax tree, semantic graph, and inferred
-types as the CLI. Source underlines are reserved for diagnostics. Use
+types as the CLI. Callable hover and signature help show success, exact failures,
+and internal completion semantics; exhaustive-match call sites distinguish
+handled, mapped, and propagated failures, and failure arms navigate to their
+declarations. Source underlines are reserved for diagnostics. Use
 **Jadpo: Open Generated OpenAPI** or **Jadpo: Open Generated Validation Plan**
 to inspect build artifacts without turning declarations into document links.
 
