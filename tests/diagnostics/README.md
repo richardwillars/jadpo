@@ -33,40 +33,47 @@ Coverage is split by responsibility:
 - compile fixtures prove exact root-diagnostic sequences and byte ranges. A
   fixture may additionally assert the exact summary, reason fragment, repair
   classification, owner, context, alternatives, replacements, and impact; and
-- focused Rust tests count as conformance evidence only when the test body
-  names and asserts the diagnostic contract it exercises. Language diagnostics
-  use real malformed-source or semantic scenarios. Operational and I/O faults
-  use an explicit emitter-contract test in addition to the exhaustive audience
-  projections; a generic catalogue loop alone does not satisfy this requirement.
+- focused Rust tests provide bounded scenario references. Their assertions and
+  actual execution must still be reviewed; merely naming a code is not proof
+  that the compiler emitted it. Operational failures use disposable filesystem
+  and process scenarios where possible, alongside audience projection tests.
 
-Catalogue discovery scans diagnostic identifier tokens in the compiler emitter
-crates rather than naively splitting Rust source on quotation marks or scanning
-the catalogue's own prose. Escaped JSON literals therefore cannot hide later
-compiler diagnostics, and stale catalogue text cannot masquerade as an emitted
-error. The complete enumerated catalogue currently contains 298 codes.
+Catalogue discovery parses Rust and collects diagnostic string literals from
+production modules, including `core/src/target/`. It excludes test-only functions,
+test modules, integration tests, comments and the catalogue's own prose. The
+CONFIG, POLICY and TEST families are included. The current inventory has 480
+codes; this is an inventory of recognized literal codes, not arbitrary dynamic
+code-generation analysis.
+
+Evidence discovery parses compile expectation JSON and bounded Rust `#[test]`
+function bodies. It excludes ignored tests, comments, nested helper declarations
+and text after the function. The diagnostics crate's own inventory/rendering
+tests cannot certify their own emitter evidence. The index records references,
+not assertion execution, branch coverage or proof that a diagnostic is reachable.
+The full verifier executes suites; focused triggering tests and mutation reviews
+provide the stronger evidence for their specifically listed cases.
 
 `ROUTE_AUTH_VALUE_INVALID` is the first complete golden scenario. Its fixture
 proves one root error over `nonke`, continued parsing of subsequent route items,
 two non-preferred human-owned security choices, and parity across JSON,
 terminal, Problems, hover, details, and Quick Fix.
 
-The permanent completion gate rejects placeholder copy and any emitted code
-without explicit conformance evidence. Run it directly with:
+The permanent catalogue gate rejects placeholder copy and any inventoried code
+without a compile-fixture or bounded Rust-test reference. Run it directly with:
 
 ```text
 cd jadpo
 cargo test -p jadpo-diagnostics every_public_diagnostic_is_authored_and_has_conformance_evidence
 ```
 
-The gate is active and green. Language families additionally require a real
-triggering compile fixture or focused asserted Rust scenario; deterministic
-operational emitter-contract tests cover faults that would otherwise require
-unsafe or platform-dependent filesystem and process failures.
+The gate is active. A passing reference index must not be reported as exhaustive
+trigger coverage. New CONFIG/POLICY/TEST cases execute real compiler/API/CLI
+paths; their findings record initial omissions and proof limits.
 
 The `SYN_*` catalogue family is fully authored. Its public copy now describes
 the concrete grammar rule and a usable next step; the general parser expectation
 also carries the bounded `expected` and `found` facts supplied by the parser.
-Real trigger-scenario coverage is enforced by the permanent evidence gate.
+Trigger-scenario coverage requires executing and reviewing the referenced tests.
 
 The `SEM_*` name-resolution family is also fully authored and contextual.
 Diagnostics name the source spelling, say what that field, parameter, return,
@@ -118,8 +125,8 @@ query type rules remain separately tracked.
 The complete `TYPE_*` family is now fully authored. Persistence copy preserves
 the distinct contracts for entity operations, deterministic query bounds,
 constraint mappings, omission-aware patches, and each supported include plan:
-to-many, owning-parent, inverse-one, and bounded two-hop. Real trigger-fixture
-coverage remains independently enforced by the strict completion gate.
+to-many, owning-parent, inverse-one, and bounded two-hop. Trigger-fixture
+evidence remains separate from the static reference index.
 
 The `MOD_*`, `FMT_*`, and `LSP_*` families are fully authored. Module copy
 explains explicit visibility and acyclic imports; formatter copy distinguishes
@@ -148,10 +155,10 @@ unsupported change, strategy, expression, predicate, literal, and type cases
 from identity corruption, and gives SQLite rebuild failures their precise
 entity, field, constraint, index, reference, rename, or shape recovery path.
 
-All 298 enumerated public diagnostic codes now have rule-specific summary,
-reason, and recommended-next-step copy. The active zero-placeholder test is
-permanent, and every emitted code has explicit conformance evidence beyond the
-generic catalogue renderer.
+The current 480-code inventory has rule-specific summary, reason and next-step
+copy. The zero-placeholder and evidence-reference tests are permanent. Adding a
+new family must also add discovery coverage; an omitted family cannot be made
+complete by a green catalogue loop.
 
 The `ROUTE_*` family now has real compile-trigger coverage for every code in
 addition to its all-audience projection coverage.

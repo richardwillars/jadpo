@@ -12,6 +12,11 @@
     "AUTH-005": { "rules": ["AUTH-EXACTLY-ONE"], "threats": ["TM-02"] },
     "AUTH-006": { "rules": ["AUTH-EXACTLY-ONE", "QUERY-SCOPE"], "threats": ["TM-02", "TM-03"] },
     "AUTH-007": { "rules": ["AUTH-EXACTLY-ONE", "PROJECTION-SUBSET"], "threats": ["TM-02", "TM-05"] },
+    "AUTH-008": { "rules": ["AUTH-EXACTLY-ONE"], "threats": ["TM-02", "TM-24"] },
+    "AUTH-009": { "rules": ["AUTH-EXACTLY-ONE", "BOUNDARY-DECODE"], "threats": ["TM-02", "TM-25"] },
+    "AUTH-010": { "rules": ["AUTH-EXACTLY-ONE", "FRESHNESS-POLICY"], "threats": ["TM-21", "TM-24"] },
+    "AUTH-011": { "rules": ["AUTH-EXACTLY-ONE", "LIFECYCLE-TRANSITION"], "threats": ["TM-24", "TM-25"] },
+    "AUTH-012": { "rules": ["ROUTE-DEFAULT-AUTH"], "threats": ["TM-01", "TM-02"] },
     "PUBLIC-001": { "rules": ["ROUTE-DEFAULT-AUTH", "PUBLIC-WEAKENING", "OUTPUT-VALIDATE"], "threats": ["TM-01", "TM-05", "TM-12"] },
 
     "CREATE-001": { "rules": ["CREATE-FORCED-FIELDS", "MUTATION-SCOPE", "PERSISTENCE-INTEGRITY"], "threats": ["TM-04", "TM-06"] },
@@ -48,19 +53,19 @@
     "JOB-003": { "rules": ["QUERY-SCOPE", "CALL-COMPOSE", "QUERY-BOUND"], "threats": ["TM-03", "TM-18"] },
     "JOB-004": { "rules": ["LIFECYCLE-TRANSITION", "MUTATION-SCOPE", "QUERY-BOUND"], "threats": ["TM-10", "TM-18"] },
 
-    "CONFIG-001": { "rules": ["CONFIG-PREFLIGHT", "STARTUP-BEFORE-LISTEN", "FAILURE-NORMALISE"], "threats": ["TM-07", "TM-16"] },
-    "CONFIG-002": { "rules": ["CONFIG-PREFLIGHT", "FAILURE-NORMALISE"], "threats": ["TM-07", "TM-16"] },
+    "CONFIG-001": { "rules": ["CONFIG-VALIDATE", "STARTUP-BEFORE-LISTEN", "FAILURE-NORMALISE"], "threats": ["TM-07", "TM-16"] },
+    "CONFIG-002": { "rules": ["CONFIG-VALIDATE", "FAILURE-NORMALISE"], "threats": ["TM-07", "TM-16"] },
     "CONFIG-003": { "rules": ["READINESS-LIVENESS-SEPARATION"], "threats": ["TM-16", "TM-17"] },
     "BOUNDARY-001": { "rules": ["FAILURE-NORMALISE", "OUTPUT-VALIDATE"], "threats": ["TM-05", "TM-07", "TM-09"] }
   },
   "threatClaims": {
     "TM-01": { "rules": ["ROUTE-DEFAULT-AUTH", "BOUNDARY-DECODE"], "evidence": ["AUTH-001", "PUBLIC-001"], "planned": ["PLAN-GENERATED-AUTH-NEGATIVE"] },
-    "TM-02": { "rules": ["AUTH-EXACTLY-ONE", "BOUNDARY-DECODE"], "evidence": ["AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "PPK-AUTH-NEG"], "planned": ["PLAN-AUTH-ADAPTER-INTEGRATION"] },
+    "TM-02": { "rules": ["AUTH-EXACTLY-ONE", "BOUNDARY-DECODE"], "evidence": ["AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-012", "PPK-AUTH-NEG"], "planned": ["PLAN-AUTH-ADAPTER-INTEGRATION"] },
     "TM-03": { "rules": ["QUERY-SCOPE", "RELATIONSHIP-COMPOSE"], "evidence": ["READ-002", "LIST-001", "REL-001", "PATCH-004", "PPK-QUERY-NEG"], "planned": ["PLAN-POLICY-SQL-LOWERING"] },
     "TM-04": { "rules": ["MUTATION-SCOPE", "CREATE-FORCED-FIELDS", "PATCH-SUPPLIED-FIELDS", "TRANSACTION-ATOMIC"], "evidence": ["CREATE-002", "PATCH-004", "DELETE-001", "PPK-MUT-NEG"], "planned": ["PLAN-POLICY-MUTATION-LOWERING"] },
     "TM-05": { "rules": ["PROJECTION-SUBSET", "OUTPUT-VALIDATE"], "evidence": ["READ-001", "BOUNDARY-001", "PPK-PROJ-NEG"], "planned": ["PLAN-OUTPUT-FUZZ"] },
     "TM-06": { "rules": ["BOUNDARY-DECODE"], "evidence": ["READ-003", "LIST-004", "CREATE-002"], "planned": ["PLAN-BOUNDARY-FUZZ"] },
-    "TM-07": { "rules": ["EXTERNAL-EFFECT", "CONFIG-PREFLIGHT", "FAILURE-NORMALISE"], "evidence": ["CONFIG-001", "CONFIG-002", "BOUNDARY-001", "PPK-EFFECT-NEG"], "planned": ["PLAN-SECRET-SINK-SCAN"] },
+    "TM-07": { "rules": ["EXTERNAL-EFFECT", "CONFIG-VALIDATE", "FAILURE-NORMALISE"], "evidence": ["CONFIG-001", "CONFIG-002", "BOUNDARY-001", "PPK-EFFECT-NEG"], "planned": ["PLAN-SECRET-SINK-SCAN"] },
     "TM-08": { "rules": ["EXTERNAL-EFFECT"], "evidence": ["JOB-001", "PPK-EFFECT-IND"], "planned": ["PLAN-EGRESS-SANDBOX-MATCH"] },
     "TM-09": { "rules": ["FAILURE-NORMALISE"], "evidence": ["REL-002", "BOUNDARY-001"], "planned": ["PLAN-DRIVER-PROVIDER-FAULT-INJECTION"] },
     "TM-10": { "rules": ["LIFECYCLE-TRANSITION", "PUBLIC-WEAKENING"], "evidence": ["REL-004", "DELETE-001", "USER-001", "JOB-004", "PPK-LIFE-NEG"], "planned": ["PLAN-EXISTING-DATA-MIGRATION-DRILL"] },
@@ -69,10 +74,16 @@
     "TM-13": { "rules": ["APPROVAL-ATTESTATION"], "evidence": ["AP-02", "AP-03", "AP-04", "AP-07", "AP-09"], "planned": ["PLAN-APPROVAL-PROVIDER-INTEGRATION"] },
     "TM-14": { "rules": ["ARTIFACT-REPRODUCIBLE"], "evidence": ["EVIDENCE-P8-DETERMINISM", "EVIDENCE-P9-HTTP-SUITE"], "planned": ["PLAN-SEMANTIC-TARGET-DIFFERENTIAL"] },
     "TM-15": { "rules": ["ARTIFACT-REPRODUCIBLE", "APPROVAL-ATTESTATION"], "evidence": ["EVIDENCE-P10R-VERIFIER", "AP-03", "AP-09"], "planned": ["PLAN-CLEAN-CHECKOUT-RELEASE-REBUILD"] },
-    "TM-16": { "rules": ["CONFIG-PREFLIGHT", "STARTUP-BEFORE-LISTEN", "READINESS-LIVENESS-SEPARATION"], "evidence": ["CONFIG-001", "CONFIG-002", "CONFIG-003"], "planned": ["PLAN-DEPLOYMENT-NO-PROMOTE-HARNESS"] },
+    "TM-16": { "rules": ["CONFIG-VALIDATE", "STARTUP-BEFORE-LISTEN", "READINESS-LIVENESS-SEPARATION"], "evidence": ["CONFIG-001", "CONFIG-002", "CONFIG-003"], "planned": ["PLAN-DEPLOYMENT-NO-PROMOTE-HARNESS"] },
     "TM-17": { "rules": ["READINESS-LIVENESS-SEPARATION"], "evidence": ["CONFIG-003"], "planned": ["PLAN-OUTAGE-RECOVERY"] },
     "TM-18": { "rules": ["QUERY-BOUND"], "evidence": ["LIST-001", "LIST-004", "REL-001", "JOB-004"], "planned": ["PLAN-BOUND-LOAD-TEST"] },
     "TM-19": { "rules": ["PUBLIC-WEAKENING", "APPROVAL-ATTESTATION"], "evidence": ["AP-08", "AP-12", "EVIDENCE-ADVERSARIAL-C20"], "planned": ["PLAN-ESCAPE-HATCH-NEGATIVES"] },
-    "TM-20": { "rules": ["APPROVAL-ATTESTATION"], "evidence": ["AP-11"], "planned": ["PLAN-COUNTERBALANCED-COMPREHENSION-STUDY"] }
+    "TM-20": { "rules": ["APPROVAL-ATTESTATION"], "evidence": ["AP-11"], "planned": ["PLAN-COUNTERBALANCED-COMPREHENSION-STUDY"] },
+    "TM-21": { "rules": ["QUERY-SCOPE", "FRESHNESS-POLICY"], "evidence": [], "planned": ["PLAN-PROJECTION-REVOCATION-LAG"] },
+    "TM-22": { "rules": ["PROJECTION-DURABLE", "IDEMPOTENT-DELIVERY"], "evidence": [], "planned": ["PLAN-PROJECTION-FAULT-REPLAY-RECONCILE"] },
+    "TM-23": { "rules": ["DURABLE-WORKFLOW", "IDEMPOTENT-DELIVERY", "FAILURE-NORMALISE"], "evidence": [], "planned": ["PLAN-MULTI-AUTHORITY-BOUNDARY-FAULTS"] },
+    "TM-24": { "rules": ["AUTH-EXACTLY-ONE", "FRESHNESS-POLICY"], "evidence": ["AUTH-008", "AUTH-010", "AUTH-011"], "planned": ["PLAN-AUTH-REVOCATION-BOUNDARY"] },
+    "TM-25": { "rules": ["AUTH-EXACTLY-ONE", "LIFECYCLE-TRANSITION"], "evidence": ["AUTH-009", "AUTH-011"], "planned": ["PLAN-SERVICE-PRINCIPAL-INTEGRATION"] },
+    "TM-26": { "rules": ["BOUNDARY-DECODE", "ARTIFACT-REPRODUCIBLE"], "evidence": ["AUTH-003"], "planned": ["PLAN-JOSE-CONFORMANCE-AND-SUPPLY-CHAIN"] }
   }
 }

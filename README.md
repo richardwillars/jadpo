@@ -32,3 +32,14 @@ dependencies while preserving legacy header-free projects. The persistence slice
 now has a candidate golden-todo contract, proof kernel, threat model, approval
 protocol, and preregistered comparison protocol awaiting independent review.
 Jadpo is not yet a general-purpose web environment.
+
+
+Run the supported-language validation gate with:
+
+```sh
+python3 tools/verify.py
+```
+
+The [validation guide](tests/validation/README.md) lists prerequisites, suite
+coverage, retained reports and the separate full golden-application gate.
+Passing supported checks does not close the recorded contract or release gaps.

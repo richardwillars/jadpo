@@ -1,0 +1,183 @@
+{
+  "contract_version": "todo-v0.1",
+  "acceptance_sha256": "a2e06d9622c2e212bbfa0f9a3e9e2adc496888cfa555dade96013bc7b67f5606",
+  "authority": "Approved AUTH-001 and POLICY-001 govern reconciliation; this map does not alter candidate expectations or policy.",
+  "cases": {
+    "AUTH-001": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "AUTH-002": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "AUTH-003": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "AUTH-004": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "AUTH-005": {
+      "status": "contract_conflict",
+      "gap": "Candidate expects invalid_credentials for two presented slots; approved AUTH-001 and selector require ambiguous_credentials before validation."
+    },
+    "AUTH-006": {
+      "status": "contract_conflict",
+      "gap": "Candidate implies immediate disable for an ordinary signed-cookie route despite bounded revocation; specify issuance/disable timing and freshness or immediate mode."
+    },
+    "AUTH-007": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "AUTH-008": {
+      "status": "contract_conflict",
+      "gap": "Title says opaque bearer but fixture and zero-authority expectation describe bounded signed validation. Opaque validation checks authority."
+    },
+    "AUTH-009": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "AUTH-010": {
+      "status": "needs_clarification",
+      "gap": "The exact one-query budget must distinguish session validation from principal authority reads."
+    },
+    "AUTH-011": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "AUTH-012": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "PUBLIC-001": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "CREATE-001": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "CREATE-002": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "CREATE-003": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "CREATE-004": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "READ-001": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "READ-002": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "READ-003": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "LIST-001": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "LIST-002": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "LIST-003": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "LIST-004": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "REL-001": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "REL-002": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "REL-003": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "REL-004": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "PATCH-001": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "PATCH-002": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "PATCH-003": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "PATCH-004": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "PATCH-005": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "DELETE-001": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "DELETE-002": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "USER-001": {
+      "status": "contract_conflict",
+      "gap": "Immediate revocation expectation must be reconciled with the configured bounded mode and credential/route freshness."
+    },
+    "JOB-001": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "JOB-002": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "JOB-003": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "JOB-004": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "CONFIG-001": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "CONFIG-002": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "CONFIG-003": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    },
+    "BOUNDARY-001": {
+      "status": "not_executed",
+      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+    }
+  }
+}
