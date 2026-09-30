@@ -17,6 +17,11 @@
       "sha256": "d32287a729539727d040eb57459c8e6d08131ab2343acfbea57a82e09ab1294a"
     },
     {
+      "path": "build/capability-host/breakdown.json",
+      "bytes": 30125,
+      "sha256": "8fe5e93c23e557728848253d699b8cd7cb7111b6964499f1dba573fe22394696"
+    },
+    {
       "path": "build/capability-host/build-cost/native-clean-target.log",
       "bytes": 2088,
       "sha256": "133a9871745923f685067c0460fe40fced2a17f4826bf430ef3bd5320f955306"
@@ -3848,8 +3853,8 @@
     },
     {
       "path": "docs/capability-host-results.md",
-      "bytes": 18836,
-      "sha256": "b25e19a4a268d7ede6800abfc7baf9f0d6812f86d012ddb3b8dbecb779111998"
+      "bytes": 20932,
+      "sha256": "0768c34b2eb027b2ba0312fa5d940b06817bfc449198488190e3ab8960b4fa38"
     },
     {
       "path": "experiments/auth-policy/build/application.wasm",
@@ -3888,13 +3893,13 @@
     },
     {
       "path": "experiments/capability-host/README.md",
-      "bytes": 6582,
-      "sha256": "a4a80e096673eec9464d68b46b72d328a0d98caaa4457ab75f843d421f8703d9"
+      "bytes": 6971,
+      "sha256": "96ae3b433d47afe3967a1548d8ff27fcdc4b39ff751535e060353cfd81d5bd0f"
     },
     {
       "path": "experiments/capability-host/archive.py",
-      "bytes": 3656,
-      "sha256": "ff43e87f295163c40d47c55e7f0244e77e180277241fd74f6637b19f0d0fecce"
+      "bytes": 3894,
+      "sha256": "0a068e58bccd7a8fdc162b2be71cc387dad59d2bdf5d3789c7a3c2e06c0630d5"
     },
     {
       "path": "experiments/capability-host/attack/Cargo.toml",
@@ -3915,6 +3920,11 @@
       "path": "experiments/capability-host/authority.test.ts",
       "bytes": 9769,
       "sha256": "c4a358b37c3018125981519f85449823ffa16f38962245b4701e75d87a40b854"
+    },
+    {
+      "path": "experiments/capability-host/breakdown.mjs",
+      "bytes": 6844,
+      "sha256": "f711658913f2595cc2664b663bd81a9cf2b58bbd5324ef5cb846e6fce470ca56"
     },
     {
       "path": "experiments/capability-host/build/application.rs",
@@ -4279,7 +4289,7 @@
   ],
   "archive": {
     "file": "observations.tar.gz",
-    "bytes": 11478056,
-    "sha256": "24e8c8470367f0feba948abc23d761627db9d332bcfdaa9014deebed63d82f8e"
+    "bytes": 11485903,
+    "sha256": "73a930f2a2a65af53aa28414fc62984b55bf9d042929df7533c833a6f63b9937"
   }
 }

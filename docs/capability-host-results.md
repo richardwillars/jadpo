@@ -173,6 +173,38 @@ Short warmups/cells, JIT and garbage collection, shared-host activity and serial
 SQL execution limit interpretation. These are not production capacity estimates,
 open-loop overload results, confidence intervals or a controlled-host comparison.
 
+### Native attribution follow-up
+
+A separate three-repetition run used fresh processes and databases, twelve clients,
+128-request blocks and 300 ms of timed traffic per cell. It did not alter the frozen
+candidate or the 336-cell campaign. `health` measures the HTTP response path;
+`control_read` is one direct SQLite SELECT through the local control endpoint;
+`missing_auth` stops before guest/application execution; `authorized_read` runs the
+full authenticated policy path; `denied_pair` runs a policy-denied atomic write.
+Application traces were drained outside each timed block. Median requests/s and
+server CPU microseconds/request were:
+
+| Workload | Bun | Native | Raw WASM | Scoped WASM |
+| --- | ---: | ---: | ---: | ---: |
+| HTTP health | 12,602 / 49.5 | 17,692 / 18.6 | 16,945 / 39.1 | 19,887 / 36.6 |
+| Direct SQLite SELECT | 14,419 / 53.6 | 15,958 / 32.9 | 16,286 / 54.1 | 18,669 / 47.9 |
+| Missing auth | 14,260 / 48.3 | 19,635 / 28.3 | 14,815 / 100.4 | 16,962 / 93.8 |
+| Authorized read | 1,522 / 605.5 | 4,526 / 156.2 | 3,229 / 390.6 | 838 / 2,382.8 |
+| Denied pair | 748 / 911.5 | 3,646 / 234.4 | 2,771 / 379.5 | 717 / 2,265.6 |
+
+Each cell is `requests/s / CPU µs/request`; latency distributions and all three
+repetitions are retained in `build/capability-host/breakdown.json`. The short cells
+vary substantially with local host load, so the longer campaign remains the primary
+capacity comparison. Native is in the same broad range on health, and its direct
+SELECT and early auth rejection are cheaper in CPU than Bun. Its full authorized
+read is about 3.0× Bun and 1.4× raw WASM in this follow-up, confirming that the
+native result is not simply SQLite latency. The scoped WASM gap appears only after
+guest/reference execution begins: its missing-auth rate is close to raw WASM, while
+authorized reads use about 6.1× raw-WASM CPU and 15× the native CPU. The denied-pair
+result points to the same duplicated application/protocol work rather than extra SQL
+reads. These are attribution probes, not a replacement for the longer campaign's
+distributions or a workerd result.
+
 ## Startup, memory, build and attribution
 
 Server CPU µs/request, including trace drains, WAL / 12 clients:

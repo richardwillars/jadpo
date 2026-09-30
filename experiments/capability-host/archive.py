@@ -13,6 +13,9 @@ paths.update(p for p in (out/'mutation').rglob('*') if p.is_file() and p.suffix 
 paths.update(p for p in (out/'build-cost').iterdir() if p.is_file())
 paths.update(p for p in (out/'build-isolation').iterdir() if p.is_file())
 paths.update([out/'performance'/p for p in ['http.json','startup.json','smoke.json']])
+breakdown=json.loads((out/'breakdown.json').read_text())
+assert len(breakdown['results'])==len(breakdown['protocol']['targets'])*len(breakdown['protocol']['workloads'])*breakdown['protocol']['repetitions']
+paths.add(out/'breakdown.json')
 for row in http['results']+startup['results']:
  directory=pathlib.Path(row['evidenceDir']);paths.add(directory/'stderr.log')
  if row.get('count'):

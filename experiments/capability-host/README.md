@@ -95,6 +95,15 @@ node experiments/capability-host/measure.mjs
 node experiments/capability-host/measure.mjs --startup
 ```
 
+The short attribution run keeps the measured application candidate unchanged and
+contrasts HTTP/health, one direct control SQL read, pre-application authentication
+rejection, an authorized read and a denied transaction. It uses three fresh
+processes per target at twelve clients and writes `build/capability-host/breakdown.json`.
+
+```sh
+node experiments/capability-host/breakdown.mjs
+```
+
 On subsequent runs use `pin.py --check`; do not overwrite a differing pin. Seed
 credentials last one hour; reissue before later campaigns. Local listeners need
 loopback permission. Keep tests/builds out of timed campaigns.
