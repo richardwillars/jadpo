@@ -73,13 +73,22 @@ fn experiment_root(start: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-fn require_fixture(root: &Path, project: &Path) -> Result<(), Diagnostic> {
-    let fixture = root.join("experiments/wasm-exp1/fixture");
-    match (fixture.canonicalize(), project.canonicalize()) {
-        (Ok(expected), Ok(actual)) if expected == actual => Ok(()),
-        _ => Err(Diagnostic::error("CLI_BUILD_EXPERIMENT_SCOPE")
-            .with_note(format!("supported fixture: {}", fixture.display()))),
+fn require_fixture(root: &Path, project: &Path) -> Result<&'static str, Diagnostic> {
+    for (fixture, experiment) in [
+        ("experiments/wasm-exp1/fixture", "native-conformance"),
+        ("experiments/auth-policy/fixture", "auth-policy"),
+    ] {
+        if let (Ok(expected), Ok(actual)) =
+            (root.join(fixture).canonicalize(), project.canonicalize())
+        {
+            if expected == actual {
+                return Ok(experiment);
+            }
+        }
     }
+    Err(Diagnostic::error("CLI_BUILD_EXPERIMENT_SCOPE").with_note(
+        "supported fixtures: experiments/wasm-exp1/fixture, experiments/auth-policy/fixture",
+    ))
 }
 
 pub(super) fn run(arguments: &[String]) -> Result<(), Diagnostic> {
@@ -100,19 +109,25 @@ pub(super) fn run(arguments: &[String]) -> Result<(), Diagnostic> {
             })
         })
         .ok_or_else(|| Diagnostic::error("CLI_BUILD_EXPERIMENT_UNAVAILABLE"))?;
-    if let Some(project) = &options.project {
-        require_fixture(&root, project)?;
-    }
+    let experiment = match &options.project {
+        Some(project) => require_fixture(&root, project)?,
+        None => "native-conformance",
+    };
     let target = match options.target {
         Target::Native => "rust",
         Target::Wasm => "wasm",
         Target::Bun => unreachable!(),
     };
-    eprintln!("Building experimental shared-Rust fixture ({target}); outputs stay in the local experiment.");
-    let status = Command::new("sh")
-        .arg(root.join("experiments/native-conformance/build.sh"))
-        .args(["--target", target])
-        .current_dir(&root)
+    eprintln!("Building experimental {experiment} fixture ({target}); outputs stay in the local experiment.");
+    let mut command = Command::new("sh");
+    command
+        .arg(root.join(format!("experiments/{experiment}/build.sh")))
+        .current_dir(&root);
+    if experiment == "native-conformance" {
+        command.arg("--target");
+    }
+    let status = command
+        .arg(target)
         .status()
         .map_err(|error| Diagnostic::error("CLI_BUILD_TOOL_FAILED").with_note(error.to_string()))?;
     if !status.success() {
@@ -183,7 +198,14 @@ mod tests {
     #[test]
     fn experimental_builds_are_confined_to_the_checkout_fixture() {
         let root = experiment_root(Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
-        require_fixture(&root, &root.join("experiments/wasm-exp1/fixture")).unwrap();
+        assert_eq!(
+            require_fixture(&root, &root.join("experiments/wasm-exp1/fixture")).unwrap(),
+            "native-conformance"
+        );
+        assert_eq!(
+            require_fixture(&root, &root.join("experiments/auth-policy/fixture")).unwrap(),
+            "auth-policy"
+        );
         for other in [
             "examples/jadpo-seed",
             "missing",

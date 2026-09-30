@@ -2850,8 +2850,8 @@ fn cli_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Use `jadpo build <project>` or `jadpo build --target native|wasm` in the experiment checkout",
         ),
         "CLI_BUILD_EXPERIMENT_SCOPE" => (
-            "Experimental target only builds the shared-Rust fixture",
-            "The native and WASM adapters are qualified only for the local conformance fixture; general project compilation is not enabled.",
+            "Experimental target only builds qualified fixtures",
+            "The native and WASM adapters are qualified only for the local conformance and auth-policy fixtures; general project compilation is not enabled.",
             "Run `jadpo build --target native|wasm` from the repository checkout to build the fixture",
         ),
         "CLI_BUILD_EXPERIMENT_UNAVAILABLE" => (

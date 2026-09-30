@@ -157,7 +157,8 @@ emit their JSON contracts directly.
   fails.
 - `build --target native|wasm` builds the bounded shared-Rust conformance fixture
   from a repository checkout without Bun. `rust` aliases `native`; an explicit
-  project path must resolve to that same fixture. This is a local experiment,
+  project path may also select `../experiments/auth-policy/fixture` for the
+  authenticated owner/editor policy slice. Other project paths are rejected. This is a local experiment,
   not a general backend or a change to the default Bun target. See the
   [experiment build guide](../experiments/native-conformance/README.md) for
   dependencies and artifact paths. Python still performs experimental lowering;

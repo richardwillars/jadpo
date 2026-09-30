@@ -47,6 +47,10 @@ not a default-target switch. Bun is not needed. If the CLI is not installed, use
 (or `wasm`). The `bun run build:rust` and `bun run build:wasm` shortcuts also remain
 available. See the experiment README for prerequisites and output paths.
 
+The [authenticated policy experiment](experiments/auth-policy/README.md) builds with
+`jadpo build experiments/auth-policy/fixture --target native` (or `wasm`). It adds
+opaque bearer verification, live authority checks, and owner/editor field policies.
+
 Run the supported-language validation gate with:
 
 ```sh
