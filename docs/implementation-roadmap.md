@@ -1675,6 +1675,13 @@ Latest checkpoint: [value ownership and speed-build results](wasm-value-path-res
 The experiment and its requested performance follow-ups are complete; Bun remains
 the working target. Earlier measurements below describe their dated checkpoints.
 
+**New planned follow-up (2026-09-30):** [large-row investigation and backend
+coverage plan](wasm-large-row-plan.md). LR-1 attributes transport and validation
+costs; LR-2 compares bounded buffer/typed-format candidates; LR-3 qualifies
+correctness and practical parity; LR-4 measures current startup and host behaviour.
+COV-1/COV-2 separately inventory and qualify backend coverage. This plan has not
+been executed and does not schedule a default-target switch.
+
 **Status:** complete on 2026-09-30. **Defer adoption for further backend
 development; retain Bun.** Both routes passed the 15-case local/Cloudflare
 probe; the provisional Rust full slice passed A01–A16 on real local/cloud
@@ -3646,7 +3653,13 @@ decision register above determine current work.
 
 ## 12. Immediate next action
 
-Resume the remaining P11/golden work on Bun. Reconcile the recorded golden
+The owner's current requested planning task is the [Wasm large-row and backend
+coverage follow-up](wasm-large-row-plan.md). The next experiment step is LR-1:
+audit equivalent validation work and profile the complete large-row return before
+selecting an implementation. Backend inventory COV-1 is a separate evidence track.
+The plan is recorded; candidate implementation and measurement have not started.
+
+The remaining product work is P11/golden on Bun. Reconcile the recorded golden
 contract contradictions and migrate its source without weakening policy, then
 execute the complete integrated behavioural gate. Retain VAL-001
 cross-feature tests, independent review and mutation checks as the foundation.
@@ -3657,7 +3670,7 @@ principal mappings, production qualification and full AUTH-P7/P8 remain separate
 exits. WASM-EXP1 and its owner-requested optimisation follow-up are complete.
 Instance reuse and host caching substantially reduced overhead; Bun remains the
 working target and route selection remains inconclusive. Further investigation
-needs a separately scoped experiment; no target migration is scheduled.
+now has the separately scoped LR-1–LR-4 plan above; no target migration is scheduled.
 
 Protected approval requires external CI/review attestation; broader PostgreSQL
 behavior and deployment hooks still need their own evidence. P10R still needs
