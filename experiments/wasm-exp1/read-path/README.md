@@ -91,3 +91,16 @@ python3 experiments/wasm-exp1/read-path/summarize.py
 `profile-previous.ts`, `profile-variants.ts` and `snapshot-profile.ts` are separate
 instrumented/component diagnostics. Never add their means to predict request p95.
 The copied runtime/harness files freeze earlier experiments independently.
+
+
+## Completed evidence
+
+The [result report](../../../docs/wasm-read-path-results.md) records 80 HTTP cells,
+240 supplemental matrix cells, 40 local startup processes and 24 write-smoke cells.
+Large-read Bun parity fails; the small-probe regression gate passes. Interrupted
+sleep-related evidence and losing variants are retained in `evidence/` with hashes.
+
+The separate [workerd experiment](../workerd-read-path/README.md) uses the frozen
+selected module without a Bun application runtime. It is an exploratory comparison
+against generated JavaScript on workerd, with different host plumbing; absolute
+rates across the two campaigns are not a platform ranking.

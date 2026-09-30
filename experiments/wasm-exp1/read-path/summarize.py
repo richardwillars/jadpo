@@ -54,7 +54,7 @@ evidence=out/'evidence';evidence.mkdir(exist_ok=True);manifest=[]
 def archive(name,data):
  target=evidence/(name.replace('/','-')+'.gz');target.write_bytes(gzip.compress(data,mtime=0));manifest.append({'source':name,'file':target.name,'sha256':hashlib.sha256(data).hexdigest(),'bytes':len(data)})
 correctness=read('correctness.log')
-names=['profile.json','profile-revised.json','snapshot-profile.json','micro/results.json','micro-selected/results.json','matrix/results.json','http/results.json','http/smoke.json','http-writes/smoke.json','startup.json','selection.json','provenance.json','mutation/evidence.json','negatives.json','atomic.json','tests.log','rust-tests.log','correctness.log',str(Path(correctness['evidence']).relative_to(work))]
+names=['http-interrupted/results.json','http-interrupted/failure.json','http-interrupted/run.log','http-interrupted/sleep-evidence.log','profile.json','profile-revised.json','snapshot-profile.json','micro/results.json','micro-selected/results.json','matrix/results.json','http/results.json','http/smoke.json','http-writes/smoke.json','startup.json','selection.json','provenance.json','mutation/evidence.json','negatives.json','atomic.json','tests.log','rust-tests.log','correctness.log',str(Path(correctness['evidence']).relative_to(work))]
 for name in names:archive(name,(work/name).read_bytes())
 for stage in ['initial','revision-one']:
  for path in sorted((work/stage).iterdir()):archive(str(path.relative_to(work)),path.read_bytes())
