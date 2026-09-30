@@ -212,3 +212,20 @@ longer contradict lookup-free signed identity validation; profile data remains
 on authoritative application entities. See the golden REVIEW for exact changes,
 authority, old/new hashes and remaining implementation limits. The heartbeat
 remains paused; this follow-up is the currently authorized checkpoint package.
+
+The reconciled implementation checkpoint is `df2d7be`. A clean `git archive` of
+that commit, containing no untracked/ignored workspace files, passed the full
+39-step gate: 374 Rust tests, 180 fixture pairs, four editor tests, nine verifier
+contract tests, 155 local runtime cases and 63 PostgreSQL cases. Golden remains
+60 diagnostics and 44 unexecuted obligations. The machine-readable
+[checkpoint record](checkpoints/2026-09-30.json) pins the verified commit and
+report hash; raw local evidence is preserved under
+`build/validation/checkpoint-reconciliation/clean-run/`. This is a local clean
+source rebuild, not a hosted CI run, independent approval or deployment claim.
+
+The refreshed golden capability ledger removes stale claims that enum, selector,
+clock, fixture, path-binding and policy cores are absent. It also records GF-032:
+CREATE-002, READ-003 and LIST-004 expect 422/specific codes whereas the current
+target returns 400/invalid_request. Their original expectations are retained and
+the map marks them needs_clarification, not passed. This is separate from the
+five resolved authentication/accounting discrepancies.

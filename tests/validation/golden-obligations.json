@@ -60,8 +60,8 @@
       "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
     },
     "CREATE-002": {
-      "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+      "status": "needs_clarification",
+      "gap": "Golden requires HTTP 422 invalid_input; the current target uses HTTP 400 invalid_request for invalid input. Retain the golden assertion pending explicit boundary-contract disposition (GF-032). Full application and this obligation remain unexecuted."
     },
     "CREATE-003": {
       "status": "not_executed",
@@ -80,8 +80,8 @@
       "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
     },
     "READ-003": {
-      "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+      "status": "needs_clarification",
+      "gap": "Golden requires HTTP 422 invalid_value; the current target uses HTTP 400 invalid_request for invalid input. Retain the golden assertion pending explicit boundary-contract disposition (GF-032). Full application and this obligation remain unexecuted."
     },
     "LIST-001": {
       "status": "not_executed",
@@ -96,8 +96,8 @@
       "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
     },
     "LIST-004": {
-      "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
+      "status": "needs_clarification",
+      "gap": "Golden requires HTTP 422 invalid_value; the current target uses HTTP 400 invalid_request for invalid input. Retain the golden assertion pending explicit boundary-contract disposition (GF-032). Full application and this obligation remain unexecuted."
     },
     "REL-001": {
       "status": "not_executed",
@@ -191,6 +191,9 @@
       "AUTH-010",
       "USER-001"
     ],
-    "execution_status": "All 44 golden obligations remain unexecuted"
+    "execution_status": "All 44 golden obligations remain unexecuted",
+    "additional_gaps": [
+      "GF-032: CREATE-002, READ-003 and LIST-004 boundary status/code semantics remain unresolved; candidate expectations retained"
+    ]
   }
 }
