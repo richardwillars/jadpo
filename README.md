@@ -50,6 +50,9 @@ available. See the experiment README for prerequisites and output paths.
 The [authenticated policy experiment](experiments/auth-policy/README.md) builds with
 `jadpo build experiments/auth-policy/fixture --target native` (or `wasm`). It adds
 opaque bearer verification, live authority checks, and owner/editor field policies.
+Its [measured performance](docs/auth-policy-performance-results.md) and
+[WASM host trust decision](docs/wasm-host-trust-decision.md) retain the frozen controls
+and distinguish trusted application code from independently enforced guest authority.
 
 Run the supported-language validation gate with:
 

@@ -30,7 +30,7 @@ recorded. RSS is external `ps` resident bytes after warmup and measurement;
 warmup is neither idle footprint nor a guaranteed peak. CPU totals include HTTP
 and instrumentation, not just the Rust core. Startup: ten fresh processes per
 target, rotating order, spawn-to-ready and spawn-to-first validated read with warm
-OS caches. Build: three no-op commands per target and a separate clean Cargo target
+OS caches. Build: three complete warm commands and three Cargo no-ops per target, plus a separate clean Cargo target
 directory; dependencies and filesystem caches warm, offline. Bun generation has
 no equivalent native link phase; report stages rather than invent a single ratio.
 
@@ -41,13 +41,15 @@ From repository root, first build the auth-policy fixture with its documented
 artifact hashes must match before running:
 
 ```sh
+mkdir -p build/auth-policy-measure
 python3 experiments/auth-policy-measure/freeze.py
 bun --no-install --env-file=/dev/null experiments/auth-policy/seed.ts
 node experiments/auth-policy-measure/run.mjs --smoke
-node experiments/auth-policy-measure/run.mjs
-node experiments/auth-policy-measure/run.mjs --startup
+node experiments/auth-policy-measure/run.mjs > build/auth-policy-measure/http.log 2>&1
+node experiments/auth-policy-measure/run.mjs --startup > build/auth-policy-measure/startup.log 2>&1
 python3 experiments/auth-policy-measure/build-times.py
-bun --no-install --env-file=/dev/null test experiments/auth-policy-measure/trust.test.ts
+bun --no-install --env-file=/dev/null test experiments/auth-policy-measure/trust.test.ts > build/auth-policy-measure/trust.log 2>&1
+python3 experiments/auth-policy-measure/summarize.py
 python3 experiments/auth-policy-measure/archive.py
 ```
 
@@ -55,3 +57,21 @@ Local HTTP listeners require an execution environment allowing loopback. Run the
 campaign sequentially, without concurrent builds or other benchmarks. Credentials
 expire after an hour; refresh before a new campaign. `--smoke` is harness validation,
 not part of reported performance. No frozen results are overwritten.
+
+The first expanded smoke attempt reused database path names from a previous smoke
+run; stale WAL sidecars caused the initial-state assertion to fail. The harness
+now uses unique timestamped paths and explicitly checks the seeded state before
+measurement. The full campaign uses that corrected harness. Only final successful
+smoke results are performance-independent validation evidence.
+
+The five trust probes deliberately demonstrate that the raw SQL host accepts
+unauthorized effects from a malicious guest. A passing probe is evidence of that
+limitation, not security qualification. The admission helper is a separate tested
+prototype and is not wired into or measured as part of the frozen HTTP server.
+See [the host decision](../../docs/wasm-host-trust-decision.md).
+
+Thirty-two warmup requests and short one-second cells include possible JIT/GC
+transients; this is a bounded local comparison, not steady-state capacity testing.
+Native also caches prepared statements while the Bun adapter uses its existing
+prepare path. The benchmark preserves those adapter choices rather than claiming
+an isolated comparison of execution-language speed.
