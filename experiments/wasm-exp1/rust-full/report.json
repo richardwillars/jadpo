@@ -3,7 +3,7 @@
   "route": "provisional_rust_full_slice",
   "routeComparison": "inconclusive; provisional rustc async reuse decision",
   "startedUtc": "2026-09-30 02:18:06 UTC",
-  "status": "local_full_slice_passed_cloud_owned_by_coordinator",
+  "status": "bounded_full_slice_complete_with_linked_local_cloud_and_measurement_evidence",
   "checkedRevision": "src_59ae092e2dc659cb",
   "sourceSha256": "447ce2f023b53cecd705999ec280ae9b9d61f7ae0e85184b77c62c9f7aa143f1",
   "runtimeEvidence": {
@@ -807,7 +807,6 @@
     }
   },
   "unrun": [
-    "Cloud full-slice report is coordinated separately; no claim from this local report.",
     "General Jadpo backend/release readiness, migration protocol, real authentication adapters and external services are outside this slice."
   ],
   "notes": [
@@ -828,7 +827,7 @@
   "coordinatorReportedCloud": {
     "probePassed": 15,
     "fullRuntimePassed": 16,
-    "remaining": "Coordinator strengthening envelope checks and rerunning; final cloud evidence owned by root."
+    "remaining": "Exact envelope assertion fixed and rerun locally/on Cloudflare; retained oversized-host fault-location limitation. See coordinatorFinalEvidence."
   },
   "measurementPreparation": {
     "status": "prepared_then_executed_after_performance_slot_opened",
@@ -857,5 +856,13 @@
       "blockedMinutes": 0,
       "activeAllowanceMinutes": 7
     }
+  },
+  "coordinatorFinalEvidence": {
+    "cloud": "../evidence/cloud-full.json",
+    "rawLocal": "../evidence/raw/local-full.json.gz",
+    "cleanup": "../evidence/cleanup.json",
+    "decision": "../../../docs/wasm-experiment-results.md",
+    "runtime": "P01-P15 and A01-A16 pass locally and on Cloudflare; A17/A18 remain separate linked compiler/reconstruction evidence",
+    "knownDiagnosticLimit": "Oversized host frames safely roll back but event falls back to entrypoint; no universal inner-fault mapping claim"
   }
 }
