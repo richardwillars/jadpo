@@ -159,6 +159,15 @@ Retained instance memory increases from six to seven pages. Revised binary and
 adaptive encoders are measured alternatives with ASCII regressions. This remains
 an isolated experiment, with no default runtime or compiler change.
 
+The [native-runtime-informed value pass](wasm-native-values-results.md) retains
+that same guest and tests conservative JSON size proofs plus bounded selection of
+typed ingress. Fifty-three tests and 924,283 HTTP requests pass. Concurrent escaped
+HTTP improves about 17% throughput/15% p95 versus the previous WASM driver in all
+five pairs, with approximate local JS parity for that fixture. ASCII, Unicode-only
+and late-escape families still trail JS; small and Unicode HTTP regress against
+previous WASM. Retention stays at seven pages. Direct typed writes and full-string
+selection remain unsuccessful alternatives. This does not change the default target.
+
 ## 4. Build outputs
 
 P8 and P9 establish one compiler-owned disposable output root:

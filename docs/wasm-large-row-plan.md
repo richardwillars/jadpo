@@ -287,3 +287,17 @@ previous WASM, but only three of five pairs win. The revised binary and adaptive
 encoders retain plain-ASCII regressions despite helping escaped text in isolation.
 The next attribution slice is those escaped-value encoder/decoder costs; the longer
 controlled-host qualification, hosted cold starts and broader coverage remain open.
+
+
+LR-6 also has a [native-runtime-informed value pass](wasm-native-values-results.md),
+with [Bun/Node/CPython source research](wasm-native-runtime-values.md). Conservative
+host size proofs and bounded content selection cut escaped isolated time about
+45%. All 53 tests, 1,060,000 isolated measured calls and 924,283 HTTP requests pass.
+Concurrent escaped HTTP improves 16.6% throughput/14.8% p95 versus previous WASM
+in all five pairs, approximately matching JS on that local fixture. Other workloads
+retain JS gaps; small and Unicode-only HTTP regress against previous WASM. The
+candidate and losing direct-write/full-scan alternatives remain experimental.
+Guest bytes/validation and seven-page retention are unchanged. Next attribution
+should separate remaining host and guest string work, broaden the text corpus and
+transformed-result cases, then qualify longer runs with independent generator
+headroom. Hosted cold starts and backend coverage gates remain open.

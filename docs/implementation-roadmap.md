@@ -3677,8 +3677,17 @@ and 608,612 HTTP requests. Concurrent large-ASCII paired medians improve about 3
 throughput/1% p95 over the previous driver, with only three of five winning pairs;
 escaped text still trails generated JS by about 23% throughput/32% p95. Binary and
 adaptive alternatives retain ASCII regressions. Local generator/RPC headroom
-prevents a capacity conclusion. Next work should isolate remaining escaped-value
-encoder/decoder costs and qualify a longer controlled-host comparison.
+prevents a capacity conclusion. The [native-runtime-informed follow-up](wasm-native-values-results.md)
+now checks Bun, Node and CPython's native value integrations and tests conservative
+size proofs, direct typed writes and bounded content selection. It passes 53 tests,
+1,060,000 isolated measured calls and 924,283 HTTP requests. The sampled candidate
+reduces escaped-text isolated time about 45%; concurrent escaped HTTP improves
+16.6% throughput/14.8% p95 over previous WASM, winning all five pairs. That fixture
+roughly matches generated JS in local concurrent HTTP, but isolated execution and
+other workload families still trail JS. Small/Unicode HTTP regressions and all
+losing alternatives remain recorded. No default promotion follows. Next work should
+attribute the remaining host/guest string costs, broaden text/transform workloads,
+and qualify a longer controlled-host comparison with independent generator headroom.
 Native SQLite statement/commit pauses dominate the earlier write stalls. WAL/FULL
 substantially improves both targets and puts the WASM adapter ahead on tested
 writes, with different SQL/host plans. Controlled-host WAL/FULL qualification with

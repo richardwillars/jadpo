@@ -67,6 +67,7 @@ Source: [V8 JSON.stringify engineering account](https://v8.dev/blog/json-stringi
    use the existing JSON path. This is a performance heuristic only: a later
    escape still goes through complete JSON encoding and guest validation.
    It can miss an optimisation opportunity, never a validation requirement.
+   Small rows skip content selection entirely.
 
 The full-string selection variant is retained as a control. Additional workloads
 put escapes after an 8 KiB prefix and use Unicode with no JSON escapes. These
