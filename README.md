@@ -56,6 +56,9 @@ and distinguish trusted application code from independently enforced guest autho
 The [capability-host follow-up](docs/capability-host-results.md) implements and tests
 a separate trusted Rust authority with isolated application guests. Build it with
 `jadpo build experiments/capability-host/fixture --target native` or `--target wasm`.
+The [single-pass monitor prototype](docs/capability-monitor-results.md) removes the
+reference application pass while retaining effect, policy, redaction and commit
+checks. It is a bounded performance follow-up, not a production backend.
 
 Run the supported-language validation gate with:
 
