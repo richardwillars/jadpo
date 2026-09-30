@@ -3662,15 +3662,22 @@ decision register above determine current work.
 
 ## 12. Immediate next action
 
-Two bounded passes of the owner's [Wasm large-row and backend coverage
-follow-up](wasm-large-row-plan.md) are complete; see [latest results](wasm-typed-values-results.md).
-Schema-bound egress and immutable row values improve reads modestly, but the parity
-gate still fails. Native SQLite statement/commit pauses dominate the observed write
-stalls. WAL/FULL substantially improves both targets and puts the Wasm adapter ahead
-on the tested writes; this is local fixture evidence with different SQL/host plans.
-Next steps are direct schema-generated decoding for reads, controlled-host WAL/FULL
-qualification with sustained checkpoints/recovery, and backend inventory COV-1.
-Hosted qualification remains a separate evidence track.
+Three bounded passes of the owner's [Wasm large-row and backend coverage
+follow-up](wasm-large-row-plan.md) are complete; see [read-path results](wasm-read-path-results.md).
+Compact checked queries and validated row receipts improve concurrent large-read
+throughput about 11% over previous WASM, but Bun parity still fails. Direct typed
+ingress is implemented and retained as a measured alternative; it did not win
+candidate selection. A separate [local workerd comparison](wasm-workerd-read-results.md)
+runs without Bun and passes 585,339 measured requests. Its concurrent large-read
+paired medians still trail generated JS by about 10% throughput and 7% p95; the
+host change does not remove the gap. Local generator/RPC headroom prevents a
+maximum-capacity conclusion. Next read work should profile the workerd boundary
+and qualify a longer controlled-host comparison, not assume the Bun gap irrelevant.
+Native SQLite statement/commit pauses dominate the earlier write stalls. WAL/FULL
+substantially improves both targets and puts the WASM adapter ahead on tested
+writes, with different SQL/host plans. Controlled-host WAL/FULL qualification with
+sustained checkpoints/recovery and backend inventory COV-1 remain open. Actual
+Cloudflare deployment/cold starts remain a separate evidence track.
 
 The remaining product work is P11/golden on Bun. Reconcile the recorded golden
 contract contradictions and migrate its source without weakening policy, then
@@ -3684,7 +3691,7 @@ exits. WASM-EXP1 and the bounded optimisation passes are complete; the wider
 large-row/backend-coverage plan remains partly executed.
 Instance reuse and host caching substantially reduced overhead; Bun remains the
 working target and route selection remains inconclusive. Further investigation
-now has the separately scoped LR-1–LR-4 plan above; no target migration is scheduled.
+now has the separately scoped large-row/backend plan above; no target migration is scheduled.
 
 Protected approval requires external CI/review attestation; broader PostgreSQL
 behavior and deployment hooks still need their own evidence. P10R still needs

@@ -1,6 +1,6 @@
 # Wasm large-row investigation and backend coverage plan
 
-Status: two bounded passes complete, 30 September 2026. This is a separately scoped follow-up to the
+Status: three bounded passes and a local workerd comparison complete, 30 September 2026. This is a separately scoped follow-up to the
 [value-path experiment](wasm-value-path-results.md), requested by the owner.
 The [row transport results](wasm-row-transport-results.md) cover attribution,
 binary-row variants, local correctness/HTTP comparisons, current local startup and
@@ -16,6 +16,16 @@ stalls mainly to native transaction completion and sometimes `UPDATE`. A separat
 WAL/FULL comparison substantially improves both targets and puts the Wasm adapter
 ahead on this fixture's write workloads. This qualifies neither sustained storage
 behaviour nor a target switch; controlled-host/recovery and full coverage remain open.
+
+The third [read-path pass](wasm-read-path-results.md) implements direct typed ingress,
+compact checked queries and validated row receipts. The selected combination
+improves concurrent large-read throughput about 11% over previous WASM, but remains
+about 19% behind Bun. A [local workerd comparison](wasm-workerd-read-results.md)
+then removes Bun from the application runtime and passes 585,339 requests. Its
+concurrent large reads still trail generated JS by about 10% throughput and 7% p95
+in paired medians. Removing Bun does not make the row-boundary issue irrelevant.
+Next read work should attribute the workerd costs before another optimisation pass.
+Neither local campaign establishes maximum server capacity or hosted cold starts.
 
 ## Question and starting evidence
 
@@ -242,3 +252,27 @@ scans and slower JSON serialization of frozen snapshot objects. Compare the revi
 versions with ordinary private scalar snapshots and native JSON size measurement;
 select using isolated rotated measurements before independently qualifying HTTP.
 Neither a smaller frame nor a favourable component timer counts as a request win.
+
+
+LR-5 is now measured: 45 local tests/12,785 assertions, nine native tests,
+source-renaming/constraint mutation, adversarial cases and byte-identical rebuild
+checks pass. The completed independent HTTP campaign has 80 cells and 12,441,614
+verified requests. The earlier sleep-interrupted campaign is retained separately.
+Candidate selection and all losses remain in the [results](wasm-read-path-results.md).
+
+## LR-6 — Attribute the intended workerd host
+
+The owner clarified that Bun is not the intended WASM runtime. The first local
+workerd/SQLite Durable Object comparison is complete with the same selected
+artifact and an adapted compiler-generated JS baseline. It is a shorter
+exploratory protocol, not a substitute for LR-3 or a cloud deployment. It retains
+all five paired runs, typed-ingress alternatives and a no-SQL RPC control.
+
+Next, profile the separate workerd stages without using component means as HTTP
+predictions: SQL result materialisation; authority checks; descriptor handling;
+JSON/binary host-to-guest transfer; generated guest validation; receipts or full
+return encoding; and Worker/Object RPC. Use matched payload bytes and include
+full-row and field-extraction cases. Keep the frozen candidate and failure cases.
+Then select a change before independent longer HTTP qualification on a controlled
+host, with adequate generator headroom. Measure hosted cold starts separately;
+local warm-process timings cannot replace them. Broader COV-1/COV-2 remains open.

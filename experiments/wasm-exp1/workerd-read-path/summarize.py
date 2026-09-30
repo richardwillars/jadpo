@@ -42,7 +42,7 @@ for item in summary:
 evidence = here / 'evidence'
 evidence.mkdir(exist_ok=True)
 manifest = []
-sources = {name: work / name for name in ['results.json', 'smoke.json', 'run.log', 'smoke.log', 'setup-failure.json', 'bundle/manifest.json', 'bundle/worker.mjs', 'bundle/candidate.wasm', 'bundle/typed.wasm', 'bundle/previous.wasm', 'bundle/wrangler.jsonc', 'worker-configuration.d.ts']}
+sources = {name: work / name for name in ['provenance.json', 'results.json', 'smoke.json', 'run.log', 'smoke.log', 'setup-failure.json', 'bundle/manifest.json', 'bundle/worker.mjs', 'bundle/candidate.wasm', 'bundle/typed.wasm', 'bundle/previous.wasm', 'bundle/wrangler.jsonc', 'worker-configuration.d.ts']}
 sources['baseline-generated-app.ts'] = root / 'build/wasm-exp1/baseline/generated/bun/target/app.ts'
 for name in ['worker.ts', 'runner.mjs', 'build.mjs', 'persistence-port.ts']:
     sources['source/' + name] = here / name

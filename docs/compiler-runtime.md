@@ -139,6 +139,17 @@ the generated Bun baseline on the tested writes, with different SQL plans and ho
 machinery. This is experimental local evidence, not a production backend or storage
 configuration change.
 
+The [compact-query/row-receipt follow-up](wasm-read-path-results.md) avoids sending
+full checked plans and copying unchanged validated rows back from the guest.
+The selected mode improves concurrent large-read throughput about 11% over the
+previous candidate, but still trails Bun by about 19% in the local HTTP fixture.
+Direct typed ingress is a measured alternative. The same module now passes a
+[local workerd/SQLite Durable Object comparison](wasm-workerd-read-results.md)
+without Bun, including fresh ownership changes. Concurrent large reads still trail
+generated JavaScript on that host by about 10% throughput and 7% p95 in paired
+medians. This short local comparison cannot establish production capacity, CPU,
+cold starts or full backend coverage. No default target change follows from it.
+
 ## 4. Build outputs
 
 P8 and P9 establish one compiler-owned disposable output root:
