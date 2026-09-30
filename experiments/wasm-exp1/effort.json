@@ -1,0 +1,63 @@
+{
+  "cap_active_minutes": 360,
+  "accounting": "Cumulative across participants; active intervals are estimates rounded up. Waiting reported separately; agent start timestamps are approximate dispatch times, finalized from agent ledgers. Stop stage at its cap; unused probe time cannot transfer between routes.",
+  "entries": [
+    {
+      "stage": "preflight",
+      "participant": "prior planning",
+      "active_minutes": 30,
+      "basis": "Conservatively charge full allowance; original intervals uninstrumented",
+      "end_utc": "2026-09-30T01:48:59Z"
+    },
+    {
+      "stage": "freeze",
+      "participant": "cold_start_pilot",
+      "start_utc": "2026-09-30T01:49:24Z",
+      "end_utc": "2026-09-30T01:56:20Z",
+      "active_minutes": 7,
+      "waiting_minutes": 0
+    },
+    {
+      "stage": "full_slice_common_host",
+      "participant": "validation_failures",
+      "start_utc": "2026-09-30T01:49:20Z",
+      "end_utc": "2026-09-30T01:57:11Z",
+      "active_minutes": 7.34,
+      "waiting_minutes": 0.5
+    },
+    {
+      "stage": "full_slice_common_projection",
+      "participant": "validation_types",
+      "start_utc": "2026-09-30T01:50:10Z",
+      "end_utc": "2026-09-30T02:00:00Z",
+      "active_minutes": 10,
+      "waiting_minutes": 0.2
+    }
+  ],
+  "open_intervals": [
+    {
+      "stage": "full_slice_coordination",
+      "participant": "root",
+      "start_utc": "2026-09-30T01:48:59Z",
+      "note": "Record actual active work; exclude waits and duplicate planning already charged above"
+    },
+    {
+      "stage": "rust_probe",
+      "participant": "cold_start_pilot",
+      "start_utc": "2026-09-30T01:57:27Z",
+      "cap_minutes": 45
+    },
+    {
+      "stage": "full_slice_common_baseline",
+      "participant": "validation_failures",
+      "start_utc": "2026-09-30T01:58:00Z",
+      "cap_minutes": 20
+    },
+    {
+      "stage": "full_slice_common_harness",
+      "participant": "validation_types",
+      "start_utc": "2026-09-30T02:00:00Z",
+      "cap_minutes": 15
+    }
+  ]
+}
