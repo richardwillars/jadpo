@@ -176,7 +176,7 @@ which semantic risks remain.
 | DX1   | Compiler-backed language service            | complete    | Standard `jadpo lsp`, live unsaved diagnostics, symbols, cross-file definitions/references, hover, contextual completion, signature help, semantic tokens, rename, formatting, explicit generated-artifact commands, and a persistent VS Code client pass protocol tests |
 | DX2   | Guided diagnostics and agent context        | internal implementation complete; external trials pending | The corrected 480-code inventory includes configuration, policy and test-runner families, with authored copy and audience projection tests. One hundred and eighty compile pairs plus focused Rust scenarios provide bounded trigger evidence. Syntax-aware catalogue references exclude comments and unrelated helper code; this index does not prove assertion execution or exhaustive trigger coverage. Fresh-agent and first-user repair-cycle trials remain separate evidence. |
 | VAL-001 | Comprehensive validation | three local waves verified; release evidence open | `python3 tools/verify.py` passes 39 steps: 374 Rust tests, 155 local runtime/artifact cases and 63 PostgreSQL cases, plus compile/editor/authored checks. Independent review and ten targeted mutations across the programme challenge regressions. A frozen internal cold-start pilot passed 12/12 obligations; it does not replace formal studies. The [ledger](../tests/validation/unattended-progress.md) records fixes and limits. Golden compilation/behaviour, Set/Map wire semantics, compatibility/deprecation, broader campaigns and external comprehension/approval evidence remain open. |
-| WASM-EXP1 | Bounded Wasm runtime experiment | complete; defer backend adoption | Both compiler routes passed local/Cloudflare probes; the full Rust slice passed bounded storage/rollback cases with identical core bytes. I/O p95 was 33–36× Bun, and ABI-limit faults retain a source-location gap. Route comparison remains inconclusive. See [results](wasm-experiment-results.md); retain Bun. |
+| WASM-EXP1 | Bounded Wasm runtime experiment | complete, including optimisation follow-up; Bun retained | Both compiler routes passed local/Cloudflare probes; the full Rust slice passed bounded storage/rollback cases with identical core bytes. Initial I/O overhead was substantially reduced by reuse and host caching: 30–31k operations/s versus 38–39k Bun; p95 0.041–0.043ms. The original 20% latency gate still fails at concurrency 1, and ABI-limit fault mapping remains incomplete. Route comparison is inconclusive. See [follow-up](wasm-optimization-results.md); continue bounded investigation while retaining Bun. |
 | P11   | Authentication, policy, and golden todo   | AUTH-P0–P3 and first-party AUTH-P4/P7 checkpoint implemented; service/JWT/external exits gated | The 2026-09-30 checkpoint reconciles the five recorded golden authentication/query-accounting discrepancies without changing policy; all 44 golden cases remain unexecuted. DATA/query/transaction and CONFIG foundations are executable. Authentication has closed typed principals, reachability enforcement, exact selector behavior, and fake-adapter evidence plus real signed/opaque cookie and bearer adapters and configured protected routes. Policy has scoped direct/membership roles, automatic query/mutation predicates, field/validation composition, route/invoke handling, service-principal enforcement, audit, and multi-company SQLite evidence. Temporal/testing provides the runtime, clocks, deadlines, typed fixtures, and callable reports. The complete golden todo still requires service/JWT adapters, broader principal mappings and the undecided SERVICE/ASYNC contracts; protected approval and P10R remain external exits; broader PostgreSQL coverage is still open. |
 | P12   | Order/payment application and TS baseline | not started | Use the order/payment application to pressure-test WORKFLOW-001 multi-authority state, idempotency, compensation, reconciliation, and outcome uncertainty. External sessions and protocol freeze precede final comparative trials and the continuation decision. |
 
@@ -1681,6 +1681,13 @@ location while still rolling back safely. Route disposition: **inconclusive**.
 Disposable Workers and their synthetic authority were removed and verified.
 See [results and raw evidence](wasm-experiment-results.md) and the
 [frozen protocol](wasm-experiment-plan.md).
+
+**Optimisation follow-up:** the owner subsequently requested latency/throughput
+investigation. Instance reuse, prepared statements and immutable-plan caching
+raised local throughput to roughly79% of Bun with all bounded cases still
+passing locally and on Cloudflare. See [follow-up results](wasm-optimization-results.md).
+The earlier fresh-instance results remain historical evidence; production Bun
+is unchanged and direct-versus-Rust remains inconclusive.
 
 **Placement:** after completion of the agreed authentication scope and the
 subsequent comprehensive validation phase, as clarified by the owner on
@@ -3643,9 +3650,10 @@ Golden currently remains at 60 diagnostics and 44 unexecuted integrated cases.
 
 The scoped browser/API and service/JWT runtime checkpoints are verified; broader
 principal mappings, production qualification and full AUTH-P7/P8 remain separate
-exits. WASM-EXP1 is complete with a defer recommendation and an inconclusive
-route comparison. No further Wasm extension or target migration is scheduled
-by this result.
+exits. WASM-EXP1 and its owner-requested optimisation follow-up are complete.
+Instance reuse and host caching substantially reduced overhead; Bun remains the
+working target and route selection remains inconclusive. Further investigation
+needs a separately scoped experiment; no target migration is scheduled.
 
 Protected approval requires external CI/review attestation; broader PostgreSQL
 behavior and deployment hooks still need their own evidence. P10R still needs
@@ -3692,3 +3700,15 @@ The [results](wasm-experiment-results.md) retain the frozen protocol, raw
 acceptance/timing evidence, reproducible scripts, source hashes and effort.
 This closes the requested experiment, not the remaining golden, AUTH-P7/P8,
 P10R/P12 or external validation exits.
+
+### 2026-09-30 — Wasm optimisation follow-up completed
+
+Owner-requested attribution found instance creation, not SQLite, was the major
+initial bottleneck. Explicit reset/exclusive reuse, prepared statements and
+checked-plan caching passed retained correctness checks locally and on Cloudflare.
+Eighty paired short runs produced5,496,882 correct operations: optimised Wasm
+30–31k/s versus Bun38–39k/s, with0.041–0.043ms p95. The concurrency 1 original
+20% latency gate still fails, but the earlier traffic concern is substantially
+reduced. [Results](wasm-optimization-results.md) recommend continued bounded
+profiling and realistic workload measurement; no production target change or
+automatic new experiment follows. Cloud resources were cleaned up.

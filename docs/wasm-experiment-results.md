@@ -1,5 +1,11 @@
 # WASM-EXP1 results — 30 September 2026
 
+**Later optimisation follow-up:** [instance reuse and host caching](wasm-optimization-results.md)
+substantially reduced the prototype overhead: approximately30,000–31,000 local
+operations/s versus38,000–39,000 for Bun, with0.041–0.043ms p95. The original
+results below are retained unchanged as historical evidence; the later report
+qualifies the earlier traffic concern and recommends continued investigation.
+
 **Disposition: defer adoption for further backend development; retain TypeScript/Bun. Compilation-route
 comparison: inconclusive.** This is a bounded compiler/runtime experiment,
 not a new production backend. The frozen experiment, repeated measurements, review and cloud cleanup are

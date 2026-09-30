@@ -101,6 +101,13 @@ preregistered I/O latency gate, and ABI-limit fault mapping remains incomplete,
 so the decision is to defer adoption for further backend development and retain
 Bun. This does not schedule a production migration or an unbudgeted extension.
 
+The subsequent [optimisation follow-up](wasm-optimization-results.md) identified
+fresh instance creation as the dominant prototype cost. Exclusive instance reuse
+and host caching reached roughly 79% of Bun throughput with microsecond-scale
+p95 differences in the local fixture. Correctness passed locally and on Cloudflare;
+the original latency gate still fails at concurrency one. This strengthens the
+case for further bounded investigation while retaining Bun as the working target.
+
 ## 4. Build outputs
 
 P8 and P9 establish one compiler-owned disposable output root:

@@ -327,3 +327,14 @@ Remaining roadmap work resumes at P11/golden on Bun: 60 recorded diagnostics
 and 44 unexecuted integrated cases remain, alongside AUTH-P7/P8 qualification,
 P10R/P12 and external first-user/review gates. Passing this bounded experiment
 does not mark any of those exits complete.
+
+## 2026-09-30 owner-requested Wasm optimisation extension
+
+Completed a separately bounded attribution/reuse/host-cache follow-up. Eighteen
+regression tests (10,289 assertions), retained15probe/16runtime cases for both
+local variants and actualCloudflare, five negative gates, source mutation and
+clean rebuild passed. Eighty timing runs had5,496,882 correct operations; final
+throughput30–31k/s versus38–39k/s Bun and p95 0.041–0.043ms. All detailed
+scopes and limitations are in [the report](../../docs/wasm-optimization-results.md).
+The disposable optimisation Worker and authority were deleted and verified.
+Production remains Bun; the previous heartbeat remains paused.
