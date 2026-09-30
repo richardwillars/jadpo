@@ -299,3 +299,31 @@ Do not modify the frozen fixture/acceptance criteria to rescue a route. The
 actual cloud run, required semantics, measurements, final report and cleanup
 remain required within the stopping rules. The golden application's open gates
 remain separate and explicit.
+
+## 2026-09-30 WASM-EXP1 completed
+
+The owner-authorized through-Wasm run reached its experiment endpoint. Both
+source-derived routes passed P01–P15 locally and on actual Cloudflare. The
+provisional Rust full slice passed A01–A16 against Bun SQLite and a SQLite
+Durable Object using the same core hash; A17 rejection and A18 source mutation/
+reconstruction passed separately. A01 exact-output and nullable-parameter
+review findings were fixed and challenged with retained regressions.
+
+Forty formal timing runs produced 79,855,562 checked requests and zero measured
+errors. I/O p95 was 33.34×/36.14× the Bun baseline at concurrency one/eight.
+The recommendation is **defer adoption for further backend development**,
+with the Rust/direct route comparison **inconclusive**. The prototype's
+per-request instances/JSON boundary and known oversized-frame inner-location
+gap remain explicit. No production backend switch follows.
+
+The [results](../../docs/wasm-experiment-results.md) link all acceptance,
+measurement, independent-review and source-hash evidence. Both disposable
+Workers and the synthetic Durable Object namespace/data were deleted, with API
+readback confirming removal. Source, scripts and evidence were committed in
+separate route, host, full-slice, cloud and measurement checkpoints. Unrelated
+user edits were preserved. The experiment follow-up is paused on completion.
+
+Remaining roadmap work resumes at P11/golden on Bun: 60 recorded diagnostics
+and 44 unexecuted integrated cases remain, alongside AUTH-P7/P8 qualification,
+P10R/P12 and external first-user/review gates. Passing this bounded experiment
+does not mark any of those exits complete.

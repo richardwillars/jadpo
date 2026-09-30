@@ -93,6 +93,14 @@ coordination or portable threading. Host adapters must preserve the accepted
 language guarantees or reject unsupported requirements. A replicated storage
 platform and a full backend migration are outside this bounded experiment.
 
+On 2026-09-30 [WASM-EXP1 completed](wasm-experiment-results.md). Both compiler
+routes passed the bounded probe locally and on Cloudflare; the provisional
+Rust full slice reused identical core bytes with explicit SQLite adapters.
+The route comparison remains inconclusive. Request overhead failed the
+preregistered I/O latency gate, and ABI-limit fault mapping remains incomplete,
+so the decision is to defer adoption for further backend development and retain
+Bun. This does not schedule a production migration or an unbudgeted extension.
+
 ## 4. Build outputs
 
 P8 and P9 establish one compiler-owned disposable output root:

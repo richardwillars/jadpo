@@ -176,7 +176,7 @@ which semantic risks remain.
 | DX1   | Compiler-backed language service            | complete    | Standard `jadpo lsp`, live unsaved diagnostics, symbols, cross-file definitions/references, hover, contextual completion, signature help, semantic tokens, rename, formatting, explicit generated-artifact commands, and a persistent VS Code client pass protocol tests |
 | DX2   | Guided diagnostics and agent context        | internal implementation complete; external trials pending | The corrected 480-code inventory includes configuration, policy and test-runner families, with authored copy and audience projection tests. One hundred and eighty compile pairs plus focused Rust scenarios provide bounded trigger evidence. Syntax-aware catalogue references exclude comments and unrelated helper code; this index does not prove assertion execution or exhaustive trigger coverage. Fresh-agent and first-user repair-cycle trials remain separate evidence. |
 | VAL-001 | Comprehensive validation | three local waves verified; release evidence open | `python3 tools/verify.py` passes 39 steps: 374 Rust tests, 155 local runtime/artifact cases and 63 PostgreSQL cases, plus compile/editor/authored checks. Independent review and ten targeted mutations across the programme challenge regressions. A frozen internal cold-start pilot passed 12/12 obligations; it does not replace formal studies. The [ledger](../tests/validation/unattended-progress.md) records fixes and limits. Golden compilation/behaviour, Set/Map wire semantics, compatibility/deprecation, broader campaigns and external comprehension/approval evidence remain open. |
-| WASM-EXP1 | Bounded Wasm runtime experiment | not started; queued after authentication and validation | Finish the agreed authentication scope, then complete the comprehensive validation phase before comparing one compiler-generated slice with Bun locally and on Cloudflare. Record semantic parity, diagnostics, host capabilities, performance and packaging; conclude with an explicit adopt/extend/defer/reject recommendation. |
+| WASM-EXP1 | Bounded Wasm runtime experiment | complete; defer backend adoption | Both compiler routes passed local/Cloudflare probes; the full Rust slice passed bounded storage/rollback cases with identical core bytes. I/O p95 was 33–36× Bun, and ABI-limit faults retain a source-location gap. Route comparison remains inconclusive. See [results](wasm-experiment-results.md); retain Bun. |
 | P11   | Authentication, policy, and golden todo   | AUTH-P0–P3 and first-party AUTH-P4/P7 checkpoint implemented; service/JWT/external exits gated | The 2026-09-30 checkpoint reconciles the five recorded golden authentication/query-accounting discrepancies without changing policy; all 44 golden cases remain unexecuted. DATA/query/transaction and CONFIG foundations are executable. Authentication has closed typed principals, reachability enforcement, exact selector behavior, and fake-adapter evidence plus real signed/opaque cookie and bearer adapters and configured protected routes. Policy has scoped direct/membership roles, automatic query/mutation predicates, field/validation composition, route/invoke handling, service-principal enforcement, audit, and multi-company SQLite evidence. Temporal/testing provides the runtime, clocks, deadlines, typed fixtures, and callable reports. The complete golden todo still requires service/JWT adapters, broader principal mappings and the undecided SERVICE/ASYNC contracts; protected approval and P10R remain external exits; broader PostgreSQL coverage is still open. |
 | P12   | Order/payment application and TS baseline | not started | Use the order/payment application to pressure-test WORKFLOW-001 multi-authority state, idempotency, compensation, reconciliation, and outcome uncertainty. External sessions and protocol freeze precede final comparative trials and the continuation decision. |
 
@@ -1671,9 +1671,16 @@ from the compiler graph.
 
 ### WASM-EXP1 — Bounded Wasm runtime experiment
 
-**Status:** preregistered; authentication runtime extensions and the subsequent
-45-step validation gate passed on 2026-09-30. Probe implementation has not yet
-started. See [the bounded protocol](wasm-experiment-plan.md).
+**Status:** complete on 2026-09-30. **Defer adoption for further backend
+development; retain Bun.** Both routes passed the 15-case local/Cloudflare
+probe; the provisional Rust full slice passed A01–A16 on real local/cloud
+storage, with separate A17 rejection and A18 mutation/rebuild evidence.
+The identical core hash established bounded portability, but the I/O p95 gate
+failed (33.34× / 36.14× Bun), and oversized host frames lose the inner fault
+location while still rolling back safely. Route disposition: **inconclusive**.
+Disposable Workers and their synthetic authority were removed and verified.
+See [results and raw evidence](wasm-experiment-results.md) and the
+[frozen protocol](wasm-experiment-plan.md).
 
 **Placement:** after completion of the agreed authentication scope and the
 subsequent comprehensive validation phase, as clarified by the owner on
@@ -3628,15 +3635,17 @@ decision register above determine current work.
 
 ## 12. Immediate next action
 
-Continue VAL-001 from the unified verification foundation. Expand tests by
-semantic area against accepted contracts, challenge them with independent review
-and mutations, and add cross-feature runtime cases. Reconcile the recorded golden
-contract contradictions and migrate its source without weakening policy. Keep
-unsupported capabilities and the complete behavioural gate visibly open.
+Resume the remaining P11/golden work on Bun. Reconcile the recorded golden
+contract contradictions and migrate its source without weakening policy, then
+execute the complete integrated behavioural gate. Retain VAL-001
+cross-feature tests, independent review and mutation checks as the foundation.
+Golden currently remains at 60 diagnostics and 44 unexecuted integrated cases.
 
-The scoped browser/API milestone is complete; service/JWT, broader principal
-mappings and full AUTH-P7/P8 remain separate exits. Wasm follows the broader
-validation phase, with Bun retained as the working target.
+The scoped browser/API and service/JWT runtime checkpoints are verified; broader
+principal mappings, production qualification and full AUTH-P7/P8 remain separate
+exits. WASM-EXP1 is complete with a defer recommendation and an inconclusive
+route comparison. No further Wasm extension or target migration is scheduled
+by this result.
 
 Protected approval requires external CI/review attestation; broader PostgreSQL
 behavior and deployment hooks still need their own evidence. P10R still needs
@@ -3663,3 +3672,23 @@ This follows the scoped browser/API milestone and comprehensive validation;
 the added service/JWT runtime evidence strengthens the Wasm start checkpoint.
 It does not claim all AUTH-P7/P8 or P11 exits. The experiment remains bounded,
 uses fixture principals and does not select a production backend.
+
+### 2026-09-30 — WASM-EXP1 completed; Bun retained
+
+Both checked-source compilation routes passed fifteen equivalent probes locally
+and on Cloudflare. A provisional Rust full slice preserved the frozen policy,
+validation, failure recovery, rollback and isolation cases using identical core
+bytes with Bun SQLite and a Cloudflare SQLite Durable Object. Unsupported
+capabilities were rejected; mutation and clean reconstruction checks passed.
+
+Forty timed runs completed with 79,855,562 requests and zero measured errors.
+Local I/O p95 was 33.34×/36.14× Bun at concurrency one/eight, failing the adoption
+threshold. Independent review fixed nullable parameter lowering and a weak
+closed-output assertion; oversized host-result fault mapping remains a named
+limitation. The recommendation is defer further backend adoption, with route
+comparison inconclusive. All experiment cloud resources were cleaned up.
+
+The [results](wasm-experiment-results.md) retain the frozen protocol, raw
+acceptance/timing evidence, reproducible scripts, source hashes and effort.
+This closes the requested experiment, not the remaining golden, AUTH-P7/P8,
+P10R/P12 or external validation exits.
