@@ -276,3 +276,14 @@ full-row and field-extraction cases. Keep the frozen candidate and failure cases
 Then select a change before independent longer HTTP qualification on a controlled
 host, with adequate generator headroom. Measure hosted cold starts separately;
 local warm-process timings cannot replace them. Broader COV-1/COV-2 remains open.
+
+
+LR-6 now has a [framework-informed attribution/host-driver pass](wasm-workerd-boundary-results.md)
+with [primary-source research](wasm-framework-boundaries.md): 24 instrumented
+cases, two isolated selection rounds, 48 passing tests and 608,612 verified HTTP
+requests. The selected direct writer/borrowed output view keeps the guest identical.
+Concurrent large-ASCII paired medians improve about 3% throughput and 1% p95 over
+previous WASM, but only three of five pairs win. The revised binary and adaptive
+encoders retain plain-ASCII regressions despite helping escaped text in isolation.
+The next attribution slice is those escaped-value encoder/decoder costs; the longer
+controlled-host qualification, hosted cold starts and broader coverage remain open.

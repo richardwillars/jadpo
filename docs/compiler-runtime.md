@@ -150,6 +150,15 @@ generated JavaScript on that host by about 10% throughput and 7% p95 in paired
 medians. This short local comparison cannot establish production capacity, CPU,
 cold starts or full backend coverage. No default target change follows from it.
 
+The [framework-informed workerd boundary pass](wasm-workerd-boundary-results.md)
+keeps the guest identical and tests direct host-to-guest JSON writes and synchronous
+borrowed output views. Forty-eight tests and 608,612 HTTP requests pass. Concurrent
+large-ASCII paired medians improve about 3% throughput/1% p95 over the previous
+driver, but only three of five pairs win; escaped data still trails generated JS.
+Retained instance memory increases from six to seven pages. Revised binary and
+adaptive encoders are measured alternatives with ASCII regressions. This remains
+an isolated experiment, with no default runtime or compiler change.
+
 ## 4. Build outputs
 
 P8 and P9 establish one compiler-owned disposable output root:

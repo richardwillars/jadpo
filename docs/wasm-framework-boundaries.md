@@ -71,14 +71,16 @@ JSON and all fresh SQL/policy/guest validation checks remain in place.
 
 The first selection comparison is deliberately retained: the revised binary path
 helps escaped data but loses on plain ASCII. An adaptive alternative tests binary
-only for rows with JSON escapes and preserves JSON ingress otherwise. Selection
-must precede independent HTTP measurement; framework inspiration alone is not a
-qualification result.
+only for rows with JSON escapes and preserves JSON ingress otherwise. It also
+regressed plain ASCII. The simpler driver with direct writes and borrowed result
+views was selected before independent HTTP measurement; framework
+inspiration alone is not a qualification result.
 
 ## Further options, ordered by evidence needed
 
-1. Measure the selected host changes through the complete HTTP/RPC path, including
-   escaped text, before adopting them in the experimental driver.
+1. The [HTTP comparison](wasm-workerd-boundary-results.md) now completes 608,612
+   requests. Median gains are modest and several win only three of five pairs;
+   longer controlled-host qualification remains necessary before adoption.
 2. Profile generated typed decoding and validation after host conversions are
    cheaper. Avoid adding a second generic value tree between the database and the
    compiler's checked representation.

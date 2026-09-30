@@ -3670,9 +3670,15 @@ ingress is implemented and retained as a measured alternative; it did not win
 candidate selection. A separate [local workerd comparison](wasm-workerd-read-results.md)
 runs without Bun and passes 585,339 measured requests. Its concurrent large-read
 paired medians still trail generated JS by about 10% throughput and 7% p95; the
-host change does not remove the gap. Local generator/RPC headroom prevents a
-maximum-capacity conclusion. Next read work should profile the workerd boundary
-and qualify a longer controlled-host comparison, not assume the Bun gap irrelevant.
+host change does not remove the gap. The subsequent [framework-informed boundary
+pass](wasm-workerd-boundary-results.md) profiles 24 workerd cases and tests direct
+JSON writes/borrowed result views without rebuilding the guest. It passes 48 tests
+and 608,612 HTTP requests. Concurrent large-ASCII paired medians improve about 3%
+throughput/1% p95 over the previous driver, with only three of five winning pairs;
+escaped text still trails generated JS by about 23% throughput/32% p95. Binary and
+adaptive alternatives retain ASCII regressions. Local generator/RPC headroom
+prevents a capacity conclusion. Next work should isolate remaining escaped-value
+encoder/decoder costs and qualify a longer controlled-host comparison.
 Native SQLite statement/commit pauses dominate the earlier write stalls. WAL/FULL
 substantially improves both targets and puts the WASM adapter ahead on tested
 writes, with different SQL/host plans. Controlled-host WAL/FULL qualification with
