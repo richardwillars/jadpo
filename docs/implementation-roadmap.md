@@ -3688,6 +3688,20 @@ other workload families still trail JS. Small/Unicode HTTP regressions and all
 losing alternatives remain recorded. No default promotion follows. Next work should
 attribute the remaining host/guest string costs, broaden text/transform workloads,
 and qualify a longer controlled-host comparison with independent generator headroom.
+The next [guest string/bulk-memory pass](wasm-guest-scans-results.md) now completes
+949,050 HTTP requests after 52 host tests, nine Rust tests and clean source-mutation
+rebuilds. A negotiated guest-only exact logical size check, SIMD validation and
+bulk-memory operations improve isolated large-text times by 14–52% over the sampled
+candidate. Eligible large rows no longer need a content heuristic. Single-request
+large HTTP throughput is near JS, but concurrent large throughput still trails
+by 5–14%, and Unicode/p99 regressions remain. Guest retention falls from seven to
+six pages. A further [shared-input-frame experiment](../experiments/wasm-exp1/workerd-shared-rows/README.md)
+passes 52 host/10 Rust tests and 240,000 isolated calls, but offers only 1–2% gains
+with a slight ASCII loss and is unselected. Keep the simpler SIMD/bulk-memory
+candidate. Next work should profile its remaining host/control-message costs and
+investigate Unicode tails with a longer, independently driven controlled-host run;
+current no-work headroom still prevents a capacity or general-parity conclusion.
+No default target change is approved by these measurements.
 Native SQLite statement/commit pauses dominate the earlier write stalls. WAL/FULL
 substantially improves both targets and puts the WASM adapter ahead on tested
 writes, with different SQL/host plans. Controlled-host WAL/FULL qualification with

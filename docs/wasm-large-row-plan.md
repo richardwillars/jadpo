@@ -301,3 +301,18 @@ Guest bytes/validation and seven-page retention are unchanged. Next attribution
 should separate remaining host and guest string work, broaden the text corpus and
 transformed-result cases, then qualify longer runs with independent generator
 headroom. Hosted cold starts and backend coverage gates remain open.
+
+
+The subsequent [guest string and bulk-memory pass](wasm-guest-scans-results.md)
+rebuilds the guest with SIMD UTF-8/exact escape counting, bulk-memory instructions
+and an explicit contract to check the logical JSON limit once inside the guest.
+It preserves the original size-error envelope and physical frame bound. Fifty-two
+host tests, nine native Rust tests, source mutation/clean rebuilds and 949,050 HTTP
+requests pass. Isolated large-text time improves 14–52% over prior sampled WASM;
+retention falls from seven to six pages. Single-request large throughput approaches
+JS, but concurrent large cases still trail 5–14%, with retained Unicode/p99 losses.
+The [shared-frame follow-up](../experiments/wasm-exp1/workerd-shared-rows/README.md)
+passes its lifetime/adversarial tests but gains only 1–2%; keep it unselected.
+Next: profile the final optimized host/control path, investigate concurrent Unicode
+and tail behaviour, and run longer qualification with independent generator
+headroom. These local results do not close LR-3, cold starts or backend coverage.

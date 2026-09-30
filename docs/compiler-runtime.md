@@ -168,6 +168,14 @@ and late-escape families still trail JS; small and Unicode HTTP regress against
 previous WASM. Retention stays at seven pages. Direct typed writes and full-string
 selection remain unsuccessful alternatives. This does not change the default target.
 
+The [SIMD/bulk-memory guest pass](wasm-guest-scans-results.md) now improves isolated
+large-text execution 14–52% over sampled WASM, using a negotiated guest exact-size
+check and typed ingress without content sampling. Fifty-two host tests, nine Rust
+tests and 949,050 HTTP requests pass. Retained guest memory drops to six pages.
+Concurrent large HTTP still trails JS by 5–14%, with mixed tails; parity and a
+default switch remain unproven. Shared ownership of input strings was separately
+tested and remains unselected because gains are only 1–2% with an ASCII loss.
+
 ## 4. Build outputs
 
 P8 and P9 establish one compiler-owned disposable output root:

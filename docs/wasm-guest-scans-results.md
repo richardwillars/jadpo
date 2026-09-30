@@ -176,3 +176,20 @@ or complete backend coverage. It does not qualify native Bun, a different WASM
 host, cloud cold starts or production capacity. Broader text sizes and transformed
 result shapes, controlled-host CPU/headroom measurements and backend coverage
 remain necessary before switching the default target.
+
+
+## Shared-frame follow-up decision
+
+A [separate ownership experiment](../experiments/wasm-exp1/workerd-shared-rows/README.md)
+also completes in this work session: 52 host tests/14,733 assertions, ten native
+Rust tests, source mutation and clean-rebuild checks, plus 120 isolated cells and
+240,000 verified measured calls. Typed strings share an owned validated input
+frame, while materialized results remain independent. The exact frozen SIMD/bulk
+module serves as its control. Most gains are only 1–2%, and 16 KiB ASCII regresses
+slightly. It is unselected and receives no new HTTP qualification. Retain the
+simpler bulk-memory candidate and the negative result rather than adding lifetime
+complexity for an unconvincing speedup.
+
+This makes another large-string-copy rewrite a lower priority. The next useful
+attribution is the remaining optimized host/control-message path and the source
+of concurrent Unicode/tail regressions, with stronger generator/headroom evidence.
