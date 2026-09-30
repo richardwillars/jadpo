@@ -1,9 +1,13 @@
 # Wasm large-row investigation and backend coverage plan
 
-Status: planned, 30 September 2026. This is a separately scoped follow-up to the
+Status: first bounded pass complete, 30 September 2026. This is a separately scoped follow-up to the
 [value-path experiment](wasm-value-path-results.md), requested by the owner.
-No candidate described here has been implemented or measured. Bun remains the
-working target; completing this performance investigation does not select a backend.
+The [row transport results](wasm-row-transport-results.md) cover attribution,
+binary-row variants, local correctness/HTTP comparisons, current local startup and
+validator diagnostics. Large-row parity failed; the primary small-probe regression
+gate passed. The protocol below is retained as registered. General typed lowering,
+the full coverage inventory and controlled/hosted qualification remain open. Bun
+remains the working target; this pass does not select a backend.
 
 ## Question and starting evidence
 

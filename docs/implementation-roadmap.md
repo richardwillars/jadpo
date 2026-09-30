@@ -176,7 +176,7 @@ which semantic risks remain.
 | DX1   | Compiler-backed language service            | complete    | Standard `jadpo lsp`, live unsaved diagnostics, symbols, cross-file definitions/references, hover, contextual completion, signature help, semantic tokens, rename, formatting, explicit generated-artifact commands, and a persistent VS Code client pass protocol tests |
 | DX2   | Guided diagnostics and agent context        | internal implementation complete; external trials pending | The corrected 480-code inventory includes configuration, policy and test-runner families, with authored copy and audience projection tests. One hundred and eighty compile pairs plus focused Rust scenarios provide bounded trigger evidence. Syntax-aware catalogue references exclude comments and unrelated helper code; this index does not prove assertion execution or exhaustive trigger coverage. Fresh-agent and first-user repair-cycle trials remain separate evidence. |
 | VAL-001 | Comprehensive validation | three local waves verified; release evidence open | `python3 tools/verify.py` passes 39 steps: 374 Rust tests, 155 local runtime/artifact cases and 63 PostgreSQL cases, plus compile/editor/authored checks. Independent review and ten targeted mutations across the programme challenge regressions. A frozen internal cold-start pilot passed 12/12 obligations; it does not replace formal studies. The [ledger](../tests/validation/unattended-progress.md) records fixes and limits. Golden compilation/behaviour, Set/Map wire semantics, compatibility/deprecation, broader campaigns and external comprehension/approval evidence remain open. |
-| WASM-EXP1 | Bounded Wasm runtime experiment | complete, including performance follow-ups; Bun retained | Both compiler routes passed the initial local/Cloudflare probe; later Rust candidates have their own local evidence. Latest candidate won concurrent small-read throughput, p95 and CPU in all five local pairs, but larger rows still lose and concurrent writes show unresolved stalls. No blanket performance or adoption claim; route selection remains inconclusive. See [latest report](wasm-value-path-results.md). |
+| WASM-EXP1 | Bounded Wasm runtime experiment | complete, including bounded performance follow-ups; Bun retained | Both compiler routes passed the initial local/Cloudflare probe; later Rust candidates have their own local evidence. Latest row-egress candidate improves large-row throughput about 7%, p95 5% and CPU 7% versus previous Wasm, but fails Bun parity. Concurrent single-write throughput and tails remain adverse. No blanket performance or adoption claim; broader coverage and hosted qualification remain open. See [latest report](wasm-row-transport-results.md). |
 | P11   | Authentication, policy, and golden todo   | AUTH-P0–P3 and first-party AUTH-P4/P7 checkpoint implemented; service/JWT/external exits gated | The 2026-09-30 checkpoint reconciles the five recorded golden authentication/query-accounting discrepancies without changing policy; all 44 golden cases remain unexecuted. DATA/query/transaction and CONFIG foundations are executable. Authentication has closed typed principals, reachability enforcement, exact selector behavior, and fake-adapter evidence plus real signed/opaque cookie and bearer adapters and configured protected routes. Policy has scoped direct/membership roles, automatic query/mutation predicates, field/validation composition, route/invoke handling, service-principal enforcement, audit, and multi-company SQLite evidence. Temporal/testing provides the runtime, clocks, deadlines, typed fixtures, and callable reports. The complete golden todo still requires service/JWT adapters, broader principal mappings and the undecided SERVICE/ASYNC contracts; protected approval and P10R remain external exits; broader PostgreSQL coverage is still open. |
 | P12   | Order/payment application and TS baseline | not started | Use the order/payment application to pressure-test WORKFLOW-001 multi-authority state, idempotency, compensation, reconciliation, and outcome uncertainty. External sessions and protocol freeze precede final comparative trials and the continuation decision. |
 
@@ -1671,16 +1671,19 @@ from the compiler graph.
 
 ### WASM-EXP1 — Bounded Wasm runtime experiment
 
-Latest checkpoint: [value ownership and speed-build results](wasm-value-path-results.md).
+Latest checkpoint: [row transport results](wasm-row-transport-results.md).
 The experiment and its requested performance follow-ups are complete; Bun remains
 the working target. Earlier measurements below describe their dated checkpoints.
 
-**New planned follow-up (2026-09-30):** [large-row investigation and backend
+**Follow-up plan, first bounded pass complete (2026-09-30):** [large-row investigation and backend
 coverage plan](wasm-large-row-plan.md). LR-1 attributes transport and validation
 costs; LR-2 compares bounded buffer/typed-format candidates; LR-3 qualifies
 correctness and practical parity; LR-4 measures current startup and host behaviour.
-COV-1/COV-2 separately inventory and qualify backend coverage. This plan has not
-been executed and does not schedule a default-target switch.
+COV-1/COV-2 separately inventory and qualify backend coverage. The first pass
+measured row transport, local HTTP, startup and validators: egress-only improved
+large reads, but Bun parity failed and single-write stalls remain adverse.
+General typed lowering, the full inventory and hosted qualification remain open;
+this does not schedule a default-target switch.
 The [HOST-1/HOST-2 review](wasm-host-capabilities.md) adds a current documented
 Cloudflare Workers/Bun capability matrix and required adapter probes; temporary
 files are request-scoped memory, while threads/processes and persistent ordinary
@@ -3657,11 +3660,13 @@ decision register above determine current work.
 
 ## 12. Immediate next action
 
-The owner's current requested planning task is the [Wasm large-row and backend
-coverage follow-up](wasm-large-row-plan.md). The next experiment step is LR-1:
-audit equivalent validation work and profile the complete large-row return before
-selecting an implementation. Backend inventory COV-1 is a separate evidence track.
-The plan is recorded; candidate implementation and measurement have not started.
+The first pass of the owner's [Wasm large-row and backend coverage
+follow-up](wasm-large-row-plan.md) is complete; see [results](wasm-row-transport-results.md).
+Schema-bound row egress gives a modest repeatable read gain, but the parity gate
+fails and concurrent single-write results remain adverse. Next bounded questions
+are specialised internal values, avoiding repeated validation/size scans when the
+compiler can prove preservation, and controlled per-SQL-call write diagnostics.
+Backend inventory COV-1 and hosted qualification remain separate evidence tracks.
 
 The remaining product work is P11/golden on Bun. Reconcile the recorded golden
 contract contradictions and migrate its source without weakening policy, then
@@ -3671,7 +3676,8 @@ Golden currently remains at 60 diagnostics and 44 unexecuted integrated cases.
 
 The scoped browser/API and service/JWT runtime checkpoints are verified; broader
 principal mappings, production qualification and full AUTH-P7/P8 remain separate
-exits. WASM-EXP1 and its owner-requested optimisation follow-up are complete.
+exits. WASM-EXP1 and the bounded optimisation passes are complete; the wider
+large-row/backend-coverage plan remains partly executed.
 Instance reuse and host caching substantially reduced overhead; Bun remains the
 working target and route selection remains inconclusive. Further investigation
 now has the separately scoped LR-1–LR-4 plan above; no target migration is scheduled.

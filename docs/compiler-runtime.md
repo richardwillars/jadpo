@@ -121,6 +121,14 @@ concurrent reads against generated Bun in the local fixture, with lower p95 and
 CPU, but larger values and unresolved durable-write stalls prevent a general
 performance/adoption conclusion. The JSON ABI remains unchanged.
 
+The [row-transport follow-up](wasm-row-transport-results.md) then tested an internal
+schema-bound binary format while keeping external HTTP JSON. Egress-only transport
+improved concurrent large-row throughput about 7%, p95 about 5% and CPU/request
+about 7% against previous Wasm in all five local pairs. Ingress did not help.
+Practical Bun parity failed, single-write stalls remained adverse, and no new
+Cloudflare qualification was performed. The candidate remains experimental; a
+fully specialised internal value representation is still unimplemented.
+
 ## 4. Build outputs
 
 P8 and P9 establish one compiler-owned disposable output root:

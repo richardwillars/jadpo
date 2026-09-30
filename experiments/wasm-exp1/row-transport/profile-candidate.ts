@@ -44,5 +44,5 @@ for(const size of [16384])for(const escaped of [false,true]){
  }
 }
 mkdirSync('build/wasm-exp1/row-transport',{recursive:true});
-const report={scope:'Instrumented original value-path module; actual full-row or title-only result. Diagnostic means, not additive production p95. Each response checked.',results};
+const report={scope:'Instrumented row-transport module with both directions enabled; actual full-row or title-only result. Diagnostic means, not additive production p95. Each response checked.',results};
 writeFileSync('build/wasm-exp1/row-transport/profile-candidate.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report));db.close();

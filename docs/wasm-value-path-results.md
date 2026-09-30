@@ -1,5 +1,8 @@
 # Wasm value ownership and speed-build experiment — 30 September 2026
 
+Subsequent checkpoint: [schema-bound row transport results](wasm-row-transport-results.md).
+The measurements below describe this earlier candidate.
+
 **Result: a repeatable small-read win in this local fixture, not overall backend
 superiority. Keep Bun as the working target; continue investigating larger-value
 transport and resolve the durable-write stalls on a controlled host.**
