@@ -1,6 +1,6 @@
 # Wasm large-row investigation and backend coverage plan
 
-Status: first bounded pass complete, 30 September 2026. This is a separately scoped follow-up to the
+Status: two bounded passes complete, 30 September 2026. This is a separately scoped follow-up to the
 [value-path experiment](wasm-value-path-results.md), requested by the owner.
 The [row transport results](wasm-row-transport-results.md) cover attribution,
 binary-row variants, local correctness/HTTP comparisons, current local startup and
@@ -8,6 +8,14 @@ validator diagnostics. Large-row parity failed; the primary small-probe regressi
 gate passed. The protocol below is retained as registered. General typed lowering,
 the full coverage inventory and controlled/hosted qualification remain open. Bun
 remains the working target; this pass does not select a backend.
+
+The subsequent [immutable-row and write-attribution pass](wasm-typed-values-results.md)
+adds modest large-read gains (about 3% throughput / 2% p95 / 3% CPU in concurrent
+HTTP), while still failing Bun parity. SQLite timing localises the observed write
+stalls mainly to native transaction completion and sometimes `UPDATE`. A separate
+WAL/FULL comparison substantially improves both targets and puts the Wasm adapter
+ahead on this fixture's write workloads. This qualifies neither sustained storage
+behaviour nor a target switch; controlled-host/recovery and full coverage remain open.
 
 ## Question and starting evidence
 

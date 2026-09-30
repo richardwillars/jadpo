@@ -129,6 +129,16 @@ Practical Bun parity failed, single-write stalls remained adverse, and no new
 Cloudflare qualification was performed. The candidate remains experimental; a
 fully specialised internal value representation is still unimplemented.
 
+The [immutable-row follow-up](wasm-typed-values-results.md) retains validated rows
+as owned, schema-ordered scalars with shared immutable ownership and a locally
+derived size bound. Generic JSON decoding remains. Concurrent large reads improve
+about 3% in throughput/CPU and 2% in p95 against row transport, but Bun parity still
+fails. Separate SQLite diagnostics identify native commit/statement pauses; changing
+both targets to WAL/FULL greatly improves local writes. The Wasm adapter then beats
+the generated Bun baseline on the tested writes, with different SQL plans and host
+machinery. This is experimental local evidence, not a production backend or storage
+configuration change.
+
 ## 4. Build outputs
 
 P8 and P9 establish one compiler-owned disposable output root:

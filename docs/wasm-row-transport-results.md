@@ -1,5 +1,8 @@
 # Wasm row transport experiment — 30 September 2026
 
+Subsequent checkpoint: [immutable row values and SQLite write attribution](wasm-typed-values-results.md).
+The measurements below describe this earlier candidate.
+
 **Result: a repeatable, modest large-row read improvement; practical Bun parity
 failed. Retain this as an experimental row-egress candidate, not a production ABI
 or default-target change. Concurrent single-write performance remains adverse.**
