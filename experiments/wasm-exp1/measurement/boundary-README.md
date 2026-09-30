@@ -86,3 +86,61 @@ not a deployed transfer size. Both application slices use host builtins with no
 external application npm dependency. Bun/SQLite/workerd binaries and compiler/dev
 tools remain separate infrastructure costs. In particular, excluding those tools
 does not mean building Wasm requires no dependencies.
+
+## Observed 2026-09-30 run
+
+The exclusive slot ran after the formal throughput process exited and before the
+matched-build measurements. Raw evidence is
+`build/wasm-exp1/boundary/run-Fbl1ga/results.json`; `boundary-evidence.json` retains
+its hash, the measured script hash, artifact identities and compact results.
+The exact executed script is also retained beside the raw evidence.
+
+All **3,400 measured actual-application invocations** and **5,100 measured helper /
+codec-control invocations** returned expected values with exactly one host call;
+there were zero semantic errors. Warmups are excluded from these counts. Both
+complete actual-application input and host response frames reached exactly 65,536
+bytes without being counted as rejected work.
+
+Median of 20 repetition medians, milliseconds per actual application invocation:
+
+| Complete input and host-response bytes | Synchronous driver | Asynchronous driver |
+| ---: | ---: | ---: |
+| 256 | 0.0790 | 0.0907 |
+| 4,096 | 0.5558 | 0.0937 |
+| 65,536 | 0.7363 | 0.1981 |
+
+The corresponding helper medians were 0.0483 / 0.0544 ms at the smallest frame,
+0.4526 / 0.0610 ms at the middle frame, and 0.4080 / 0.1216 ms at the largest frame
+(sync / async). The helper's largest frame is its pending envelope; its complete
+request/response frames are consequently slightly smaller. The non-monotonic helper
+and sync/async differences show why these short allocation-heavy samples should
+not be read as isolated native call costs. No ratio or helper subtraction is used
+as a causal speed claim; the formal throughput run is the sustained-workload evidence.
+
+Fresh-process startup medians over 20 processes per target:
+
+| Target | Parent wall time | Child readiness | Observed RSS |
+| --- | ---: | ---: | ---: |
+| Generated Bun application + SQLite | 69.84 ms | 52.66 ms | 59,154,432 bytes |
+| Full Wasm + checked SQL host | 23.51 ms | 6.70 ms | 44,326,912 bytes |
+
+These include different real host initialization paths. The generated Bun module
+loads its general persistence runtime; the Wasm path loads the experiment's narrower
+host. Neither includes an HTTP listener or a seeded application request. All
+processes use the same Bun binary and sanitized runtime flags; OS caches remain warm.
+
+Component inventories:
+
+| Component set | Raw bytes | Sum of individual gzip bytes |
+| --- | ---: | ---: |
+| Generated Bun app + persistence | 179,574 | 22,237 |
+| Full Wasm + checked projection + traced host/SQLite adapters | 168,913 | 60,960 |
+| Full Wasm + checked projection + traced host/Cloudflare adapters | 169,218 | 61,152 |
+
+The compressed component totals make the different text/binary compressibility
+visible. They do not include a deployment wrapper, test suite, host binaries or
+compiler/dev dependencies, and are not an HTTP transfer-size prediction.
+
+Preparation and analysis consumed approximately nine active minutes; about fifteen
+minutes of waiting for the exclusive slot are accounted separately. The measured script run
+completed in 4.4 seconds (excluding orchestration). No other performance process overlapped this run.

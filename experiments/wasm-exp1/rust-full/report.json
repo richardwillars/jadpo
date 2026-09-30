@@ -831,7 +831,7 @@
     "remaining": "Coordinator strengthening envelope checks and rerunning; final cloud evidence owned by root."
   },
   "measurementPreparation": {
-    "status": "prepared_not_executed",
+    "status": "prepared_then_executed_after_performance_slot_opened",
     "startUtc": "2026-09-30 02:31:23 UTC",
     "endUtc": "2026-09-30 02:34:18 UTC",
     "activeMinutesEstimate": 2.9,
@@ -843,5 +843,19 @@
       "measurement-preparation.md"
     ],
     "syntaxCheck": "Python AST parse passed; no timing workloads executed"
+  },
+  "measurementExecution": {
+    "status": "completed_all_semantic_checks_passed",
+    "evidence": "matched-measurements.json",
+    "readme": "matched-measurements.md",
+    "effort": {
+      "startUtc": "2026-09-30 02:52:36 UTC",
+      "endUtc": "2026-09-30 02:56:53 UTC",
+      "elapsedMinutes": 4.283333333333333,
+      "activeMinutesEstimate": 3.8,
+      "unattendedBuildWaitMinutesEstimate": 0.48333333333333334,
+      "blockedMinutes": 0,
+      "activeAllowanceMinutes": 7
+    }
   }
 }

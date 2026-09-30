@@ -1,7 +1,8 @@
 # Prepared matched-scope measurement commands
 
-Prepared only; **not executed** during the coordinator's ongoing throughput
-run. Wait for that run to end before using these commands. Existing
+Prepared during the coordinator's throughput run and subsequently executed
+after that run completed. See `matched-measurements.md` and the accompanying
+JSON for all successful samples. Existing
 `../measurement/repeat-command.py` supplies repetitions and raw process wall/CPU
 logs. `measure-build.py` supplies one matched logical pipeline: source check,
 checked projection, target emission/build and one verified real-SQLite probe.
@@ -44,7 +45,7 @@ script total time. This is intentionally broader than the earlier probe's
 in-memory host startup measurement. Process RSS includes the Bun host; it is
 not standalone Wasm memory.
 
-These scripts need their first execution and output review after throughput
-work finishes. No timing results or successful-run claim is attached to this
-preparation. Capture machine workload, source/tool hashes and clean/cached state
-alongside the shared repetition logs before drawing comparisons.
+Execution and output review completed after throughput work finished. All
+20 build samples and 40 first-request samples passed. The results retain machine
+workload, source/tool hashes and clean/cached state alongside raw repetition
+logs; they do not establish a causal target ranking.

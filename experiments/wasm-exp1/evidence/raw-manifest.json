@@ -46,5 +46,11 @@
     "retained": "evidence/raw/cloud-direct-probe.json.gz",
     "rawBytes": 5251,
     "sha256": "68454d942e9ec6ba0571120e873cfe278faf518fc8a1142c1125358f078ffce7"
+  },
+  {
+    "source": "build/wasm-exp1/boundary/run-Fbl1ga/results.json",
+    "retained": "evidence/raw/boundary-startup.json.gz",
+    "rawBytes": 109133,
+    "sha256": "d07a5d7919bd688576de118ed97bf775071bde87d44cd82e323494759259392a"
   }
 ]
