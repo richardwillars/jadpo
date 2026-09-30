@@ -91,6 +91,8 @@ cargo run -p jadpo-cli -- check ../examples/module-seed
 cargo run -p jadpo-cli -- inspect ../examples/jadpo-seed
 cargo run -p jadpo-cli -- artifacts ../examples/jadpo-seed
 cargo run -p jadpo-cli -- build ../examples/jadpo-seed
+cargo run -p jadpo-cli -- build --target native
+cargo run -p jadpo-cli -- build --target wasm
 cargo run -p jadpo-cli -- test ../tests/compile/pass/58_authored_tests.jadpo
 cargo run -p jadpo-cli -- config check
 cargo run -p jadpo-cli -- config set mailer_api_key
@@ -153,6 +155,13 @@ emit their JSON contracts directly.
   files are first completed in a sibling staging directory; promotion replaces
   the complete `build/` revision and restores the prior revision if promotion
   fails.
+- `build --target native|wasm` builds the bounded shared-Rust conformance fixture
+  from a repository checkout without Bun. `rust` aliases `native`; an explicit
+  project path must resolve to that same fixture. This is a local experiment,
+  not a general backend or a change to the default Bun target. See the
+  [experiment build guide](../experiments/native-conformance/README.md) for
+  dependencies and artifact paths. Python still performs experimental lowering;
+  Cargo compiles the shared core and selected adapter.
 - `test` builds the project and executes top-level authored `test` blocks with
   Bun. It prints one compact versioned report and never exposes a JavaScript
   stack trace for assertion failures.

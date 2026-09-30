@@ -33,9 +33,17 @@ The original native performance campaign is not retimed or overwritten here.
 From the repository root:
 
 ```sh
-bun run build:wasm
-bun run build:rust
+jadpo build --target wasm
+jadpo build --target native
 ```
+
+These commands do not invoke Bun. `--target rust` is an alias for `native`.
+If the CLI is not installed, prefix `build --target ...` with
+`cargo run --offline --locked --manifest-path jadpo/Cargo.toml -p jadpo-cli --`.
+The CLI locates the experiment in the current checkout; an installed CLI alone
+does not bundle these experimental sources. Only the conformance fixture is
+accepted (as the default or an explicit project path). Other projects fail before
+generation; ordinary `jadpo build <project>` still builds the existing Bun target.
 
 Each command checks `experiments/wasm-exp1/fixture` from source and generates the
 same shared Rust before building only the requested release target. It does not
@@ -44,10 +52,10 @@ commands sequentially because they share generated files.
 
 | Command | Output |
 | --- | --- |
-| `bun run build:wasm` | `experiments/native-conformance/build/application.wasm` |
-| `bun run build:rust` | `build/native-conformance/target/release/jadpo-native-conformance` |
+| `jadpo build --target wasm` | `experiments/native-conformance/build/application.wasm` |
+| `jadpo build --target native` | `build/native-conformance/target/release/jadpo-native-conformance` |
 
-Prerequisites: Bun, Python 3, Cargo/Rust (verified with Rust 1.78.0), a native C
+Prerequisites: Python 3, Cargo/Rust (verified with Rust 1.78.0), a native C
 toolchain and SQLite development library for rusqlite. WASM also needs the Rust
 target installed with `rustup target add wasm32-unknown-unknown`. Builds use locked,
 offline Cargo dependencies. On a machine without the dependency cache, first run:
@@ -57,8 +65,9 @@ cargo fetch --locked --manifest-path experiments/wasm-exp1/compiler/Cargo.toml
 cargo fetch --locked --manifest-path experiments/native-conformance/Cargo.toml
 ```
 
-Without Bun, use `sh experiments/native-conformance/build.sh --target wasm` or
-`--target rust`. With no arguments that script builds both targets. An optional
+The existing `bun run build:wasm` and `bun run build:rust` shortcuts remain optional.
+You can also use `sh experiments/native-conformance/build.sh --target wasm` or
+`--target rust` directly. With no arguments that script builds both targets. An optional
 `program.json` argument still accepts a checked projection for mutation testing.
 The module and executable remain bounded experiment artifacts.
 

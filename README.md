@@ -36,13 +36,16 @@ Jadpo is not yet a general-purpose web environment.
 Build the experimental shared Rust fixture from the repository root:
 
 ```sh
-bun run build:wasm
-bun run build:rust
+jadpo build --target wasm
+jadpo build --target native
 ```
 
 Each command checks the fixture, generates shared Rust, and builds the selected
 release target. These are the local [shared-core experiment](experiments/native-conformance/README.md),
-not a default-target switch. See its README for prerequisites and output paths.
+not a default-target switch. Bun is not needed. If the CLI is not installed, use
+`cargo run --offline --locked --manifest-path jadpo/Cargo.toml -p jadpo-cli -- build --target native`
+(or `wasm`). The `bun run build:rust` and `bun run build:wasm` shortcuts also remain
+available. See the experiment README for prerequisites and output paths.
 
 Run the supported-language validation gate with:
 

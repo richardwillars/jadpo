@@ -28,6 +28,7 @@ use std::sync::{
 use std::thread;
 use std::time::{Duration, Instant};
 
+mod experimental_build;
 mod lsp;
 mod terminal;
 
@@ -151,6 +152,10 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
         return run_config(&arguments);
     }
 
+    if command == "build" {
+        return experimental_build::run(&arguments[1..]);
+    }
+
     let project = arguments
         .get(1)
         .ok_or_else(|| Diagnostic::error("CLI_PROJECT_REQUIRED"))?;
@@ -213,7 +218,6 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
             );
             Ok(())
         }
-        "build" => run_human_build(project),
         "incident" => {
             if arguments.len() != 3 {
                 return Err(Diagnostic::error(

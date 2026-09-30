@@ -2844,6 +2844,26 @@ fn toolchain_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
 
 fn cli_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     let (summary, reason, next) = match code {
+        "CLI_BUILD_ARGUMENTS" => (
+            "Build command has invalid arguments",
+            "Build accepts one optional project and one target: bun, native (also rust), or wasm. The default Bun target requires a project.",
+            "Use `jadpo build <project>` or `jadpo build --target native|wasm` in the experiment checkout",
+        ),
+        "CLI_BUILD_EXPERIMENT_SCOPE" => (
+            "Experimental target only builds the shared-Rust fixture",
+            "The native and WASM adapters are qualified only for the local conformance fixture; general project compilation is not enabled.",
+            "Run `jadpo build --target native|wasm` from the repository checkout to build the fixture",
+        ),
+        "CLI_BUILD_EXPERIMENT_UNAVAILABLE" => (
+            "Shared-Rust experiment checkout was not found",
+            "The experimental build needs the checked-in generator, fixture, and adapter sources; they are not bundled into the installed CLI.",
+            "Run this build from the Jadpo repository checkout",
+        ),
+        "CLI_BUILD_TOOL_FAILED" => (
+            "Experimental target build failed",
+            "The local build tool could not start or exited unsuccessfully; no successful build is claimed.",
+            "Inspect the build output and the prerequisites in experiments/native-conformance/README.md",
+        ),
         "TEST_NO_TESTS" => (
             "Project has no executable tests",
             "The project builds, but it declares no tests for the test command to execute.",
