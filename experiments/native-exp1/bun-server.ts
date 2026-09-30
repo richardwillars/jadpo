@@ -24,7 +24,7 @@ const server=Bun.serve({hostname:'127.0.0.1',port:0,maxRequestBodySize:65536,asy
  const path=new URL(req.url).pathname;let result:any;
  try {const body=await req.json() as any;
  if(path==='/begin'){count=0;cpu=process.cpuUsage();start=performance.now();result={ok:true};}
- else if(path==='/stats')result={count,cpu:process.cpuUsage(cpu),elapsedMs:performance.now()-start,maxRssBytes:process.resourceUsage().maxRSS*1024,snapshot:env.snapshot(),trace};
+ else if(path==='/stats')result={count,cpu:process.cpuUsage(cpu),elapsedMs:performance.now()-start,maxRssBytes:process.resourceUsage().maxRSS*(process.platform==='darwin'?1:1024),snapshot:env.snapshot(),trace};
  else if(path==='/reset'){result={rows:env.reset(Object.hasOwn(body,'note')?body.note:false)};trace=[];noopRow=structuredClone(result.rows[0]);}
  else if(path==='/snapshot')result=env.snapshot();
  else if(path==='/mutate'){env.db.exec(body.sql.replaceAll('entity_Item','item'));result={ok:true};}

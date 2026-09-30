@@ -39,7 +39,7 @@ for(const journal of ['WAL','DELETE'])for(const target of ['native','bun']){
   await s.control('mutate',{sql:`CREATE TRIGGER fail_second BEFORE UPDATE ON entity_Item WHEN OLD.id='${b.id}' BEGIN SELECT RAISE(ABORT,'WASM_EXP1_SECRET_SENTINEL'); END`});
   await check('trigger constraint classification (known target difference)','update_pair',[a.id,'first-new',b.id,'second-new'],target==='bun'?domain('ItemConflict'):{kind:'internal'});
   await s.control('mutate',{sql:'DROP TRIGGER fail_second'});
-  await s.control('mutate',{sql:`CREATE TRIGGER fail_second BEFORE UPDATE ON entity_Item WHEN OLD.id='${b.id}' BEGIN SELECT * FROM deliberately_missing_table; END`});
+  await s.control('mutate',{sql:`CREATE TRIGGER fail_second BEFORE UPDATE ON entity_Item WHEN OLD.id='${b.id}' BEGIN SELECT abs(-9223372036854775808); END`});
   await check('driver error rolls back first write','update_pair',[a.id,'first-new',b.id,'second-new'],{kind:'internal'});
   await s.control('mutate',{sql:'DROP TRIGGER fail_second'});
   for(const note of ['x'.repeat(256),'x'.repeat(4096),'x'.repeat(16384),'x'.repeat(49152),'é😀'.repeat(3000),'x'.repeat(8192)+'\n"\\'.repeat(500)]){await s.control('reset',{note});await check('large/escaped '+Buffer.byteLength(note),'Item.read',a.id,success({...a,note}));await check('large title extraction','Item.read_title',a.id,success(a.title));}
