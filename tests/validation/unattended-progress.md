@@ -338,3 +338,15 @@ throughput30–31k/s versus38–39k/s Bun and p95 0.041–0.043ms. All detailed
 scopes and limitations are in [the report](../../docs/wasm-optimization-results.md).
 The disposable optimisation Worker and authority were deleted and verified.
 Production remains Bun; the previous heartbeat remains paused.
+
+### 2026-09-30 — Owner-requested boundary and HTTP extension complete
+
+The follow-up retained existing pooling/JSON contracts and measured constant and
+host descriptor optimisations. Local P15/A16, five negatives, four rollback
+counterexamples, source mutation/rebuild and 20 tests (10,502 assertions) passed.
+The final separate-process Node-client/Bun-server comparison completed 140 HTTP
+runs and 3,457,655 requests without errors; 50 isolated runs completed 1,281,101
+operations. Earlier aborted harness runs remain separate evidence. Small reads
+are near Bun; larger values still cost more. No production target change, new
+cloud qualification or new unattended continuation is implied. See
+[results](../../docs/wasm-http-experiment-results.md). The prior heartbeat stays paused.

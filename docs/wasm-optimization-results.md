@@ -1,5 +1,9 @@
 # WASM-EXP1 optimisation follow-up — 30 September 2026
 
+A subsequent [boundary/HTTP follow-up](wasm-http-experiment-results.md) is complete:
+small-read performance is near Bun in this fixture; larger returned rows still
+carry a material cost. The measurements below remain the earlier checkpoint.
+
 **Recommendation: continue evaluating Wasm. Instance reuse removes the major
 prototype penalty; retain Bun as the working target while testing the remaining
 boundary cost and realistic HTTP workloads.** This owner-requested extension

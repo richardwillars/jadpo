@@ -108,6 +108,13 @@ p95 differences in the local fixture. Correctness passed locally and on Cloudfla
 the original latency gate still fails at concurrency one. This strengthens the
 case for further bounded investigation while retaining Bun as the working target.
 
+A further [boundary and HTTP experiment](wasm-http-experiment-results.md) retained
+that ABI while caching compiler-owned constants and compiling host descriptor
+checks. Small HTTP reads approached Bun; 16 KiB returned rows remained materially
+slower. Larger-value transport is the next performance question, not a selected
+replacement ABI. This changed artifact has local evidence only; earlier Cloudflare
+passes apply to their recorded artifacts.
+
 ## 4. Build outputs
 
 P8 and P9 establish one compiler-owned disposable output root:
