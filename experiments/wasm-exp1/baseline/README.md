@@ -3,7 +3,7 @@
 Run from the repository root with the built checked-model projection compiler:
 
 ```sh
-bun run experiments/wasm-exp1/baseline/run.ts
+bun --no-install --env-file=/dev/null run experiments/wasm-exp1/baseline/run.ts
 ```
 
 The runner performs fresh normal checking/projection with `--bun`, then imports
