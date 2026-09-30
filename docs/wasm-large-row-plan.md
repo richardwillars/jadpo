@@ -212,3 +212,33 @@ unexecuted golden cases openly. Rust-mediated versus direct generation stays a
 separate route decision: gains on the Rust candidate do not establish direct-route
 coverage. Default-target migration requires a further review of coverage, writes,
 startup, host portability, build cost and diagnostics, not just the LR parity gate.
+
+## LR-5 — Request-local row receipts and compact checked queries
+
+Owner-requested follow-up, 30 September 2026: focus on large reads and explore
+additional designs. The implementation is isolated in `experiments/wasm-exp1/read-path`;
+the previous immutable-row artifact and host driver remain the frozen comparison.
+The LR-3 acceptance thresholds and HTTP protocol above remain unchanged.
+
+This pass compares independently selectable features:
+
+- Directly decode binary storage rows into owned typed fields, using generated
+  validators from the same effective types and independently counting the legacy
+  JSON envelope budget inside the guest.
+- If the guest returns the exact immutable row it validated, return a 48-byte
+  receipt identifying the schema and the current request's read operation. The
+  host resolves it only against its private scalar snapshot for that invocation,
+  then returns a fresh ordinary object. Field extraction and materialisation use
+  normal value transport. No row or authorisation decision is cached across calls.
+- Replace repeated static read descriptors with a compact checked-plan identifier
+  plus the runtime predicate. Resolve it against generated, digest-bound metadata,
+  then pass the full unchanged descriptor to the existing authority/policy adapter.
+  Recompute/enforce the original JSON pending-envelope limit despite the shorter
+  transport. Preserve every fresh database read and principal-scope check.
+
+The initial typed-ingress and receipt variants lost; retain their source, module
+and raw measurements. A focused host-side diagnosis found slow per-string escape
+scans and slower JSON serialization of frozen snapshot objects. Compare the revised
+versions with ordinary private scalar snapshots and native JSON size measurement;
+select using isolated rotated measurements before independently qualifying HTTP.
+Neither a smaller frame nor a favourable component timer counts as a request win.
