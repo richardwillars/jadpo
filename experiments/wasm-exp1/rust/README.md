@@ -8,15 +8,17 @@ statements or choose recovery arms.
 
 Local P01–P15 all pass, including the checked source mutation from minimum
 length three to five. Additional boundary/memory tests and two native runtime
-oversize tests pass. Cloudflare execution remains the coordinator's pending
-check. This is not full-slice, SQL, transaction or authentication evidence.
+oversize tests pass. The same artifact passed P01–P15 on Cloudflare (LHR),
+version `cc7f9663-afbb-4fca-b0f9-e2960318fe5e`; see
+`../evidence/cloud-rust-probe.json`. This is not full-slice, SQL, transaction
+or authentication evidence.
 
 From the repository root:
 
 ```sh
 sh experiments/wasm-exp1/rust/build.sh
-bun experiments/wasm-exp1/rust/smoke.ts
-bun experiments/wasm-exp1/rust/edge-cases.ts
+bun --no-install --env-file=/dev/null experiments/wasm-exp1/rust/smoke.ts
+bun --no-install --env-file=/dev/null experiments/wasm-exp1/rust/edge-cases.ts
 sh experiments/wasm-exp1/rust/mutation.sh
 cargo test --offline --locked --manifest-path experiments/wasm-exp1/rust/Cargo.toml --target-dir build/wasm-exp1/rust/native --lib -- --test-threads=1
 ```

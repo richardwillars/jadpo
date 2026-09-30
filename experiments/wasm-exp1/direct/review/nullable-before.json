@@ -1,0 +1,25 @@
+[
+  {
+    "unused": null,
+    "actual": {
+      "kind": "invalid"
+    },
+    "hostCalls": 0,
+    "expected": {
+      "kind": "success",
+      "value": "alpha"
+    }
+  },
+  {
+    "unused": "valid",
+    "actual": {
+      "kind": "success",
+      "value": "alpha"
+    },
+    "hostCalls": 1,
+    "expected": {
+      "kind": "success",
+      "value": "alpha"
+    }
+  }
+]

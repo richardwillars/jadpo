@@ -21,4 +21,4 @@ PY
 export RUSTFLAGS="-C target-feature=-simd128,-atomics,-bulk-memory,-reference-types,-multivalue -C link-arg=--max-memory=8388608 -C link-arg=-zstack-size=262144"
 cargo build --offline --locked --manifest-path experiments/wasm-exp1/rust/build/mutated/Cargo.toml --target wasm32-unknown-unknown --target-dir build/wasm-exp1/rust/mutated-cargo --release
 cp build/wasm-exp1/rust/mutated-cargo/wasm32-unknown-unknown/release/jadpo_wasm_exp1_rust.wasm experiments/wasm-exp1/rust/build/mutated-probe.wasm
-bun experiments/wasm-exp1/rust/mutation.ts
+bun --no-install --env-file=/dev/null experiments/wasm-exp1/rust/mutation.ts
