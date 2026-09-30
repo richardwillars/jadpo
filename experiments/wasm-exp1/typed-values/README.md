@@ -49,6 +49,15 @@ journal / FULL synchronous unless an explicitly labelled control says otherwise.
 Timing is off for the ordinary performance qualification. No EC2 or Cloudflare
 resources are provisioned; this is the same local host.
 
+The disk/memory result motivated a subsequent journal control (`write-journal.ts`)
+using DELETE/FULL versus WAL/FULL, five rotated repetitions, rollback preflight and
+twenty clean database reopens. `journal-http.ts --writes` then confirms WAL/FULL
+with both generated Bun and frozen Wasm candidates, without SQL instrumentation.
+It uses the same three-rotation 1+3-second write protocol. This is a follow-up
+storage-setting comparison, not a change to the ordinary read/write qualification.
+SQLite reports version 3.39.5, fullfsync=0 and WAL autocheckpoint=1000 on this host.
+Clean reopen does not qualify crash or power-loss recovery.
+
 ## Reproduce
 
 Use Bun 1.2.20, Node 24.18.1 and Rust/Cargo 1.78.0. Existing checked projection,
@@ -71,6 +80,9 @@ node experiments/wasm-exp1/typed-values/http.ts --writes
 node experiments/wasm-exp1/typed-values/http.ts --diagnostic-writes
 bun --no-install --env-file=/dev/null experiments/wasm-exp1/typed-values/matrix.ts
 node experiments/wasm-exp1/typed-values/startup.ts
+bun --no-install --env-file=/dev/null experiments/wasm-exp1/typed-values/write-journal.ts
+node experiments/wasm-exp1/typed-values/journal-http.ts --writes
+python3 experiments/wasm-exp1/typed-values/summarize.py
 ```
 
 The copied harness/runtime files freeze the prior experiment while making this
