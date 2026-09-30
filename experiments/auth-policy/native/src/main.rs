@@ -130,10 +130,25 @@ impl Host {
         }
     }
 }
-fn response(status: u16, body: Value) -> Response<Body> {
+fn response(status: u16, mut body: Value) -> Response<Body> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let request_id = format!(
+        "req_{}_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+    if let Some(error) = body.get_mut("error").and_then(Value::as_object_mut) {
+        error.insert("request_id".into(), json!(request_id));
+    }
     Response::builder()
         .status(status)
         .header("content-type", "application/json")
+        .header("cache-control", "no-store")
+        .header("x-request-id", request_id)
         .body(Body::from(body.to_string()))
         .unwrap()
 }
@@ -232,6 +247,31 @@ async fn main() {
     let control = Arc::new(
         std::env::var("TEST_CONTROL_TOKEN").expect("local harness control token required"),
     );
+    let (pragmas, sqlite_version) = {
+        let state = host.lock().unwrap();
+        let mut values = serde_json::Map::new();
+        for key in [
+            "journal_mode",
+            "synchronous",
+            "foreign_keys",
+            "busy_timeout",
+            "fullfsync",
+            "wal_autocheckpoint",
+        ] {
+            let result = rows(&state.db, &format!("PRAGMA {key}"), &json!([])).unwrap();
+            values.insert(
+                key.into(),
+                result[0]
+                    .as_object()
+                    .unwrap()
+                    .values()
+                    .next()
+                    .unwrap()
+                    .clone(),
+            );
+        }
+        (json!([values]), rusqlite::version())
+    };
     let service = make_service_fn(move |_| {
         let h = host.clone();
         let c = config.clone();
@@ -249,7 +289,7 @@ async fn main() {
     let server = Server::bind(&([127, 0, 0, 1], port).into()).serve(service);
     println!(
         "{}",
-        json!({"url":format!("http://{}/",server.local_addr()),"pid":std::process::id(),"target":"native"})
+        json!({"url":format!("http://{}/",server.local_addr()),"pid":std::process::id(),"target":"native","pragmas":pragmas,"sqliteVersion":sqlite_version})
     );
     server.await.unwrap();
 }

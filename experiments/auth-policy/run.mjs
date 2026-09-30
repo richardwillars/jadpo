@@ -18,10 +18,11 @@ async function start(target,journal){
   child.stdout.on('data',b=>{stdout+=b;if(stdout.includes('\n')){clearTimeout(timer);try{resolve(JSON.parse(stdout.split('\n')[0]))}catch(e){reject(e)}}});
   exit.then(code=>{clearTimeout(timer);reject(Error(`startup exit ${code} ${stderr}`))},reject);
  });}catch(e){child.kill();throw e;}
+ for(const p of info.pragmas){assert.equal(p.journal_mode,journal.toLowerCase());assert.equal(p.synchronous,2);assert.equal(p.foreign_keys,1);assert.equal(p.busy_timeout,0);}
  const agent=new Agent({keepAlive:true,maxSockets:12});
  const send=(path,body,headers={})=>new Promise((resolve,reject)=>{
   const raw=typeof body==='string'?body:JSON.stringify(body);const req=request(info.url+path.slice(1),{method:'POST',agent,headers:{'content-type':'application/json','content-length':Buffer.byteLength(raw),...headers}},res=>{
-   const chunks=[];res.on('data',b=>chunks.push(b));res.on('error',reject);res.on('end',()=>{try{resolve({status:res.statusCode,body:clean(JSON.parse(Buffer.concat(chunks).toString()))})}catch(e){reject(e)}});
+   const chunks=[];res.on('data',b=>chunks.push(b));res.on('error',reject);res.on('end',()=>{try{const body=JSON.parse(Buffer.concat(chunks).toString());assert.equal(res.headers['cache-control'],'no-store');assert.ok(res.headers['x-request-id']);if(body?.error&&typeof body.error==='object')assert.equal(body.error.request_id,res.headers['x-request-id']);resolve({status:res.statusCode,body:clean(body)})}catch(e){reject(e)}});
   });req.on('error',reject);req.setTimeout(20000,()=>req.destroy(Error('request timeout')));req.end(raw);
  });
  const control=async body=>{const result=await send('/__control',body,{'x-experiment-control':token});assert.equal(result.status,200);assert.equal(result.body?.error,undefined,JSON.stringify(result));return result.body;};
@@ -34,7 +35,7 @@ async function start(target,journal){
   await control({trace:true});
  };
  const snapshot=()=>sql('SELECT * FROM note ORDER BY id');
- return {call,send,sql,control,reset,snapshot,stop:async()=>{agent.destroy();child.kill();await exit;writeFileSync(dir+'/stderr.log',stderr);for(const secret of [...Object.values(seed.credentials),...Object.values(seed.configuration)])assert.ok(!stderr.includes(secret),'secret in runtime log');},dir};
+ return {info,call,send,sql,control,reset,snapshot,stop:async()=>{agent.destroy();child.kill();await exit;writeFileSync(dir+'/stderr.log',stderr);for(const secret of [...Object.values(seed.credentials),...Object.values(seed.configuration)])assert.ok(!stderr.includes(secret),'secret in runtime log');},dir};
 }
 const [a1,a2,c1,c2]=seed.notes.map(n=>n.id),absent='00000000-0000-4000-8000-000000000099';
 const sessionId=user=>seed.credentials[user].split('.')[1];
@@ -85,6 +86,7 @@ for(const journal of smoke?['WAL']:['WAL','DELETE'])for(const target of ['bun','
    await check('forged principal header',()=>read(null,a1,{'x-principal':seed.users.alice}),401,'authentication_required');
    await check('body cannot supply principal',()=>server.call('/notes/read',{id:a1,principal:{user_id:seed.users.alice}},'charlie'),400,'invalid_request');
    await check('invalid body after auth',()=>server.call('/notes/rename','{'),400,'invalid_request');
+   await check('lone surrogate rejected',()=>server.call('/notes/rename',{id:a1,title:'a\ud800b'}),400,'invalid_request');
    await check('UUID validation',()=>server.call('/notes/read',{id:'not-a-uuid'}),400,'invalid_request');
    await check('bound SQL input stays data',()=>server.call('/notes/rename',{id:a1,title:"x');DROP TABLE note;--"}),200,null,true);
    await check('owner clears restricted field',()=>server.call('/notes/secret',{id:a1,private_note:null}),200,null,true);
@@ -120,7 +122,7 @@ for(const journal of smoke?['WAL']:['WAL','DELETE'])for(const target of ['bun','
    const after=await server.snapshot();for(const [index,expected] of ['alice first','alice second','charlie first','charlie second'].entries())assert.equal(after[index].title,expected);
    records.push({name:'96 mixed concurrent calls',concurrent,after});
   }
-  results.push({target,journal,records});writeFileSync(out+'/results'+(variant?'-variant':smoke?'-smoke':'')+'.json',JSON.stringify(results,null,2)+'\n');
+  results.push({target,journal,pragmas:server.info.pragmas,sqliteVersion:server.info.sqliteVersion,records});writeFileSync(out+'/results'+(variant?'-variant':smoke?'-smoke':'')+'.json',JSON.stringify(results,null,2)+'\n');
   console.log(`${target} ${journal}: ${records.length} checks passed`);
  }finally{await server.stop();}
 }

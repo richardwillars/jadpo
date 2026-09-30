@@ -40,3 +40,35 @@ memberships, indirect scopes, general project compilation, nested handled-write
 savepoints, cloud/workerd testing and performance claims. Unsupported checked
 plans must fail compilation. SQL traces separate auth reads, policy predicates,
 transaction controls and generated Bun's additional reads/savepoints.
+
+## Reproduce conformance
+
+After building both targets, run from the repository root:
+
+```sh
+bun --no-install --env-file=/dev/null experiments/auth-policy/seed.ts
+cargo test --offline --locked --manifest-path experiments/auth-policy/compiler/Cargo.toml --target-dir build/auth-policy/compiler > build/auth-policy/compiler-tests.log 2>&1
+cargo test --offline --locked --manifest-path experiments/auth-policy/Cargo.toml --target-dir build/auth-policy/target -p jadpo-auth-policy-native > build/auth-policy/native-tests.log 2>&1
+bun --no-install --env-file=/dev/null test experiments/auth-policy/wasm.test.ts > build/auth-policy/wasm-tests.log 2>&1
+python3 experiments/auth-policy/mutation.py > build/auth-policy/mutation.log 2>&1
+node experiments/auth-policy/run.mjs > build/auth-policy/http.log 2>&1
+RUSTFLAGS='-C link-arg=--max-memory=8388608 -C link-arg=-zstack-size=262144' cargo build --offline --locked --release --manifest-path experiments/auth-policy/Cargo.toml --target-dir build/auth-policy/wasm-clean -p jadpo-auth-policy-wasm --target wasm32-unknown-unknown > build/auth-policy/clean-wasm.log 2>&1
+python3 experiments/auth-policy/archive.py
+```
+
+Run these sequentially: generation and mutation use the same ignored output
+paths. Mutation restores the original compiled artifacts and issues fresh test
+credentials. Seed credentials expire after an hour; rerun `seed.ts` before later
+HTTP runs. Unit tests use the saved issuance time for deterministic verification.
+The harness creates a separate SQLite copy for each target/journal combination
+and asserts all open connections use the expected durability settings.
+
+The HTTP adapters have a common 32 KiB raw request-body limit and 64 KiB JSON
+bridge-frame limit. Guest host replies/completions are bounded too. Bun's wrapper
+checks storage/output budgets inside the generated transaction, before commit,
+and rejects lone UTF-16 surrogates at the post-authentication JSON boundary to
+match the Rust decoder.
+These are experiment limits, not new language rules. HTTP cache headers and
+request-ID correlation are checked; random IDs are normalized for comparison.
+
+See [results and limitations](../../docs/auth-policy-conformance-results.md).

@@ -26,6 +26,12 @@ if(target==='bun'){
  await app.initializeApplication(configuration);
 }else guest=new Guest(readFileSync(import.meta.dir+'/build/application.wasm'));
 const host=sqliteHost(db);
+// serde_json represents Unicode scalar strings. Reject lone UTF-16 surrogates
+// at the same post-authentication JSON boundary in the Bun comparison wrapper.
+function scalarJson(value:any):void {
+ if(typeof value==='string'){if(/[\uD800-\uDFFF]/u.test(value))throw Error('invalid Unicode scalar');}
+ else if(value&&typeof value==='object')for(const [key,child] of Object.entries(value)){scalarJson(key);scalarJson(child);}
+}
 async function handle(request:Request){
  const path=new URL(request.url).pathname;
  const body=await request.text();
@@ -40,7 +46,11 @@ async function handle(request:Request){
  if(Buffer.byteLength(JSON.stringify(frame))>65536)return Response.json({error:{code:'internal_fault',message:'An internal error occurred.'}},{status:500});
  recording=true;
  try{
-  if(target==='bun')return await app.handleRequest(new Request(request.url,{method:request.method,headers:request.headers,body}));
+  if(target==='bun'){
+   const input=new Request(request.url,{method:request.method,headers:request.headers,body});
+   const parse=input.json.bind(input);input.json=async()=>{const value=await parse();scalarJson(value);return value;};
+   return await app.handleRequest(input);
+  }
   const result=guest!.invoke(-1,frame,host.reply);
   if(result.kind!=='success')return Response.json({error:{code:'internal_fault',message:'An internal error occurred.'}},{status:500});
   return Response.json(result.value.body,{status:result.value.status});
@@ -48,6 +58,14 @@ async function handle(request:Request){
 }
 // The native experiment also serializes requests on one connection. Auth still
 // resolves live authority on every request; no identity/role cache is introduced.
+async function transport(request:Request){
+ const result=await handle(request);result.headers.set('cache-control','no-store');
+ if(result.headers.has('x-request-id'))return result;
+ const requestId=`req_${crypto.randomUUID()}`,body=await result.json() as any;
+ if(body?.error&&typeof body.error==='object')body.error.request_id=requestId;
+ return Response.json(body,{status:result.status,headers:{...Object.fromEntries(result.headers),'x-request-id':requestId}});
+}
 let queue=Promise.resolve();
-const server=Bun.serve({hostname:'127.0.0.1',port:Number(Bun.env.PORT??0),maxRequestBodySize:65536,fetch(request){const pending=queue.then(()=>handle(request));queue=pending.then(()=>{},()=>{});return pending;}});
-console.log(JSON.stringify({url:server.url.href,pid:process.pid,target}));
+const server=Bun.serve({hostname:'127.0.0.1',port:Number(Bun.env.PORT??0),maxRequestBodySize:65536,fetch(request){const pending=queue.then(()=>transport(request));queue=pending.then(()=>{},()=>{});return pending;}});
+const pragmas=[...configured].map(db=>Object.fromEntries(['journal_mode','synchronous','foreign_keys','busy_timeout','fullfsync','wal_autocheckpoint'].map(key=>[key,Object.values(prepare.call(db,`PRAGMA ${key}`).get() as object)[0]])));
+console.log(JSON.stringify({url:server.url.href,pid:process.pid,target,pragmas,sqliteVersion:(prepare.call(db,'SELECT sqlite_version() AS version').get() as any).version}));
