@@ -1,6 +1,6 @@
 {
   "contract_version": "todo-v0.1",
-  "acceptance_sha256": "a2e06d9622c2e212bbfa0f9a3e9e2adc496888cfa555dade96013bc7b67f5606",
+  "acceptance_sha256": "acfc317db191764ebef1714f22af2f37e6ae1b93c2c609c195527197ef252ab0",
   "authority": "Approved AUTH-001 and POLICY-001 govern reconciliation; this map does not alter candidate expectations or policy.",
   "cases": {
     "AUTH-001": {
@@ -20,28 +20,28 @@
       "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
     },
     "AUTH-005": {
-      "status": "contract_conflict",
-      "gap": "Candidate expects invalid_credentials for two presented slots; approved AUTH-001 and selector require ambiguous_credentials before validation."
+      "status": "not_executed",
+      "gap": "Authentication expectation reconciled with approved AUTH-001 and the recorded query-budget decision; full golden source still does not compile, and this case has not executed."
     },
     "AUTH-006": {
-      "status": "contract_conflict",
-      "gap": "Candidate implies immediate disable for an ordinary signed-cookie route despite bounded revocation; specify issuance/disable timing and freshness or immediate mode."
+      "status": "not_executed",
+      "gap": "Authentication expectation reconciled with approved AUTH-001 and the recorded query-budget decision; full golden source still does not compile, and this case has not executed."
     },
     "AUTH-007": {
       "status": "not_executed",
       "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
     },
     "AUTH-008": {
-      "status": "contract_conflict",
-      "gap": "Title says opaque bearer but fixture and zero-authority expectation describe bounded signed validation. Opaque validation checks authority."
+      "status": "not_executed",
+      "gap": "Authentication expectation reconciled with approved AUTH-001 and the recorded query-budget decision; full golden source still does not compile, and this case has not executed."
     },
     "AUTH-009": {
       "status": "not_executed",
       "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
     },
     "AUTH-010": {
-      "status": "needs_clarification",
-      "gap": "The exact one-query budget must distinguish session validation from principal authority reads."
+      "status": "not_executed",
+      "gap": "Authentication expectation reconciled with approved AUTH-001 and the recorded query-budget decision; full golden source still does not compile, and this case has not executed."
     },
     "AUTH-011": {
       "status": "not_executed",
@@ -144,8 +144,8 @@
       "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
     },
     "USER-001": {
-      "status": "contract_conflict",
-      "gap": "Immediate revocation expectation must be reconciled with the configured bounded mode and credential/route freshness."
+      "status": "not_executed",
+      "gap": "Authentication expectation reconciled with approved AUTH-001 and the recorded query-budget decision; full golden source still does not compile, and this case has not executed."
     },
     "JOB-001": {
       "status": "not_executed",
@@ -179,5 +179,18 @@
       "status": "not_executed",
       "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case."
     }
+  },
+  "reconciliation": {
+    "date": "2026-09-30",
+    "record": "examples/golden-todo/REVIEW.md",
+    "authority": "Approved AUTH-001 section 2; owner clarification of principal versus credential query accounting",
+    "resolved_cases": [
+      "AUTH-005",
+      "AUTH-006",
+      "AUTH-008",
+      "AUTH-010",
+      "USER-001"
+    ],
+    "execution_status": "All 44 golden obligations remain unexecuted"
   }
 }

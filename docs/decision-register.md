@@ -8,6 +8,17 @@ item should update the charter, affected specifications, and examples.
 
 ## 1. Accepted decisions
 
+### Golden fresh-authentication query accounting — 2026-09-30
+
+The owner clarified that the golden application's fresh-authority budget means
+one principal lookup, with credential/session checks counted separately. It does
+not mean one SQL query total across authentication. Acceptance records physical
+principal-authority queries and additional credential-authority queries as
+separate counters; combined queries count once in the principal category.
+Business queries are separate. This clarification leaves AUTH-001's signed,
+bounded, immediate and fresh-authority security guarantees unchanged. See the
+[case-by-case reconciliation](../examples/golden-todo/REVIEW.md#2026-09-30-authentication-reconciliation).
+
 ### Product and philosophy
 
 - The target is backend development, initially ordinary SaaS/web applications.

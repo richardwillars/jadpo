@@ -17,7 +17,7 @@ checkpoint is reported as a separate run rather than silently changing tools.
   receives an equivalent local mode;
 - an explicit policy layer using CASL or an equivalently mature typed
   authorization library selected before the checkpoint;
-- signed browser sessions, opaque user bearer tokens, service API keys/exchange,
+- signed browser sessions, short-lived signed user bearers, service API keys/exchange,
   and allowlisted JOSE JWT validation, all normalised into one closed
   application-owned user/service `Principal` type;
 - Vitest for unit/integration tests and the shared black-box runner for contract
@@ -75,3 +75,13 @@ The baseline agent receives concise generated architecture and contract
 summaries, schema/type navigation, runnable validation commands, and relevant
 examples. The language agent receives the corresponding compiler context. Raw
 framework boilerplate is not intentionally dumped into either context.
+
+### Golden authentication accounting clarification (2026-09-30)
+
+The shared golden cases use bounded signed user credentials. Fresh-authority
+routes have one principal-resolution database query, with additional credential
+or session checks recorded separately. The TypeScript implementation receives
+the same counters and budget; no total-authentication query count is inferred.
+Authoritative profile data remains an application read, never a signed claim.
+Disablement cases use the same explicit fresh/refresh checks and expiry clock
+as Jadpo, retaining todos and forbidding new credential issuance after disable.

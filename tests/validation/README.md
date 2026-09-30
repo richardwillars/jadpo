@@ -49,13 +49,13 @@ compiler is compatibility evidence, not a second design recommendation. Its
 migration/deprecation and public example alignment remain work in the validation
 phase; passing compatibility fixtures does not resolve that work.
 
-The [golden obligation map](golden-obligations.json) lists all 44 candidate cases
-without changing their policy or expectations. No case is marked passed simply
-because a related unit test exists. Four auth expectations and one query-budget definition need
-reconciliation with the approved authentication contract: ambiguous credentials,
-bounded disablement, opaque versus signed bearer lookup, fresh-authority query
-accounting, and user disablement. The map pins the acceptance-file digest so
-changing an expectation requires revisiting this record.
+The [golden obligation map](golden-obligations.json) retains all 44 candidate
+case IDs and their execution gaps. No case is marked passed because a related
+unit test exists. The [2026-09-30 review](../../examples/golden-todo/REVIEW.md#2026-09-30-authentication-reconciliation)
+resolved the four recorded auth conflicts and query-budget ambiguity against
+approved AUTH-001 and the owner's explicit principal/credential accounting
+choice. The map pins the revised acceptance digest; all cases remain unexecuted
+until the full application and harness implement them.
 
 The legacy `examples/test1` scratch source has old syntax and is explicitly
 excluded from executable examples. The golden todo is a design contract with

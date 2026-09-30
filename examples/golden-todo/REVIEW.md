@@ -34,6 +34,49 @@ not external validation and cannot satisfy the P10R review or first-user gates.
 | Revocation semantics implicitly required a lookup on every request. | Selected bounded mode for ordinary traffic, explicit maximum delay, and fresh-authority checks for sensitive routes; correctness never depends on a cache. |
 | Configuration used positional `secret required restart/reloadable` modifiers and a second lifecycle choice. | Migrated the golden configuration to structured in-source binding bodies; all v0.1 values are startup-bound and secrets have no defaults. |
 
+## 2026-09-30 authentication reconciliation
+
+Authority: approved AUTH-001 section 2, plus the owner's explicit clarification
+that a fresh route's budget is **one principal lookup, with credential/session
+checks counted separately**. This is an author-side candidate correction, not
+an independent P10R approval or a claim that any golden case executed.
+
+The pre-reconciliation candidate is preserved in commit `8160b94` (acceptance
+SHA-256 `a2e06d9622c2e212bbfa0f9a3e9e2adc496888cfa555dade96013bc7b67f5606`). The revised acceptance SHA-256 is
+`acfc317db191764ebef1714f22af2f37e6ae1b93c2c609c195527197ef252ab0`. All 44 case IDs remain; non-authentication cases other than the
+explicit user-disable follow-ups retain their exact content. `policy.jadpo`
+and the approved AUTH section-2 contract are unchanged by this reconciliation.
+
+| Case | Correction and preserved obligation |
+|---|---|
+| AUTH-005 | Two presented credentials yield 401 `ambiguous_credentials` before validation, even if one is invalid. Zero database queries remains required. |
+| AUTH-006 | Pin issuance, disablement, request and expiry times. The existing fresh `DELETE /users/alice` must return 403 `user_disabled` for an otherwise valid unexpired cookie, with valid browser/CSRF context and no business writes. |
+| AUTH-008 | Call the credential a short-lived signed bearer, matching both the source validator and bounded behavior. Cache outage succeeds without either principal- or credential-authority queries. This does not pretend that an opaque credential can skip authoritative validation. |
+| AUTH-010 | Use declared `DELETE /users/alice` and its 204 result; the previous POST route did not exist. Assert exactly one principal-authority query and record credential checks separately, as the owner chose. No exact total-authentication-query budget is inferred. |
+| USER-001 | Keep disabled status, 204 and retained todos. Add explicit unexpired fresh rejection, failed refresh with no credential issuance, and ordinary rejection at original credential expiry within the five-minute bound. An ordinary request need not succeed during the grace interval; earlier denial is allowed. |
+
+`Principal.user.email` was also inconsistent with lookup-free signed validation:
+AUTH-001 excludes profile data from signed credentials. No business expression
+in this candidate used that principal field. Remove it and its two resolution
+mappings; application-owned email remains on `User` and its projections and is
+read through application data operations. Never copy provider email into a
+credential or profile field to satisfy a zero-query assertion.
+
+Query counters now have explicit non-overlapping categories. A combined
+credential/principal SQL query is counted once as principal authority; additional
+credential/session queries are counted separately. Application queries remain
+separate from those authentication counters. This records physical queries,
+not a single logical resolver call that could conceal multiple database reads.
+
+These corrections do not implement the golden app. Service/JWT adapters, the
+candidate exchange endpoint, canonical entity/policy migration, route success
+and input/query bindings, lifecycle behavior and job/service contracts remain
+tracked implementation or design work. Refresh follow-up names the compiler-owned
+operation and named `UserDisabled` failure instead of inventing an HTTP endpoint
+or treating a host operation as an HTTP response. A future executable harness
+must execute every timed follow-up; structural candidate validation is not
+runtime evidence.
+
 ## Verification
 
 Run:

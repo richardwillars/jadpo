@@ -178,8 +178,9 @@ an unchanged gate. Do not imply complete language coverage or release readiness.
 Still open:
 
 - Golden todo: 60 diagnostics and all 44 integrated behavioral obligations
-  unexecuted; four auth contract conflicts and one query-budget ambiguity need
-  reconciliation against the accepted contract before implementation.
+  unexecuted. The four recorded auth conflicts and query-budget ambiguity were
+  reconciled on 2026-09-30 against approved AUTH-001 and the owner’s explicit
+  query-accounting choice; source migration and unsupported behaviors remain.
 - Set/Map HTTP wire encoding: generated schemas advertise JSON shapes that
   handlers reject. Key encoding, duplicates and null behavior are not settled;
   reproductions are preserved in `build/validation/set-map-wire-contract/`.
@@ -194,3 +195,20 @@ Still open:
 Resume with a specific approved follow-on package, retaining every recorded
 contract gap. Do not silently weaken the golden app or choose wire semantics
 merely to make the supported gate green.
+
+## 2026-09-30 checkpoint and reconciliation follow-up
+
+The owner authorized reviewable Git checkpoints and golden-contract reconciliation.
+Commits `8160b94`, `6b74abc`, `9796a45` and `7465a83` preserve design/candidate,
+coordinated compiler, validation infrastructure and editor-source slices. The
+compiler changes are interdependent and were not presented as independently
+reconstructable per-feature history. The old scratch example edit and stale
+packaged VSIX remain outside these commits.
+
+All five recorded golden auth/accounting discrepancies are now reconciled, with
+all 44 case IDs retained and all still unexecuted. The owner chose one principal
+lookup and separate credential query accounting. Candidate profile mappings no
+longer contradict lookup-free signed identity validation; profile data remains
+on authoritative application entities. See the golden REVIEW for exact changes,
+authority, old/new hashes and remaining implementation limits. The heartbeat
+remains paused; this follow-up is the currently authorized checkpoint package.

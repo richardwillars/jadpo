@@ -11,6 +11,13 @@
       "userWithTodos": 2,
       "listTodos": 1
     },
+    "authenticationQueryAccounting": {
+      "principalAuthorityQueries": "Physical database queries resolving or checking current user/service authority; a combined credential/principal query counts once here.",
+      "credentialAuthorityQueries": "Additional physical credential/session validation queries, excluding queries already counted as principal authority.",
+      "businessQueries": "Application reads and writes are recorded separately from authentication authority queries.",
+      "freshRouteBudget": "Exactly one principal-authority query. Record credential queries separately; no total authentication-query budget is asserted.",
+      "ownerDecision": "2026-09-30: one principal lookup; count credential checks separately"
+    },
     "generatedTarget": "bun",
     "packageAutoInstall": false
   },
@@ -49,18 +56,50 @@
     {
       "id": "AUTH-005",
       "kind": "http",
-      "title": "invalid credential fails closed even beside a valid credential",
-      "fixture": ["valid alice session", "invalid JWT bearer"],
-      "request": { "method": "GET", "path": "/todos", "auth": ["alice-session", "invalid-jwt"] },
-      "expect": { "status": 401, "code": "invalid_credentials", "databaseQueries": 0 }
+      "title": "multiple presented credentials reject before validation even when one is invalid",
+      "fixture": [
+        "valid alice session",
+        "invalid JWT bearer"
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/todos",
+        "auth": [
+          "alice-session",
+          "invalid-jwt"
+        ]
+      },
+      "expect": {
+        "status": 401,
+        "code": "ambiguous_credentials",
+        "databaseQueries": 0
+      }
     },
     {
       "id": "AUTH-006",
       "kind": "http",
-      "title": "disabled user cannot authenticate",
-      "fixture": ["disabled alice", "cryptographically valid alice session"],
-      "request": { "method": "GET", "path": "/todos", "auth": "alice-session" },
-      "expect": { "status": 403, "code": "user_disabled" }
+      "title": "fresh authority rejects a disabled user with an unexpired signed session",
+      "fixture": [
+        "alice active when signed session was issued",
+        "alice disabled after issuance; session remains otherwise valid",
+        "valid browser origin and session-bound CSRF proof"
+      ],
+      "request": {
+        "method": "DELETE",
+        "path": "/users/alice",
+        "auth": "alice-session"
+      },
+      "expect": {
+        "status": 403,
+        "code": "user_disabled",
+        "writes": 0
+      },
+      "timeline": {
+        "issuedAt": "2026-01-15T11:59:00Z",
+        "disabledAt": "2026-01-15T11:59:30Z",
+        "requestAt": "2026-01-15T12:00:00Z",
+        "credentialExpiresAt": "2026-01-15T12:04:00Z"
+      }
     },
     {
       "id": "AUTH-007",
@@ -73,10 +112,24 @@
     {
       "id": "AUTH-008",
       "kind": "http",
-      "title": "opaque API bearer resolves a user without a request-time cache dependency",
-      "fixture": ["active alice", "valid bounded alice bearer", "cache unavailable"],
-      "request": { "method": "GET", "path": "/todos", "auth": "alice-bounded-bearer" },
-      "expect": { "status": 200, "principalKind": "user", "principalUser": "alice", "authorityQueries": 0 }
+      "title": "short-lived signed API bearer resolves identity without authority or cache access",
+      "fixture": [
+        "active alice",
+        "valid unexpired signed alice bearer with lifetime at most five minutes",
+        "cache unavailable"
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/todos",
+        "auth": "alice-bounded-bearer"
+      },
+      "expect": {
+        "status": 200,
+        "principalKind": "user",
+        "principalUser": "alice",
+        "principalAuthorityQueries": 0,
+        "credentialAuthorityQueries": 0
+      }
     },
     {
       "id": "AUTH-009",
@@ -90,9 +143,20 @@
       "id": "AUTH-010",
       "kind": "http",
       "title": "fresh-authority route checks a bounded principal",
-      "fixture": ["active alice", "valid bounded alice bearer"],
-      "request": { "method": "POST", "path": "/users/alice/disable", "auth": "alice-bounded-bearer" },
-      "expect": { "status": 200, "authorityQueries": 1 }
+      "fixture": [
+        "active alice",
+        "valid bounded alice bearer"
+      ],
+      "request": {
+        "method": "DELETE",
+        "path": "/users/alice",
+        "auth": "alice-bounded-bearer"
+      },
+      "expect": {
+        "status": 204,
+        "principalAuthorityQueries": 1,
+        "credentialAuthorityQueriesRecorded": true
+      }
     },
     {
       "id": "AUTH-011",
@@ -326,10 +390,67 @@
     {
       "id": "USER-001",
       "kind": "http",
-      "title": "user disablement retains todos and revokes future access",
-      "fixture": ["active alice", "alice active todo t1"],
-      "request": { "method": "DELETE", "path": "/users/alice", "auth": "alice-session" },
-      "expect": { "status": 204, "userStatus": "disabled", "todoRowExists": true, "subsequentAuthenticationStatus": 403 }
+      "title": "user disablement retains todos and enforces fresh, refresh and bounded-expiry rejection",
+      "fixture": [
+        "active alice",
+        "alice active todo t1",
+        "signed alice session issued while active; session record remains otherwise valid",
+        "valid browser origin and session-bound CSRF proof"
+      ],
+      "request": {
+        "method": "DELETE",
+        "path": "/users/alice",
+        "auth": "alice-session"
+      },
+      "expect": {
+        "status": 204,
+        "userStatus": "disabled",
+        "todoRowExists": true
+      },
+      "timeline": {
+        "issuedAt": "2026-01-15T11:59:00Z",
+        "disabledAt": "2026-01-15T12:00:00Z",
+        "credentialExpiresAt": "2026-01-15T12:04:00Z",
+        "maximumRevocationDelaySeconds": 300
+      },
+      "followUps": [
+        {
+          "at": "2026-01-15T12:00:01Z",
+          "request": {
+            "method": "DELETE",
+            "path": "/users/alice",
+            "auth": "alice-session"
+          },
+          "expect": {
+            "status": 403,
+            "code": "user_disabled",
+            "writes": 0
+          }
+        },
+        {
+          "at": "2026-01-15T12:00:02Z",
+          "operation": "compiler-owned authentication refresh",
+          "auth": "alice-session",
+          "expect": {
+            "failure": "UserDisabled",
+            "code": "user_disabled",
+            "credentialsIssued": 0
+          }
+        },
+        {
+          "at": "2026-01-15T12:04:00Z",
+          "request": {
+            "method": "GET",
+            "path": "/todos",
+            "auth": "alice-session"
+          },
+          "expect": {
+            "status": 401,
+            "code": "invalid_credentials",
+            "writes": 0
+          }
+        }
+      ]
     },
     {
       "id": "JOB-001",

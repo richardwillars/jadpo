@@ -77,7 +77,7 @@
   },
   "remaining_gates": [
     "Golden todo syntax migration and all 44 integrated behavioural cases",
-    "Resolve recorded golden contract contradictions without weakening policy",
+    "Remaining golden source/behavior reconciliation and unsupported route/lifecycle/service/job contracts",
     "Source compatibility/deprecation and public documentation alignment",
     "Compiler property/fuzz campaigns and mutation evidence",
     "Broader PostgreSQL transaction/policy coverage and database migration drills",

@@ -35,15 +35,18 @@ prove`. A green summary may not collapse those categories into one claim.
 ```text
 default                           required, bounded 5m
 credential slots                  todo_session cookie, Authorization bearer
-validators                        signed_session, opaque_user_bearer,
+validators                        signed_session, signed_user_bearer,
                                   service_api_key, jwt_bearer
 selection                         exactly one presented credential; one validator
 conflicting identities            reject
-invalid beside valid              reject
+invalid beside valid              401 ambiguous_credentials before validation
 privilege merging                 never
-application principal             Principal.User | Principal.Service
+application principal             Principal.user | Principal.service; identity only
 fresh-authority routes             user disable, credential exchange
-disabled users/services            reject
+disabled users/services            reject at fresh/refresh/exchange checks
+bounded existing credentials        rejected no later than expiry, at most 5m
+fresh principal-authority queries    exactly 1
+credential-authority queries         recorded separately from principal queries
 permissions in credentials         never
 provider objects in business code none
 jwt dependency                     one pinned direct package, zero transitive
@@ -88,7 +91,8 @@ Todo.delete
 User.disable
   operation                        soft state transition active -> disabled
   child todos                      retained
-  later authentication             rejected
+  later fresh/refresh authority     rejected; no new credential issued
+  ordinary bounded credential       rejected at expiry, no later than 5m
 ```
 
 `GET /users/:user_id/todos` must expose an exact query plan: one bounded parent

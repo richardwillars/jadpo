@@ -4,6 +4,13 @@
 **Contract version:** `todo-v0.1`  
 **Compiler support:** intentionally incomplete
 
+The [2026-09-30 reconciliation](REVIEW.md#2026-09-30-authentication-reconciliation)
+aligns the five recorded authentication/query-budget discrepancies with approved
+AUTH-001 and the owner's query-accounting decision. All 44 cases remain
+unexecuted; the candidate is still not an executable or independently approved
+application. Its principal carries identity, while application queries own
+profile data.
+
 This directory defines the todo backend that P10.5 and P11 must implement. It
 is design evidence, not a demonstration of what the current compiler happens to
 support. The source deliberately uses required authentication, policy,
