@@ -2,6 +2,7 @@
 set -eu
 cd "$(dirname "$0")/../.."
 mkdir -p build/capability-monitor
+python3 experiments/capability-monitor/generate-manifest.py
 RUSTFLAGS='-C link-arg=--max-memory=8388608 -C link-arg=-zstack-size=262144' \
   cargo build --offline --locked --release --manifest-path experiments/capability-monitor/Cargo.toml \
   --target-dir build/capability-monitor/wasm-target \

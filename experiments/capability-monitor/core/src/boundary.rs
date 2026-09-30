@@ -570,19 +570,32 @@ pub(super) async fn request(ctx: InvocationContext, input: Value) -> Outcome {
     }))
 }
 
-// The monitor accepts only the effect sequence declared for this checked
-// fixture. Production lowering should emit this sequence beside the contract;
-// keeping it explicit here makes the prototype's route scope reviewable.
-fn monitor_sequence(operation: i32) -> &'static [(u32, bool)] {
-    match operation {
-        39 => &[(39, true)],
-        43 => &[(43, false)],
-        45 => &[(45, true)],
-        46 => &[(46, false)],
-        557 => &[(45, true), (45, true)],
-        558 => &[(45, true)],
-        _ => &[],
-    }
+fn monitor_manifest() -> &'static Value {
+    static VALUE: OnceLock<Value> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        serde_json::from_str(include_str!("../../manifest.json")).unwrap()
+    })
+}
+
+fn monitor_route(operation: i32) -> Option<&'static Value> {
+    monitor_manifest()["routes"]
+        .as_array()?
+        .iter()
+        .find(|route| route["operation"].as_i64() == Some(operation as i64))
+}
+
+fn monitor_effect(
+    route: &'static Value,
+    index: usize,
+    operation: u32,
+) -> Result<(&'static Value, u32, bool), Fault> {
+    let effect = route["effects"]
+        .as_array()
+        .and_then(|effects| effects.get(index))
+        .ok_or(Fault::Internal(operation))?;
+    let plan = effect["plan"].as_u64().ok_or(Fault::Internal(operation))? as u32;
+    let write = effect["write"].as_bool().ok_or(Fault::Internal(operation))?;
+    Ok((effect, plan, write))
 }
 
 fn monitor_pending(value: &Value, request: u32, operation: u32) -> Result<(String, Value), Fault> {
@@ -621,33 +634,32 @@ fn monitor_storage_args(plan_id: u32, key: &Value, changes: Option<&Value>) -> R
     Ok((args, write))
 }
 
-fn monitor_projection(operation: i32, row: &Value) -> Value {
-    if operation == 43 {
-        json!({"id":row["id"],"private_note":row["private_note"]})
-    } else {
-        json!({"id":row["id"],"title":row["title"]})
+fn monitor_projection(route: &Value, row: &Value) -> Value {
+    let mut output = serde_json::Map::new();
+    for field in route["projection"].as_array().into_iter().flatten() {
+        let name = field.as_str().unwrap();
+        output.insert(name.to_owned(), row[name].clone());
     }
+    Value::Object(output)
 }
 
 fn monitor_expected(
-    operation: i32,
+    route: &'static Value,
+    effect: &'static Value,
     stored: &Value,
     write: bool,
 ) -> (Option<Value>, Option<&'static str>) {
-    if operation == 558 {
-        return (None, Some("ChangeRejected"));
-    }
     if write {
         match stored["status"].as_str() {
-            Some("found") => (Some(monitor_projection(operation, &stored["row"])), None),
-            Some("missing") => (None, Some("NoteMissing")),
-            Some("conflict") => (None, Some("NoteConflict")),
+            Some("found") => (Some(monitor_projection(route, &stored["row"])), None),
+            Some("missing") => (None, effect["missing"].as_str()),
+            Some("conflict") => (None, effect["conflict"].as_str()),
             _ => (None, None),
         }
     } else if stored.is_null() {
-        (None, Some("NoteMissing"))
+        (None, effect["missing"].as_str())
     } else {
-        (Some(monitor_projection(operation, stored)), None)
+        (Some(monitor_projection(route, stored)), None)
     }
 }
 
@@ -706,10 +718,18 @@ pub(super) async fn monitor_request(ctx: InvocationContext, input: Value) -> Out
     if !checked_input(operation, &body) {
         return Ok(AppValue::Json(failure(Fault::Invalid, false)));
     }
-    let expected = monitor_sequence(operation);
-    if expected.is_empty() {
+    let monitor_route = match monitor_route(operation) {
+        Some(route) => route,
+        None => {
+            return Ok(AppValue::Json(failure(
+                Fault::Internal(operation as u32),
+                false,
+            )))
+        }
+    };
+    let Some(expected) = monitor_route["effects"].as_array() else {
         return Ok(AppValue::Json(failure(Fault::Internal(operation as u32), false)));
-    }
+    };
     let scope = ctx.0.lock().unwrap().request;
     let mut guest = effect(
         ctx.clone(),
@@ -725,11 +745,7 @@ pub(super) async fn monitor_request(ctx: InvocationContext, input: Value) -> Out
     }
     let mut index = 0usize;
     let mut expected_output = None;
-    let mut expected_failure = if operation == 558 {
-        Some("ChangeRejected")
-    } else {
-        None
-    };
+    let mut expected_failure = monitor_route["failure"].as_str();
     let mut storage_fault = false;
     let mut outcome: Result<Value, Fault> = loop {
         if guest["kind"] == "pending" {
@@ -739,7 +755,7 @@ pub(super) async fn monitor_request(ctx: InvocationContext, input: Value) -> Out
                 break Err(Fault::Internal(operation as u32));
             }
             let (capability, args) = monitor_pending(&guest, scope, guest_operation)?;
-            let (plan, write) = expected.get(index).copied().ok_or(Fault::Internal(operation as u32))?;
+            let (effect_meta, plan, write) = monitor_effect(monitor_route, index, operation as u32)?;
             let wanted = if write { "entity.update" } else { "entity.read" };
             if capability != wanted
                 || args["plan"].as_u64() != Some(plan as u64)
@@ -759,7 +775,7 @@ pub(super) async fn monitor_request(ctx: InvocationContext, input: Value) -> Out
             let reply = match storage(ctx.clone(), storage_args, plan, write).await {
                 Ok(value) => {
                     let visible = guest_row(&ctx, plan, &value.value, write);
-                    let (output, failure) = monitor_expected(operation, &visible, write);
+                    let (output, failure) = monitor_expected(monitor_route, effect_meta, &visible, write);
                     expected_output = output;
                     expected_failure = failure.or(expected_failure);
                     json!({"kind":"success","value":visible})

@@ -16,6 +16,11 @@ function fixture(factory=()=>new Guest(application)){
  const db=new Database(dir+'/state.sqlite'),host=new MonitorHost(new Guest(monitor),factory,db);
  return {db,host,snapshot:()=>db.prepare('SELECT * FROM note ORDER BY id').all(),close(){db.close();rmSync(dir,{recursive:true,force:true});}};
 }
+test('typed WASM ABI carries pending metadata separately from JSON payload',()=>{
+ const guest=new Guest(application);const pending=guest.start(46,{scope:1,input:{id:a.id}});
+ expect(typeof guest.exports.result_status).toBe('function');expect(pending).toEqual({kind:'pending',requestId:1,operationId:1,capability:'entity.read',args:{plan:46,key:a.id}});
+ expect(guest.resume(pending,{kind:'success',value:a})).toEqual({kind:'success',value:{id:a.id,title:a.title}});
+});
 test('single-pass monitor preserves public, private and transaction behavior',()=>{
  const f=fixture();try{
   expect(f.host.invoke(frame('alice')).value).toEqual({status:200,body:{id:a.id,title:a.title}});

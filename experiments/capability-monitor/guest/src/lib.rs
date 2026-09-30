@@ -9,26 +9,77 @@ struct Slot {
     output: Vec<u8>,
     active: Option<Invocation>,
     next_request: u32,
+    status: i32,
+    request: u32,
+    operation: u32,
+    capability: u32,
 }
 thread_local! {static SLOT:RefCell<Slot>=RefCell::new(Slot::default());}
+fn capability_code(capability: &str) -> u32 {
+    match capability {
+        "entity.read" => 1,
+        "entity.update" => 2,
+        "sql.query" => 3,
+        "sql.update" => 4,
+        "transaction.begin" => 5,
+        "transaction.commit" => 6,
+        "transaction.rollback" => 7,
+        "guest.start" => 8,
+        "guest.resume" => 9,
+        "guest.check" => 10,
+        "guest.complete" => 11,
+        _ => 0,
+    }
+}
 impl Slot {
+    fn publish_payload(
+        &mut self,
+        status: i32,
+        request: u32,
+        operation: u32,
+        capability: u32,
+        payload: &Value,
+    ) -> i32 {
+        self.status = status;
+        self.request = request;
+        self.operation = operation;
+        self.capability = capability;
+        self.output.clear();
+        serde_json::to_writer(&mut self.output, payload).unwrap();
+        status
+    }
     fn publish(&mut self, step: Step) -> i32 {
-        let value = match step {
-            Step::Pending(p) => p.envelope(),
+        match step {
+            Step::Pending(p) => self.publish_payload(
+                2,
+                p.request,
+                p.operation,
+                capability_code(p.capability),
+                &p.args,
+            ),
             Step::Complete(c) => {
                 self.active = None;
-                c.value
+                let value = c.value;
+                match value["kind"].as_str() {
+                    Some("success") => self.publish_payload(
+                        0,
+                        0,
+                        0,
+                        0,
+                        value.get("value").unwrap_or(&Value::Null),
+                    ),
+                    Some("domain") => self.publish_payload(
+                        1,
+                        0,
+                        0,
+                        0,
+                        value.get("failure").unwrap_or(&Value::Null),
+                    ),
+                    Some("invalid") => self.publish_payload(4, 0, 0, 0, &Value::Null),
+                    _ => self.publish_payload(3, 0, 0, 0, &Value::Null),
+                }
             }
-        };
-        let status = match value["kind"].as_str() {
-            Some("success") => 0,
-            Some("domain") => 1,
-            Some("pending") => 2,
-            Some("invalid") => 4,
-            _ => 3,
-        };
-        self.output = serde_json::to_vec(&value).unwrap();
-        status
+        }
     }
     fn invalid_host(&mut self) -> i32 {
         let step = match self.active.as_mut() {
@@ -56,7 +107,8 @@ pub extern "C" fn alloc(n: i32) -> u32 {
             s.input.clear();
             return 0;
         }
-        s.input = vec![0; n as usize];
+        s.input.clear();
+        s.input.resize(n as usize, 0);
         s.input.as_ptr() as u32
     })
 }
@@ -69,6 +121,22 @@ pub extern "C" fn result_len() -> u32 {
     SLOT.with(|s| s.borrow().output.len() as u32)
 }
 #[no_mangle]
+pub extern "C" fn result_status() -> i32 {
+    SLOT.with(|s| s.borrow().status)
+}
+#[no_mangle]
+pub extern "C" fn result_request() -> u32 {
+    SLOT.with(|s| s.borrow().request)
+}
+#[no_mangle]
+pub extern "C" fn result_operation() -> u32 {
+    SLOT.with(|s| s.borrow().operation)
+}
+#[no_mangle]
+pub extern "C" fn result_capability() -> u32 {
+    SLOT.with(|s| s.borrow().capability)
+}
+#[no_mangle]
 pub extern "C" fn start(operation: i32, n: i32) -> i32 {
     SLOT.with(|slot| {
         let mut s = slot.borrow_mut();
@@ -76,8 +144,7 @@ pub extern "C" fn start(operation: i32, n: i32) -> i32 {
             return s.invalid_host();
         }
         let Some(input) = s.decode(n) else {
-            s.output = br#"{"kind":"invalid"}"#.to_vec();
-            return 4;
+            return s.publish_payload(4, 0, 0, 0, &Value::Null);
         };
         s.next_request += 1;
         let mut invocation = Invocation::application(s.next_request, operation, input);

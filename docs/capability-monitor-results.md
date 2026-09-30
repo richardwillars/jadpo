@@ -15,15 +15,18 @@ The application computation runs once. The existing SQLite adapter is reused.
 The prototype does not let a guest send SQL or transaction commands. A hostile
 guest attempting raw SQL, commit, an unauthorized plan, a forged principal, or a
 forged final projection is rejected; writes remain unchanged and transactions are
-rolled back. Eight tests pass with 31 assertions. The fixture also checks
+rolled back. Nine tests pass with 34 assertions, including the typed ABI frame.
+The fixture also checks
 revocation before guest entry, ownership changes during a request, fresh guest
 memory and private-field redaction.
 
-The monitor's effect sequence and output projection are currently hardcoded for
-the six fixture routes. That is the main compiler integration gap. The next
-implementation should emit those bindings from checked lowering and reject any
-route whose binding is absent. The monitor does not qualify instruction-fuel,
-memory-exhaustion or disconnect cancellation isolation.
+The monitor's effect sequence and output projection now come from the checked
+projection and contract through the deterministic `generate-manifest.py` build
+step. The Rust monitor rejects any route whose generated binding is absent.
+This removes the fixture operation IDs and output-field branches from the Rust
+adapter, while leaving the generator fixture-local until compiler integration
+is promoted. The monitor does not qualify instruction-fuel, memory-exhaustion
+or disconnect cancellation isolation.
 
 ## Measurements
 
@@ -47,15 +50,30 @@ slightly. Fresh guest construction, JSON envelopes and Bun WASM scheduling still
 dominate. The result supports a performance roadmap; it is not yet a performance
 win large enough for production adoption.
 
+The first ABI optimization adds typed status/request/operation/capability fields
+and reuses adapter buffers while leaving application payloads as bounded JSON.
+Three 50,000-iteration guest-read runs averaged 502.103 ms for the previous
+full-JSON frame and 453.248 ms for the optimized frame, a 10.8% reduction. The
+serialized output fell 48.1% (11,838,894 to 6,150,000 bytes per run). This is a
+bridge-only attribution probe; it does not replace the HTTP/SQLite results
+above. The raw runs are retained in `experiments/capability-monitor/bridge-bench-results.json`.
+The append-only campaign ledger and resume checkpoint are in
+`experiments/capability-monitor/performance-ledger.md`.
+An in-process confirmation of the real auth/policy/SQLite path is retained in
+`experiments/capability-monitor/in-process-bench-results.json`; it is not an
+HTTP capacity result.
+
 ## Performance roadmap and gates
 
 Performance work is a required phase, with correctness as the gate for every
 change:
 
-1. Generate effect sequences, completion projections and route failure bindings
-   from the compiler. Re-run all policy, mutation and hostile-guest checks.
-2. Introduce a bounded binary bridge and allocation reuse. Compare p50/p95/p99,
-   CPU, RSS, startup and SQL counts against the frozen JSON monitor baseline.
+1. Promote the generated effect sequences, completion projections and route
+   failure bindings into the compiler's normal backend artifacts. Re-run all
+   policy, mutation and hostile-guest checks.
+2. Measure a bounded binary representation for the remaining JSON payloads.
+   Compare p50/p95/p99, CPU, RSS, startup and SQL counts against the frozen
+   monitor baseline before accepting more adapter complexity.
 3. Evaluate a scrubbed guest instance pool only after proving memory/global reset
    and cross-principal isolation. Fresh instances remain the reference guarantee.
 4. Measure SQLite scheduling and transaction overhead separately. Do not reduce
