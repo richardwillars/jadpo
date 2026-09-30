@@ -13,7 +13,9 @@ SQL capability. Restricted nullable fields are replaced by null before delivery
 when the authenticated caller lacks field-read permission. Each invocation gets a
 fresh application instance/memory and an authority-owned request scope. The host
 compiles the application module once and creates instances after authentication.
-The authority module and external contract are pinned by the trusted local build.
+The authority module and external contract are pinned by the trusted local WASM build.
+A native-only rebuild does not update that lock; if it changes the contract, the
+old WASM bundle refuses to start until rebuilt together.
 Guest code may be replaced without acquiring authority to choose SQL or commits.
 
 ## Build
@@ -107,3 +109,16 @@ ceiling; that is not a memory limiter for every hostile replacement. Host/runtim
 compiler, authority artifact/lock, configuration and database driver remain trusted.
 The SHA pin is a local admission check, not deployment signing or key management.
 The localhost servers contain harness controls and must not be deployed.
+
+After the timed campaigns, run the isolated instance-cost diagnostic and build timings:
+
+```sh
+bun --no-install --env-file=/dev/null experiments/capability-host/instantiation.ts
+python3 experiments/capability-host/build-cost.py
+```
+
+`python3 experiments/capability-host/build-isolation.py` tests native-only build
+separation with a real source mutation and restores the original artifacts. Run
+these sequentially. `summarize.py` produces the aggregate JSON/table and
+`archive.py` verifies and packages the evidence. The pre-build-fix recipe/manifest
+are retained; measured runtime artifacts did not change in that correction.

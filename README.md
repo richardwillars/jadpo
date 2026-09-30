@@ -53,6 +53,9 @@ opaque bearer verification, live authority checks, and owner/editor field polici
 Its [measured performance](docs/auth-policy-performance-results.md) and
 [WASM host trust decision](docs/wasm-host-trust-decision.md) retain the frozen controls
 and distinguish trusted application code from independently enforced guest authority.
+The [capability-host follow-up](docs/capability-host-results.md) implements and tests
+a separate trusted Rust authority with isolated application guests. Build it with
+`jadpo build experiments/capability-host/fixture --target native` or `--target wasm`.
 
 Run the supported-language validation gate with:
 
