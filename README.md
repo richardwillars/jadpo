@@ -33,6 +33,16 @@ now has a candidate golden-todo contract, proof kernel, threat model, approval
 protocol, and preregistered comparison protocol awaiting independent review.
 Jadpo is not yet a general-purpose web environment.
 
+Build the experimental shared Rust fixture from the repository root:
+
+```sh
+bun run build:wasm
+bun run build:rust
+```
+
+Each command checks the fixture, generates shared Rust, and builds the selected
+release target. These are the local [shared-core experiment](experiments/native-conformance/README.md),
+not a default-target switch. See its README for prerequisites and output paths.
 
 Run the supported-language validation gate with:
 
