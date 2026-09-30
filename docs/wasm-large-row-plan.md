@@ -162,6 +162,12 @@ write behaviour and operational gates below are satisfied.
 
 ## COV-1 — Build the backend coverage inventory
 
+Include the [HOST-1/HOST-2 capability review and probe plan](wasm-host-capabilities.md).
+Separate language lowering from host functionality: a Worker can support the Wasm
+instructions while lacking a requested filesystem, threading or process capability.
+The initial Cloudflare/Bun matrix is documentation-backed; new hosted probes remain
+unexecuted. Capability failures must be visible before deployment.
+
 Before extending the backend broadly, inventory implemented language/runtime
 contracts from the checked IR, Bun generator, compiler/runtime tests and golden
 cases. For each capability record: Bun support; Rust/Wasm lowering; direct-Wasm

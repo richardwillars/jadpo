@@ -1681,6 +1681,10 @@ costs; LR-2 compares bounded buffer/typed-format candidates; LR-3 qualifies
 correctness and practical parity; LR-4 measures current startup and host behaviour.
 COV-1/COV-2 separately inventory and qualify backend coverage. This plan has not
 been executed and does not schedule a default-target switch.
+The [HOST-1/HOST-2 review](wasm-host-capabilities.md) adds a current documented
+Cloudflare Workers/Bun capability matrix and required adapter probes; temporary
+files are request-scoped memory, while threads/processes and persistent ordinary
+files require a different host or explicit service. New probes remain unexecuted.
 
 **Status:** complete on 2026-09-30. **Defer adoption for further backend
 development; retain Bun.** Both routes passed the 15-case local/Cloudflare
