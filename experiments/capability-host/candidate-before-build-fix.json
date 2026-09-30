@@ -20,7 +20,7 @@
   "experiments/capability-host/build/projected/bun/target/persistence.ts": "84caaae15f5a7b7ae4140efb7296de4f4d52a89800cec18b02072813d2a7a36f",
   "experiments/capability-host/build/projected/program.json": "23e379625feb3ababa7a1226e302e9f4b08de40927d7a961900bf789155c2c76",
   "experiments/capability-host/build/trust.json": "f3f9dcc4f0f1fe476babbbec97dff516175f3dd94b4bf3e9c5eb25db246dbceb",
-  "experiments/capability-host/build.sh": "ce4316346614f6f0891f4721ab3ca370716ba2f1f5f7ee74af306fe1a1483de4",
+  "experiments/capability-host/build.sh": "8b47f045785f090dd35bdb7debe10ee0db74046f5ed97b0c7f583538c6a9e6f5",
   "experiments/capability-host/bun-server.ts": "0cd94b46d82f0efd794ebf8fee2d8eeace2dacc91b6367efa2968430938b9ed9",
   "experiments/capability-host/core/Cargo.toml": "167a74ef6fd229163d7d98dad555bbaf8114aef5277f96b645bb03e883d8b7dd",
   "experiments/capability-host/core/src/boundary.rs": "a19efe89308a316e79d44c7514dca818d59ee07154287df0bd8e4c5dad5945bd",

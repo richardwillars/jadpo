@@ -15,12 +15,9 @@ if [ "$target" != native ] && [ "$target" != rust ]; then
  cp build/capability-host/wasm-target/wasm32-unknown-unknown/release/jadpo_capability_host_wasm.wasm experiments/capability-host/build/authority.wasm
  cp build/capability-host/wasm-target/wasm32-unknown-unknown/release/jadpo_capability_host_guest.wasm experiments/capability-host/build/application.wasm
 fi
-# A native-only build must not authorize an older WASM authority against a new contract.
-if [ "$target" != native ] && [ "$target" != rust ]; then
 python3 - <<'PYLOCK'
 import hashlib,json,pathlib
 base=pathlib.Path('experiments/capability-host/build')
 if (base/'authority.wasm').exists():
  (base/'trust.json').write_text(json.dumps({k:hashlib.sha256((base/p).read_bytes()).hexdigest() for k,p in [('authority','authority.wasm'),('contract','contract.json')]},indent=2)+'\n')
 PYLOCK
-fi
