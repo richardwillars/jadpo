@@ -13,6 +13,25 @@ use std::path::Path;
 
 mod first_party;
 
+const JWT_PACKAGE: &str = include_str!("runtime/jwt/package.json");
+const JWT_LOCK: &str = include_str!("runtime/jwt/bun.lock");
+
+pub(crate) fn jwt_authentication_supported(project_path: &Path, project: &AnalyzedProject) -> bool {
+    TargetGenerator::new(project_path, project)
+        .is_ok_and(|generator| generator.first_party_supported() && generator.has_jwt())
+}
+
+impl TargetGenerator<'_> {
+    fn has_jwt(&self) -> bool {
+        self.authentication_strategies.iter().any(|strategy| {
+            strategy
+                .validators
+                .iter()
+                .any(|validator| validator.mode.text == "jwt")
+        })
+    }
+}
+
 pub(crate) fn first_party_authentication_supported(
     project_path: &Path,
     project: &AnalyzedProject,
@@ -47,6 +66,26 @@ pub fn derive_target(
             relative_path: "target/first-party-authentication.ts",
             contents: include_str!("runtime/first_party_authentication.ts").to_owned(),
         });
+        if generator.has_jwt() {
+            outputs.extend([
+                GeneratedArtifact {
+                    relative_path: "target/jwt-authentication.ts",
+                    contents: include_str!("runtime/jwt_authentication.ts").to_owned(),
+                },
+                GeneratedArtifact {
+                    relative_path: "target/package.json",
+                    contents: JWT_PACKAGE.to_owned(),
+                },
+                GeneratedArtifact {
+                    relative_path: "target/bun.lock",
+                    contents: JWT_LOCK.to_owned(),
+                },
+                GeneratedArtifact {
+                    relative_path: "audit/runtime-dependencies.json",
+                    contents: include_str!("runtime/jwt/dependency.json").to_owned(),
+                },
+            ]);
+        }
     }
     if generator.has_entities() {
         outputs.extend([
@@ -68,11 +107,36 @@ pub fn derive_target(
             },
         ]);
     }
-    validate_runtime_dependency_contract(&outputs)?;
+    validate_runtime_dependency_contract(
+        &outputs,
+        generator.first_party_supported() && generator.has_jwt(),
+    )?;
     Ok(outputs)
 }
 
-fn validate_runtime_dependency_contract(outputs: &[GeneratedArtifact]) -> Result<(), Diagnostic> {
+fn validate_runtime_dependency_contract(
+    outputs: &[GeneratedArtifact],
+    jwt: bool,
+) -> Result<(), Diagnostic> {
+    if jwt
+        && ![
+            ("target/package.json", JWT_PACKAGE),
+            ("target/bun.lock", JWT_LOCK),
+        ]
+        .iter()
+        .all(|(path, expected)| {
+            outputs
+                .iter()
+                .filter(|output| output.relative_path == *path)
+                .count()
+                == 1
+                && outputs
+                    .iter()
+                    .any(|output| output.relative_path == *path && output.contents == *expected)
+        })
+    {
+        return Err(Diagnostic::error("JADPO_TARGET_DEPENDENCY_MANIFEST"));
+    }
     for output in outputs {
         let path = Path::new(output.relative_path);
         let file_name = path.file_name().and_then(|name| name.to_str());
@@ -81,6 +145,14 @@ fn validate_runtime_dependency_contract(outputs: &[GeneratedArtifact]) -> Result
                 .components()
                 .any(|component| component.as_os_str() == "node_modules")
         {
+            if jwt
+                && matches!(
+                    (output.relative_path, output.contents.as_str()),
+                    ("target/package.json", JWT_PACKAGE) | ("target/bun.lock", JWT_LOCK)
+                )
+            {
+                continue;
+            }
             return Err(Diagnostic::error("JADPO_TARGET_DEPENDENCY_MANIFEST"));
         }
 
@@ -89,6 +161,10 @@ fn validate_runtime_dependency_contract(outputs: &[GeneratedArtifact]) -> Result
         }
 
         for specifier in module_specifiers(&output.contents) {
+            if jwt && output.relative_path == "target/jwt-authentication.ts" && specifier == "jose"
+            {
+                continue;
+            }
             if specifier == "bun" || specifier.starts_with("bun:") {
                 continue;
             }
@@ -347,7 +423,7 @@ impl<'project> TargetGenerator<'project> {
             &format!("export type AuthPrincipal = {principal_variants};"),
         );
         line(&mut output, "export type ValidatedIdentity = Readonly<{ principal: AuthPrincipal; authorityRequired: boolean }>; ");
-        line(&mut output, "export type ValidationResult = { kind: \"valid\"; identity: ValidatedIdentity } | { kind: \"invalid\" } | { kind: \"unavailable\" } | { kind: \"misconfigured\" }; ");
+        line(&mut output, "export type ValidationResult = { kind: \"valid\"; identity: ValidatedIdentity } | { kind: \"authoritative\"; principalKind: PrincipalKind; subject: string; resolution: ResolutionResult } | { kind: \"invalid\" } | { kind: \"unavailable\" } | { kind: \"misconfigured\" }; ");
         line(&mut output, "export type ResolutionResult = { kind: \"active\"; principal: AuthPrincipal } | { kind: \"inactive\"; failureName: string } | { kind: \"missing\" } | { kind: \"duplicate\" } | { kind: \"unavailable\" }; ");
         line(&mut output, "export type AuthenticationAdapter = Readonly<{ validate(strategy: string, credential: string): Promise<ValidationResult>; resolve(identity: ValidatedIdentity): Promise<ResolutionResult> }>; ");
         line(
@@ -613,6 +689,22 @@ impl<'project> TargetGenerator<'project> {
         line(&mut output, "  if (validationKind === \"invalid\") { authExactKeys(validationObject, [\"kind\"]); throw new AuthenticationFault(\"invalid_credentials\", 401); }");
         line(&mut output, "  if (validationKind === \"unavailable\") { authExactKeys(validationObject, [\"kind\"]); throw new AuthenticationFault(\"authentication_unavailable\", 503); }");
         line(&mut output, "  if (validationKind === \"misconfigured\") { authExactKeys(validationObject, [\"kind\"]); throw new AuthenticationFault(\"authentication_misconfigured\", 500); }");
+        // External JWTs have no local identity fields. Their verified subject is
+        // resolved once before this result, including on fresh routes. No fake
+        // local UUID or authority result cached across requests is needed.
+        output.push_str(r#"
+  if (validationKind === "authoritative") {
+    authExactKeys(validationObject, ["kind", "principalKind", "subject", "resolution"]);
+    const kind = authText(validationObject.principalKind);
+    const subject = authText(validationObject.subject);
+    const strategy = authenticationContract.strategies.find(item => item.name === candidate.strategy);
+    if (subject.length === 0 || subject.length > 512 || strategy === undefined
+        || !strategy.validators.some(validator => validator.mode === "jwt" && validator.principal === kind)) {
+      throw new AuthenticationFault("authority_invariant", 500);
+    }
+    return normalizeAuthenticationResolution(validationObject.resolution, kind, subject);
+  }
+"#);
         line(&mut output, "  if (validationKind !== \"valid\") throw new AuthenticationFault(\"authority_invariant\", 500);");
         line(
             &mut output,
@@ -632,26 +724,33 @@ impl<'project> TargetGenerator<'project> {
         );
         line(&mut output, "  let resolution: ResolutionResult;");
         line(&mut output, "  try { resolution = await adapter.resolve(identity); } catch { throw new AuthenticationFault(\"authentication_unavailable\", 503); }");
-        line(
-            &mut output,
-            "  const resolutionObject = authRecord(resolution);",
-        );
-        line(
-            &mut output,
-            "  const resolutionKind = authText(resolutionObject.kind);",
-        );
-        line(
-            &mut output,
-            "  if (resolutionKind === \"active\") { authExactKeys(resolutionObject, [\"kind\", \"principal\"]); const resolved = normalizeAuthPrincipal(resolutionObject.principal); if (resolved.kind !== identity.principal.kind || resolved.subject !== identity.principal.subject) throw new AuthenticationFault(\"authority_invariant\", 500); return resolved; }",
-        );
-        line(&mut output, "  if (resolutionKind === \"inactive\") { authExactKeys(resolutionObject, [\"kind\", \"failureName\"]); throw new AuthenticationFault(\"principal_inactive\", 401, authText(resolutionObject.failureName)); }");
-        line(&mut output, "  if (resolutionKind === \"missing\") { authExactKeys(resolutionObject, [\"kind\"]); throw new AuthenticationFault(\"invalid_credentials\", 401); }");
-        line(&mut output, "  if (resolutionKind === \"unavailable\") { authExactKeys(resolutionObject, [\"kind\"]); throw new AuthenticationFault(\"authentication_unavailable\", 503); }");
-        line(
-            &mut output,
-            "  throw new AuthenticationFault(\"authority_invariant\", 500);",
-        );
+        line(&mut output, "  return normalizeAuthenticationResolution(resolution, identity.principal.kind, identity.principal.subject);");
         line(&mut output, "}");
+        output.push_str(r#"
+function normalizeAuthenticationResolution(value: unknown, kind: string, subject: string): AuthPrincipal {
+  const resolution = authRecord(value);
+  const result = authText(resolution.kind);
+  if (result === "active") {
+    authExactKeys(resolution, ["kind", "principal"]);
+    const principal = normalizeAuthPrincipal(resolution.principal);
+    if (principal.kind !== kind || principal.subject !== subject) authInvariant();
+    return principal;
+  }
+  if (result === "inactive") {
+    authExactKeys(resolution, ["kind", "failureName"]);
+    throw new AuthenticationFault("principal_inactive", 401, authText(resolution.failureName));
+  }
+  if (result === "missing") {
+    authExactKeys(resolution, ["kind"]);
+    throw new AuthenticationFault("invalid_credentials", 401);
+  }
+  if (result === "unavailable") {
+    authExactKeys(resolution, ["kind"]);
+    throw new AuthenticationFault("authentication_unavailable", 503);
+  }
+  return authInvariant();
+}
+"#);
         output
     }
 
@@ -686,6 +785,12 @@ impl<'project> TargetGenerator<'project> {
                     "import { AuthenticationFault } from \"./authentication.ts\";",
                 );
                 line(&mut output, "import { createFirstPartyAuthentication } from \"./first-party-authentication.ts\";");
+                if self.has_jwt() {
+                    line(
+                        &mut output,
+                        "import { createJwtAuthentication } from \"./jwt-authentication.ts\";",
+                    );
+                }
             }
             line(&mut output, "");
         }
@@ -1312,6 +1417,7 @@ export const temporal = Object.freeze({
         }
         if self.first_party_supported() {
             line(&mut output, "CREATE TABLE IF NOT EXISTS \"__jadpo_auth_sessions\" (\"id\" TEXT PRIMARY KEY, \"data\" TEXT NOT NULL, \"revoked\" INTEGER NOT NULL DEFAULT 0);");
+            line(&mut output, "CREATE TABLE IF NOT EXISTS \"__jadpo_auth_service_credentials\" (\"id\" TEXT PRIMARY KEY, \"data\" TEXT NOT NULL, \"revoked\" INTEGER NOT NULL DEFAULT 0);");
         }
         output
     }
@@ -2219,20 +2325,14 @@ export const temporal = Object.freeze({
                 .iter()
                 .filter(|binding| binding.role == *subject && binding.scope == scope_name)
             {
-                let principal_field = self.principal_identity_field(&binding.principal);
+                let principal_field = self.principal_identity_expression(&binding.principal);
                 line(
                     output,
-                    &format!(
-                        "{indent}if (policy.principal?.values[{}] !== undefined) {{",
-                        ts_string(&principal_field)
-                    ),
+                    &format!("{indent}if ({principal_field} !== undefined) {{"),
                 );
                 line(
                     output,
-                    &format!(
-                        "{indent}  const principalValue = policy.principal!.values[{}];",
-                        ts_string(&principal_field)
-                    ),
+                    &format!("{indent}  const principalValue = {principal_field};"),
                 );
                 line(output, &format!("{indent}  values.push(principalValue);"));
                 line(output, &format!("{indent}  const parameter = dialect === \"postgres\" ? `$${{parameterOffset + values.length}}` : `?${{parameterOffset + values.length}}`;"));
@@ -2267,7 +2367,7 @@ export const temporal = Object.freeze({
             for membership in self.project.policy.memberships.iter().filter(|membership| {
                 membership.role_type == role_type && membership.scope == scope_name
             }) {
-                let principal_field = self.principal_identity_field(&membership.principal);
+                let principal_field = self.principal_identity_expression(&membership.principal);
                 let table = sql_identifier(&snake_case(&membership.entity));
                 let member = sql_identifier(&membership.member_field);
                 let role = sql_identifier(&membership.role_field);
@@ -2285,17 +2385,11 @@ export const temporal = Object.freeze({
                 );
                 line(
                     output,
-                    &format!(
-                        "{indent}if (policy.principal?.values[{}] !== undefined) {{",
-                        ts_string(&principal_field)
-                    ),
+                    &format!("{indent}if ({principal_field} !== undefined) {{"),
                 );
                 line(
                     output,
-                    &format!(
-                        "{indent}  const principalValue = policy.principal!.values[{}];",
-                        ts_string(&principal_field)
-                    ),
+                    &format!("{indent}  const principalValue = {principal_field};"),
                 );
                 line(output, &format!("{indent}  values.push(principalValue);"));
                 line(output, &format!("{indent}  const parameter = dialect === \"postgres\" ? `$${{parameterOffset + values.length}}` : `?${{parameterOffset + values.length}}`;"));
@@ -2453,17 +2547,14 @@ export const temporal = Object.freeze({
                 .iter()
                 .filter(|binding| binding.role == *subject && binding.scope == scope_name)
             {
-                let principal_field = self.principal_identity_field(&binding.principal);
+                let principal_field = self.principal_identity_expression(&binding.principal);
                 line(
                     output,
                     &format!("{indent}if (policy.principal !== null) {{"),
                 );
                 line(
                     output,
-                    &format!(
-                        "{indent}  const principalValue = policy.principal.values[{}];",
-                        ts_string(&principal_field)
-                    ),
+                    &format!("{indent}  const principalValue = {principal_field};"),
                 );
                 if binding.entity == entity_name {
                     line(
@@ -2510,7 +2601,7 @@ export const temporal = Object.freeze({
             for membership in self.project.policy.memberships.iter().filter(|membership| {
                 membership.role_type == role_type && membership.scope == scope_name
             }) {
-                let principal_field = self.principal_identity_field(&membership.principal);
+                let principal_field = self.principal_identity_expression(&membership.principal);
                 let table = sql_identifier(&snake_case(&membership.entity));
                 let membership_member = sql_identifier(&membership.member_field);
                 let membership_role = sql_identifier(&membership.role_field);
@@ -2543,10 +2634,7 @@ export const temporal = Object.freeze({
                 );
                 line(
                     output,
-                    &format!(
-                        "{indent}  const principalValue = policy.principal.values[{}];",
-                        ts_string(&principal_field)
-                    ),
+                    &format!("{indent}  const principalValue = {principal_field};"),
                 );
                 line(
                     output,
@@ -2568,18 +2656,69 @@ export const temporal = Object.freeze({
         }
     }
 
-    fn principal_identity_field(&self, entity: &str) -> String {
-        self.principal
-            .into_iter()
-            .flat_map(|principal| &principal.variants)
-            .flat_map(|variant| &variant.fields)
-            .find(|field| {
-                field.field_type.path.len() >= 2
-                    && field.field_type.path[0].text == entity
-                    && field.field_type.path[1].text == "id"
-            })
-            .map(|field| field.name.text.clone())
-            .unwrap_or_else(|| format!("{}_id", snake_case(entity)))
+    fn principal_identity_expression(&self, entity: &str) -> String {
+        let identity = self
+            .records
+            .get(entity)
+            .and_then(|record| identity_field_name(record));
+        let mut bindings = BTreeSet::new();
+        for strategy in &self.authentication_strategies {
+            for resolution in &strategy.resolutions {
+                if resolution
+                    .authority
+                    .path
+                    .first()
+                    .is_some_and(|n| n.text == entity)
+                {
+                    for mapping in &resolution.mappings {
+                        if identity == Some(mapping.source.text.as_str())
+                            && mapping.target.path.len() == 3
+                        {
+                            bindings.insert((
+                                resolution.principal.text.clone(),
+                                mapping.target.path[2].text.clone(),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(principal) = self.principal {
+            for variant in &principal.variants {
+                for field in &variant.fields {
+                    if field.field_type.path.len() == 2
+                        && field.field_type.path[0].text == entity
+                        && identity == Some(field.field_type.path[1].text.as_str())
+                    {
+                        bindings
+                            .insert((variant.kind.as_str().to_owned(), field.name.text.clone()));
+                    }
+                }
+            }
+        }
+        if !bindings.is_empty() {
+            // Entity identity comes from explicit authority mappings. Matching
+            // UUID bytes in another principal kind cannot confer this role.
+            return format!(
+                "({}undefined)",
+                bindings
+                    .iter()
+                    .map(|(kind, field)| {
+                        format!(
+                            "policy.principal?.kind === {} ? policy.principal.values[{}] : ",
+                            ts_string(kind),
+                            ts_string(field)
+                        )
+                    })
+                    .collect::<String>()
+            );
+        }
+        if self.has_authentication() {
+            return "undefined".to_owned();
+        }
+        // Existing trusted fixture boundary for unauthenticated policy probes.
+        let field = ts_string(&format!("{}_id", snake_case(entity)));
+        format!("policy.principal?.values[{field}]")
     }
 
     fn persistence_target(&self) -> String {
@@ -7269,7 +7408,10 @@ export const temporal = Object.freeze({
         for (name, callable) in &self.callables {
             let mut updates = Vec::new();
             collect_update_expressions(&callable.body, &mut updates);
-            if !updates.iter().any(|candidate| std::ptr::eq(*candidate, update)) {
+            if !updates
+                .iter()
+                .any(|candidate| std::ptr::eq(*candidate, update))
+            {
                 continue;
             }
             // Use the checked expression at this exact lexical use, not a
@@ -9950,7 +10092,7 @@ function configured_timeout() -> Timeout { return config.timeout }
             relative_path: "target/app.ts",
             contents: "import \"third-party-package\";\n".to_owned(),
         }];
-        let diagnostic = validate_runtime_dependency_contract(&external)
+        let diagnostic = validate_runtime_dependency_contract(&external, false)
             .expect_err("bare package imports must be rejected");
         assert_eq!(diagnostic.code, "JADPO_TARGET_EXTERNAL_MODULE");
 
@@ -9958,9 +10100,78 @@ function configured_timeout() -> Timeout { return config.timeout }
             relative_path: "package.json",
             contents: "{}\n".to_owned(),
         }];
-        let diagnostic = validate_runtime_dependency_contract(&manifest)
+        let diagnostic = validate_runtime_dependency_contract(&manifest, false)
             .expect_err("dependency manifests must be rejected");
         assert_eq!(diagnostic.code, "JADPO_TARGET_DEPENDENCY_MANIFEST");
+    }
+
+    #[test]
+    fn jwt_exception_is_exactly_pinned_and_confined_to_its_adapter() {
+        let approved = vec![
+            GeneratedArtifact {
+                relative_path: "target/package.json",
+                contents: super::JWT_PACKAGE.to_owned(),
+            },
+            GeneratedArtifact {
+                relative_path: "target/bun.lock",
+                contents: super::JWT_LOCK.to_owned(),
+            },
+            GeneratedArtifact {
+                relative_path: "target/jwt-authentication.ts",
+                contents: "import { jwtVerify } from \"jose\";".to_owned(),
+            },
+        ];
+        validate_runtime_dependency_contract(&approved, true).unwrap();
+        assert!(validate_runtime_dependency_contract(&approved, false).is_err());
+        for index in [0, 1] {
+            let mut substituted = approved.clone();
+            substituted[index].contents = substituted[index].contents.replace("6.2.12", "6.2.11");
+            assert_eq!(
+                validate_runtime_dependency_contract(&substituted, true)
+                    .unwrap_err()
+                    .code,
+                "JADPO_TARGET_DEPENDENCY_MANIFEST"
+            );
+        }
+        for import in ["jose/dist/webapi/index.js", "other-package"] {
+            let mut escaped = approved.clone();
+            escaped[2].contents = format!("import {{ jwtVerify }} from \"{import}\";");
+            assert_eq!(
+                validate_runtime_dependency_contract(&escaped, true)
+                    .unwrap_err()
+                    .code,
+                "JADPO_TARGET_EXTERNAL_MODULE"
+            );
+        }
+        let mut escaped = approved.clone();
+        escaped[2].relative_path = "target/app.ts";
+        assert_eq!(
+            validate_runtime_dependency_contract(&escaped, true)
+                .unwrap_err()
+                .code,
+            "JADPO_TARGET_EXTERNAL_MODULE"
+        );
+        for path in [
+            "package.json",
+            "target/node_modules/jose/index.ts",
+            "target/bun.lockb",
+        ] {
+            let mut unexpected = approved.clone();
+            unexpected.push(GeneratedArtifact {
+                relative_path: path,
+                contents: "".to_owned(),
+            });
+            assert_eq!(
+                validate_runtime_dependency_contract(&unexpected, true)
+                    .unwrap_err()
+                    .code,
+                "JADPO_TARGET_DEPENDENCY_MANIFEST"
+            );
+        }
+        let mut duplicate = approved.clone();
+        duplicate.push(approved[0].clone());
+        assert!(validate_runtime_dependency_contract(&duplicate, true).is_err());
+        assert!(validate_runtime_dependency_contract(&approved[1..], true).is_err());
     }
 
     #[test]

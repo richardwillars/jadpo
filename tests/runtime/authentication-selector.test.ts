@@ -56,6 +56,46 @@ async function faultCode(operation: Promise<unknown>): Promise<string> {
 }
 
 describe("compiler-owned authentication selector", () => {
+  test("verified external identities use one request-local authority result even on fresh routes", async () => {
+    for (const freshAuthority of [false, true]) {
+      const { adapter, calls } = fakeAdapter({
+        kind: "authoritative", principalKind: "user", subject: principal.subject,
+        resolution: { kind: "active", principal: { ...principal, authenticationStrength: "jwt" } },
+      });
+      expect(await authenticateRequest(request({ authorization: "Bearer a.b.c" }), { freshAuthority }, adapter))
+        .toEqual({ ...principal, authenticationStrength: "jwt" });
+      expect(calls).toEqual({ validate: 1, resolve: 0 });
+    }
+  });
+
+  test("external authority outcomes preserve failures and reject identity substitution", async () => {
+    for (const [resolution, expected] of [
+      [{ kind: "inactive", failureName: "PrincipalInactive" }, "principal_inactive"],
+      [{ kind: "missing" }, "invalid_credentials"],
+      [{ kind: "duplicate" }, "authority_invariant"],
+      [{ kind: "unavailable" }, "authentication_unavailable"],
+      [{ kind: "active", principal: { ...principal, subject: "another-user" } }, "authority_invariant"],
+      [{ kind: "active", principal: servicePrincipal }, "authority_invariant"],
+      [{ kind: "active", principal, claims: { admin: true } }, "authority_invariant"],
+    ] as const) {
+      const { adapter, calls } = fakeAdapter({ kind: "authoritative", principalKind: "user", subject: principal.subject, resolution } as ValidationResult);
+      expect(await faultCode(authenticateRequest(request({ authorization: "Bearer a.b.c" }), { freshAuthority: true }, adapter))).toBe(expected);
+      expect(calls).toEqual({ validate: 1, resolve: 0 });
+    }
+  });
+
+  test("a pre-resolved identity cannot bypass its configured validator or closed envelope", async () => {
+    const base = { kind: "authoritative", principalKind: "user", subject: principal.subject, resolution: { kind: "active", principal } };
+    for (const [headers, validation] of [
+      [{ cookie: "selector_session=a.b.c" }, base],
+      [{ authorization: "Bearer a.b.c" }, { ...base, subject: "" }],
+      [{ authorization: "Bearer a.b.c" }, { ...base, claims: { admin: true } }],
+    ] as const) {
+      const { adapter } = fakeAdapter(validation as ValidationResult);
+      expect(await faultCode(authenticateRequest(request(headers), { freshAuthority: false }, adapter))).toBe("authority_invariant");
+    }
+  });
+
   test("zero credentials fails before adapter work", async () => {
     const { adapter, calls } = fakeAdapter({
       kind: "valid",

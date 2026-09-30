@@ -106,6 +106,7 @@ struct Catalogue {
     persistence_constraints: BTreeSet<String>,
     inverses: BTreeMap<String, BTreeMap<String, InverseInfo>>,
     owning_references: BTreeMap<String, BTreeMap<String, OwningReferenceInfo>>,
+    field_reference_targets: BTreeMap<(String, String), String>,
     record_kinds: BTreeMap<String, jadpo_syntax::RecordKind>,
     enums: BTreeMap<String, BTreeMap<String, BTreeMap<String, RecordField>>>,
     configuration: BTreeMap<String, RecordField>,
@@ -375,6 +376,14 @@ impl Catalogue {
                             .insert(declaration.name.text.clone(), variants);
                     }
                     Declaration::Record(declaration) => {
+                        for field in &declaration.fields {
+                            if let Some(reference) = &field.reference {
+                                catalogue.field_reference_targets.insert(
+                                    (declaration.name.text.clone(), field.name.text.clone()),
+                                    reference.target.path[0].text.clone(),
+                                );
+                            }
+                        }
                         catalogue
                             .record_kinds
                             .insert(declaration.name.text.clone(), declaration.kind);
@@ -1013,9 +1022,57 @@ impl TypeChecker<'_> {
         source: &str,
     ) {
         for validator in &strategy.validators {
+            if validator.mode.text == "jwt"
+                && !matches!(
+                    strategy.transport.location,
+                    jadpo_syntax::CredentialLocation::Bearer(_)
+                )
+            {
+                self.push_diagnostic("TYPE_AUTH_JWT_TRANSPORT", source, validator.mode.range);
+            }
             let mut seen = BTreeSet::new();
             for setting in &validator.settings {
                 let name = setting.name.text.as_str();
+                if name == "owner" {
+                    let valid = match &setting.value {
+                        Expression::Name(reference) if reference.path.len() == 2 => {
+                            let entity = &reference.path[0].text;
+                            let field = &reference.path[1].text;
+                            validator.mode.text == "api_key"
+                                && validator.principal.text == "service"
+                                && strategy.resolutions.iter().any(|resolution| {
+                                    resolution.principal.text == "service"
+                                        && resolution
+                                            .authority
+                                            .path
+                                            .first()
+                                            .is_some_and(|n| &n.text == entity)
+                                })
+                                && self
+                                    .catalogue
+                                    .records
+                                    .get(entity)
+                                    .and_then(|fields| fields.get(field))
+                                    .is_some_and(|field| {
+                                        !field.optional
+                                            && !field.declared_type.nullable
+                                            && !field.declared_type.secret
+                                    })
+                                && self
+                                    .catalogue
+                                    .field_reference_targets
+                                    .get(&(entity.clone(), field.clone()))
+                                    .is_some_and(|target| {
+                                        self.catalogue.persistent_entities.contains(target)
+                                    })
+                        }
+                        _ => false,
+                    };
+                    if !valid || !seen.insert(name) {
+                        self.push_diagnostic("TYPE_AUTH_ADAPTER_SETTING", source, setting.range);
+                    }
+                    continue;
+                }
                 let secret = matches!(name, "secret" | "previous_secret");
                 let declared = match &setting.value {
                     Expression::Name(reference)
@@ -1041,10 +1098,12 @@ impl TypeChecker<'_> {
                             Some("Text" | "Url")
                         )
                 });
-                if !matches!(name, "secret" | "previous_secret" | "audience" | "origin")
-                    || !seen.insert(name)
-                    || !valid
-                {
+                let allowed = if validator.mode.text == "jwt" {
+                    matches!(name, "issuer" | "audience" | "jwks_uri")
+                } else {
+                    matches!(name, "secret" | "previous_secret" | "audience" | "origin")
+                };
+                if !allowed || !seen.insert(name) || !valid {
                     self.push_diagnostic("TYPE_AUTH_ADAPTER_SETTING", source, setting.range);
                 }
             }
@@ -1096,7 +1155,7 @@ impl TypeChecker<'_> {
                 .catalogue
                 .failures
                 .get(&resolution.inactive.text)
-                .is_some_and(|kind| kind != "Rejected")
+                .is_some_and(|kind| !matches!(kind.as_str(), "Rejected" | "NotPermitted"))
             {
                 self.push_diagnostic(
                     "TYPE_AUTH_INACTIVE_FAILURE_KIND",

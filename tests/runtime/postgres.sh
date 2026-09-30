@@ -3,8 +3,8 @@ set -euo pipefail
 
 mode=${1:-}
 case "$mode" in
-  authentication|persistence|validation-persistence|validation-auth-policy) ;;
-  *) echo 'Usage: bash tests/runtime/postgres.sh authentication|persistence|validation-persistence|validation-auth-policy' >&2; exit 2 ;;
+  authentication|service-authentication|jwt-authentication|persistence|validation-persistence|validation-auth-policy) ;;
+  *) echo 'Usage: bash tests/runtime/postgres.sh authentication|service-authentication|jwt-authentication|persistence|validation-persistence|validation-auth-policy' >&2; exit 2 ;;
 esac
 for executable in initdb pg_ctl createdb postgres bun; do
   command -v "$executable" >/dev/null || { echo "Required executable: $executable" >&2; exit 1; }
@@ -28,10 +28,16 @@ if ! pg_ctl -D "$cluster/data" -l "$cluster/server.log" -o "-h 127.0.0.1 -p $por
 fi
 createdb -h 127.0.0.1 -p "$port" -U jadpo_auth_test jadpo_auth_test_runtime
 cd "$repository"
-unset DATABASE_URL SQLITE_PATH JADPO_AUTH_TEST_DATABASE_URL JADPO_VALIDATION_PERSISTENCE_DATABASE_URL JADPO_VALIDATION_AUTH_POLICY_DATABASE_URL JADPO_DEBUG_TARGET_STACKS
+unset DATABASE_URL SQLITE_PATH JADPO_AUTH_TEST_DATABASE_URL JADPO_SERVICE_AUTH_DATABASE_URL JADPO_JWT_AUTH_DATABASE_URL JADPO_VALIDATION_PERSISTENCE_DATABASE_URL JADPO_VALIDATION_AUTH_POLICY_DATABASE_URL JADPO_DEBUG_TARGET_STACKS
 if [[ "$mode" == authentication ]]; then
   JADPO_AUTH_TEST_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
     bun --no-install --env-file=/dev/null test tests/runtime/first-party-authentication.test.ts
+elif [[ "$mode" == service-authentication ]]; then
+  JADPO_SERVICE_AUTH_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
+    bun --no-install --env-file=/dev/null test tests/runtime/service-authentication.test.ts
+elif [[ "$mode" == jwt-authentication ]]; then
+  JADPO_JWT_AUTH_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
+    bun --no-install --env-file=/dev/null test tests/runtime/jwt-integration.test.ts
 elif [[ "$mode" == validation-persistence ]]; then
   JADPO_VALIDATION_PERSISTENCE_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
     bun --no-install --env-file=/dev/null test tests/runtime/validation-persistence.test.ts

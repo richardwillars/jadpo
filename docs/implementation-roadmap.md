@@ -1671,7 +1671,9 @@ from the compiler graph.
 
 ### WASM-EXP1 — Bounded Wasm runtime experiment
 
-**Status:** not started; scheduled by the project owner on 2026-09-29.
+**Status:** preregistered; authentication runtime extensions and the subsequent
+45-step validation gate passed on 2026-09-30. Probe implementation has not yet
+started. See [the bounded protocol](wasm-experiment-plan.md).
 
 **Placement:** after completion of the agreed authentication scope and the
 subsequent comprehensive validation phase, as clarified by the owner on
@@ -3641,3 +3643,23 @@ behavior and deployment hooks still need their own evidence. P10R still needs
 outside review and five first-user sessions, and DX2 needs fresh-agent/user
 repair-cycle evidence. These gates remain open; passing local authentication
 and compiler tests does not create a release-equivalent assurance claim.
+
+### 2026-09-30 — Service/JWT runtime and validation checkpoint
+
+The unattended through-Wasm continuation added service credential ownership,
+verifier-only storage, rotation/revocation and bounded exchange, plus opt-in
+pinned JWT verification with one authoritative principal lookup per request.
+Review fixed explicit service identity mapping, originating service strength,
+cookie-JWT rejection, and the existing golden `NotPermitted` inactive category.
+The dependency installer verifies the package's complete bytes and inventory.
+
+The full local gate passed 45 steps: 383 Rust tests, 180 compile fixture pairs,
+four editor tests, 21 verifier/dependency tests, 205 local runtime cases and 91
+PostgreSQL cases. One SQLite-only query-count case is explicitly skipped in
+PostgreSQL. Golden remains 60 diagnostics and 44 unexecuted integrated cases;
+P10R/P12 and production qualification remain external/separate exits.
+
+This follows the scoped browser/API milestone and comprehensive validation;
+the added service/JWT runtime evidence strengthens the Wasm start checkpoint.
+It does not claim all AUTH-P7/P8 or P11 exits. The experiment remains bounded,
+uses fixture principals and does not select a production backend.

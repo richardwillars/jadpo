@@ -1912,10 +1912,15 @@ fn data_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
 
 fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     let (summary, reason, next) = match code {
+        "TYPE_AUTH_JWT_TRANSPORT" => (
+            "JWT validation requires bearer transport",
+            "The compiler-owned external JWT adapter accepts only the reserved Authorization bearer credential slot. Cookie authentication requires a first-party adapter with the browser CSRF boundary.",
+            "Configure JWT validation under the bearer strategy without changing protected route requirements",
+        ),
         "TYPE_AUTH_ADAPTER_SETTING" => (
             "Authentication adapter setting is invalid",
-            "First-party validators accept unique secret, previous_secret, audience and origin settings. Keys must reference secret textual configuration; audience and origin must be non-secret text literals or configuration references.",
-            "Use declared secret configuration for keys and non-secret text for audience and origin",
+            "First-party validators accept unique secret, previous_secret, audience and origin settings. Keys reference secret textual configuration. JWT validators accept only non-secret issuer, audience and jwks_uri text or URL settings. Service API keys may bind owner to a required persistent entity reference on their authority.",
+            "Use the settings belonging to the selected validator and explicit configuration or authority references",
         ),
         "TYPE_AUTH_RESERVED_ROUTE_INPUT" => (
             "Credential transport cannot be ordinary route input",
@@ -1965,7 +1970,7 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         "TYPE_AUTH_INACTIVE_FAILURE_KIND" => (
             "Inactive-principal failure has the wrong category",
             "A valid credential for a disabled user or service is an explicit application rejection, not absence, conflict, or an internal fault.",
-            "Declare the inactive failure with `kind: Rejected`",
+            "Declare the inactive failure with `kind: NotPermitted` (403) or `kind: Rejected` (422) to match the application contract",
         ),
         "TYPE_AUTH_RESOLUTION_REQUIRED" => (
             "Authentication validator has no authority resolution",

@@ -76,7 +76,7 @@ def main():
     output = ROOT / 'build/validation' / (time.strftime('%Y%m%dT%H%M%S') + f'-{os.getpid()}')
     output.mkdir(parents=True)
     environment = os.environ.copy()
-    for name in ['DATABASE_URL', 'SQLITE_PATH', 'JADPO_AUTH_TEST_DATABASE_URL', 'JADPO_VALIDATION_PERSISTENCE_DATABASE_URL', 'JADPO_VALIDATION_AUTH_POLICY_DATABASE_URL', 'JADPO_DEBUG_TARGET_STACKS', 'JADPO_BIN']:
+    for name in ['DATABASE_URL', 'SQLITE_PATH', 'JADPO_AUTH_TEST_DATABASE_URL', 'JADPO_SERVICE_AUTH_DATABASE_URL', 'JADPO_JWT_AUTH_DATABASE_URL', 'JADPO_JWT_DEPENDENCY_DIR', 'JADPO_VALIDATION_PERSISTENCE_DATABASE_URL', 'JADPO_VALIDATION_AUTH_POLICY_DATABASE_URL', 'JADPO_DEBUG_TARGET_STACKS', 'JADPO_BIN']:
         environment.pop(name, None)
     environment['JADPO_BIN'] = str(COMPILER)
     environment['NO_COLOR'] = '1'
@@ -123,6 +123,7 @@ def main():
         for name in manifest['build_fixtures']:
             step('build-' + Path(name).stem, [str(COMPILER), 'build', name])
         step('authored-tests', [str(COMPILER), 'test', 'examples/test-fixtures'])
+        step('jwt-explicit-dependency-install', [sys.executable, 'tools/install-jwt-dependency.py'])
         for name in manifest['runtime_suites']:
             step(Path(name).name.removesuffix('.test.ts'), ['bun', '--no-install', f'--env-file={os.devnull}', 'test', name])
         for mode in [*manifest['postgres_suites'].values(), *manifest['additional_postgres_modes']]:

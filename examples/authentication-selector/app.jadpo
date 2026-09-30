@@ -60,6 +60,7 @@ authentication api_bearer {
     transport { bearer: authorization_header }
     validators {
         opaque_user { mode: opaque principal: user }
+        jwt_user { mode: jwt principal: user }
         service_key { mode: api_key principal: service }
     }
     resolution user {

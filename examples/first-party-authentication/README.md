@@ -83,7 +83,11 @@ The checkpoint supports one first-party user validator per transport strategy,
 a persisted unique subject authority, and an identity principal with `subject`,
 `user_id` (UUID) and optionally textual `authentication_strength`. Unsupported
 strategies, incomplete configuration and richer principal mappings still fail
-protected target generation. Service keys/exchange and JWT remain later slices.
+protected target generation. That describes this original checkpoint. The
+2026-09-30 [runtime extensions](../../docs/auth-runtime-extensions.md) add
+service keys/exchange and opt-in pinned JWT verification, including mixed bearer
+validators, in separate registered fixtures. This example remains the browser/API
+baseline.
 
 The generated authentication audit and OpenAPI list the configured transports,
 revocation mode and protected/fresh routes. Evidence covers SQLite, real local

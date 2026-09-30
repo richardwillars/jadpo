@@ -229,3 +229,54 @@ CREATE-002, READ-003 and LIST-004 expect 422/specific codes whereas the current
 target returns 400/invalid_request. Their original expectations are retained and
 the map marks them needs_clarification, not passed. This is separate from the
 five resolved authentication/accounting discrepancies.
+
+## 2026-09-30 unattended continuation through WASM-EXP1
+
+The owner requested continued unattended work until the Wasm experiment is done.
+This supersedes the previous heartbeat's validation-only scope and paused state.
+The active goal and existing 30-minute heartbeat now cover agreed authentication,
+validation, then the bounded experiment. Do not stop at a completed work package.
+The starting implementation checkpoint is `fa7e7d5`; the scratch example edit and
+untracked VSIX remain excluded. No production target migration is authorized.
+
+Current assignments:
+
+- `validation_types`: AUTH-P5 service identity/ownership, verifier-only opaque
+  credentials, rotation/revocation and bounded exchange; runtime/generator and
+  focused black-box evidence. Root integrates shared files.
+- `validation_failures`: AUTH-P6 pinned JOSE dependency evidence, isolated JWT
+  verification/discovery runtime and adversarial tests. Root integrates generated
+  dependency closure, semantic settings and selector/authority handling.
+- `cold_start_pilot`: preregister `docs/wasm-experiment-plan.md`, tool/host
+  preflight and paper compatibility. No experiment implementation before auth
+  prerequisites and post-change validation pass.
+- Root: compiler integration, independent review, full verification, coherent
+  Git checkpoints, gate accounting and later experiment integration.
+
+Read-only Cloudflare connector access succeeded. This establishes account access,
+not Worker deployment or runtime evidence. Disposable experiment deployment is
+within the requested experiment; existing applications and paid plan changes are
+outside this scope. The experiment protocol will freeze its source and toolchain
+after prerequisites, before lowering or measurement. Formal external review and
+unimplemented golden obligations remain separately recorded gates.
+
+### Runtime extensions verified; ready for bounded Wasm probes
+
+All assigned authentication work is integrated and reviewed. Final full gate:
+`build/validation/20260930T024217-25646/report.json`, SHA-256
+`7325a2ce5851b6e63361dfc2185b3b0c145fab7ba8550a3b3ed0d8acfd318ad9`.
+45 steps passed: 383 Rust, 180 compile fixture pairs, four editor, 21 Python,
+205 local runtime and 91 PostgreSQL cases. PostgreSQL explicitly skips the one
+SQLite-only JWT query counter. No full golden case is marked executed.
+
+The service/JWT findings and runtime guide retain the exact supported shapes,
+install/provenance evidence and boundaries. The golden already declared
+`NotPermitted` for disabled principals; allowing that existing 403 category
+fixes a compiler restriction, not an unresolved owner decision. Existing
+`Rejected` / 422 cases remain valid. All 44 golden expectations are untouched.
+
+Next: commit this coordinated authentication boundary, freeze the Wasm protocol
+and fixture, prepare the pinned tools, then execute the equal route probes.
+Do not repeat the completed auth work or wait for another “continue”. The
+scoped auth milestone plus comprehensive validation is satisfied; full P11
+golden/tooling/external assurance remains separately open as documented.

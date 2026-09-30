@@ -5,82 +5,155 @@ impl TargetGenerator<'_> {
         if !self.has_authentication() || self.configuration.is_none() {
             return false;
         }
-        let user = self
-            .principal
-            .unwrap()
-            .variants
-            .iter()
-            .find(|v| v.kind.as_str() == "user")
-            .unwrap();
-        if user.fields.iter().any(|f| {
-            !matches!(
-                f.name.text.as_str(),
-                "subject" | "user_id" | "authentication_strength"
-            ) || f.optional
-        }) {
-            return false;
-        }
-        if !user.fields.iter().any(|f| f.name.text == "user_id") {
-            return false;
-        }
-        if user.fields.iter().any(|f| {
-            matches!(f.name.text.as_str(), "subject" | "authentication_strength")
-                && self.representation_root_for(&f.field_type) != "Text"
-        }) {
-            return false;
-        }
         let bounded = self.application.unwrap().authentication.revocation.mode
             == jadpo_syntax::RevocationMode::Bounded;
         self.authentication_strategies.iter().all(|strategy| {
-            if strategy.validators.len() != 1 || strategy.resolutions.len() != 1 {
+            let mut modes = BTreeSet::new();
+            if strategy.validators.is_empty() {
                 return false;
             }
-            let validator = &strategy.validators[0];
-            if validator.principal.text != "user"
-                || !matches!(validator.mode.text.as_str(), "signed" | "opaque")
-                || (!bounded && validator.mode.text == "signed")
-            {
+            if strategy.resolutions.iter().any(|resolution| {
+                !strategy
+                    .validators
+                    .iter()
+                    .any(|validator| validator.principal.text == resolution.principal.text)
+            }) {
                 return false;
             }
-            let names = validator
-                .settings
-                .iter()
-                .map(|s| s.name.text.as_str())
-                .collect::<BTreeSet<_>>();
-            if !names.contains("secret")
-                || !names.contains("audience")
-                || (matches!(
+            for validator in &strategy.validators {
+                let kind = validator.principal.text.as_str();
+                let mode = validator.mode.text.as_str();
+                if !modes.insert((kind, mode))
+                    || !matches!(
+                        (kind, mode),
+                        ("user", "signed" | "opaque" | "jwt") | ("service", "api_key" | "signed")
+                    )
+                    || (mode == "signed" && !bounded)
+                {
+                    return false;
+                }
+                let cookie = matches!(
                     strategy.transport.location,
                     jadpo_syntax::CredentialLocation::Cookie(_)
-                ) && !names.contains("origin"))
-            {
-                return false;
+                );
+                if (kind == "service" || mode == "jwt") && cookie {
+                    return false;
+                }
+                let names = validator
+                    .settings
+                    .iter()
+                    .map(|s| s.name.text.as_str())
+                    .collect::<BTreeSet<_>>();
+                if (mode != "jwt" && !names.contains("secret"))
+                    || (mode == "jwt" && !names.contains("issuer"))
+                    || !names.contains("audience")
+                    || (cookie && !names.contains("origin"))
+                {
+                    return false;
+                }
+                let Some(resolution) = strategy
+                    .resolutions
+                    .iter()
+                    .find(|r| r.principal.text == kind)
+                else {
+                    return false;
+                };
+                if resolution.authority.path.len() != 2 {
+                    return false;
+                }
+                let Some(record) = self.records.get(&resolution.authority.path[0].text) else {
+                    return false;
+                };
+                if !record.is_persistent_entity() {
+                    return false;
+                }
+                let id_name = if kind == "user" {
+                    "user_id"
+                } else {
+                    "service_id"
+                };
+                let variant = self
+                    .principal
+                    .unwrap()
+                    .variants
+                    .iter()
+                    .find(|v| v.kind.as_str() == kind)
+                    .unwrap();
+                if !variant.fields.iter().any(|f| f.name.text == id_name)
+                    || variant.fields.iter().any(|f| {
+                        f.optional
+                            || self.reference_is_nullable(&f.field_type)
+                            || !matches!(
+                                f.name.text.as_str(),
+                                "subject" | "authentication_strength"
+                            ) && f.name.text != id_name
+                            || matches!(f.name.text.as_str(), "subject" | "authentication_strength")
+                                && self.representation_root_for(&f.field_type) != "Text"
+                    })
+                {
+                    return false;
+                }
+                let Some(id) = resolution
+                    .mappings
+                    .iter()
+                    .find(|m| m.target.path.last().is_some_and(|n| n.text == id_name))
+                else {
+                    return false;
+                };
+                if !record.fields.iter().any(|f| {
+                    f.name.text == id.source.text
+                        && f.persistence.contains(&PersistenceModifier::Identity)
+                        && self.representation_root_for(&f.field_type) == "Uuid"
+                }) || !resolution.mappings.iter().any(|m| {
+                    m.source.text == resolution.authority.path[1].text
+                        && m.target.path.last().is_some_and(|n| n.text == "subject")
+                }) {
+                    return false;
+                }
+                if mode == "api_key" {
+                    let Some(owner) = validator.settings.iter().find(|s| s.name.text == "owner")
+                    else {
+                        return false;
+                    };
+                    let Expression::Name(owner) = &owner.value else {
+                        return false;
+                    };
+                    if owner.path.len() != 2 || owner.path[0].text != record.name.text {
+                        return false;
+                    }
+                    let Some(field) = record
+                        .fields
+                        .iter()
+                        .find(|f| f.name.text == owner.path[1].text)
+                    else {
+                        return false;
+                    };
+                    if field.optional || self.reference_is_nullable(&field.field_type) {
+                        return false;
+                    }
+                    let Some(reference) = &field.reference else {
+                        return false;
+                    };
+                    let target = type_name(&reference.target);
+                    let Some((entity, field)) = target.split_once('.') else {
+                        return false;
+                    };
+                    let Some(owner_record) = self.records.get(entity) else {
+                        return false;
+                    };
+                    if !owner_record.is_persistent_entity()
+                        || !owner_record.fields.iter().any(|f| {
+                            f.name.text == field
+                                && f.persistence.contains(&PersistenceModifier::Identity)
+                        })
+                    {
+                        return false;
+                    }
+                }
             }
-            let resolution = &strategy.resolutions[0];
-            if resolution.principal.text != "user" || resolution.authority.path.len() != 2 {
-                return false;
-            }
-            let Some(record) = self.records.get(&resolution.authority.path[0].text) else {
-                return false;
-            };
-            if !record.is_persistent_entity() {
-                return false;
-            }
-            let Some(id) = resolution
-                .mappings
-                .iter()
-                .find(|m| m.target.path.last().is_some_and(|n| n.text == "user_id"))
-            else {
-                return false;
-            };
-            record.fields.iter().any(|f| {
-                f.name.text == id.source.text
-                    && f.persistence.contains(&PersistenceModifier::Identity)
-                    && self.representation_root_for(&f.field_type) == "Uuid"
-            }) && resolution.mappings.iter().any(|m| {
-                m.source.text == resolution.authority.path[1].text
-                    && m.target.path.last().is_some_and(|n| n.text == "subject")
-            })
+            // A bounded service token can only originate from the declared key
+            // authority in this same credential slot; there is no host mint shortcut.
+            !modes.contains(&("service", "signed")) || modes.contains(&("service", "api_key"))
         })
     }
 
@@ -95,31 +168,11 @@ impl TargetGenerator<'_> {
             output,
             "  const generation = ++authenticationInitialization;",
         );
-        line(output, "  firstPartyAuthentication = undefined;\n  const initialized = await createFirstPartyAuthentication([");
-        let delay = self.application.unwrap().authentication.revocation.maximum_delay.as_ref().map(|v| format!("durationMilliseconds(normalizeConfigurationDuration({}, \"authentication.maximum_delay\"), \"authentication.maximum_delay\")", ts_string(&v.text))).unwrap_or("0".to_owned());
-        for strategy in &self.authentication_strategies {
-            let validator = &strategy.validators[0];
-            let setting = |name: &str| {
-                validator
-                    .settings
-                    .iter()
-                    .find(|s| s.name.text == name)
-                    .map(|s| self.expression(&s.value))
-                    .unwrap_or("undefined".to_owned())
-            };
-            let cookie = match &strategy.transport.location {
-                jadpo_syntax::CredentialLocation::Cookie(c) => ts_string(unquote(&c.text)),
-                _ => "null".to_owned(),
-            };
-            line(output, &format!("    {{ name: {}, mode: {}, cookie: {}, secret: {}, previousSecret: {}, audience: {}, origin: {} ?? null, maximumDelayMs: {} }},", ts_string(&strategy.name.text), ts_string(&validator.mode.text), cookie, setting("secret"), setting("previous_secret"), setting("audience"), setting("origin"), delay));
-        }
+        line(output, "  firstPartyAuthentication = undefined;");
+        line(output, "  const resolvePrincipal = async (strategy: string, subject: string, strength: string, principalKind: \"user\" | \"service\" = \"user\"): Promise<import(\"./authentication.ts\").ResolutionResult> => {");
         line(
             output,
-            "  ], authenticationStorage, async (strategy, subject, strength) => {",
-        );
-        line(
-            output,
-            "    const rows = await resolveAuthenticationAuthority(strategy, subject);",
+            "    const rows = await resolveAuthenticationAuthority(strategy, subject, principalKind);",
         );
         line(
             output,
@@ -129,64 +182,160 @@ impl TargetGenerator<'_> {
             output,
             "    if (rows.length !== 1) return { kind: \"duplicate\" };",
         );
-        line(output, "    switch (strategy) {");
+        line(output, "    switch (`${strategy}:${principalKind}`) {");
         for strategy in &self.authentication_strategies {
-            let resolution = &strategy.resolutions[0];
-            let entity = &resolution.authority.path[0].text;
-            let record = self.records.get(entity).unwrap();
-            let fields = record
-                .fields
-                .iter()
-                .map(|f| f.name.text.as_str())
-                .collect::<Vec<_>>()
-                .join(", ");
-            let id = resolution
-                .mappings
-                .iter()
-                .find(|m| m.target.path.last().is_some_and(|n| n.text == "user_id"))
-                .unwrap();
-            line(
-                output,
-                &format!("      case {}: {{", ts_string(&strategy.name.text)),
-            );
-            line(
+            for resolution in &strategy.resolutions {
+                let entity = &resolution.authority.path[0].text;
+                let record = self.records.get(entity).unwrap();
+                let fields = record
+                    .fields
+                    .iter()
+                    .map(|f| f.name.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let id = resolution
+                    .mappings
+                    .iter()
+                    .find(|m| {
+                        m.target.path.last().is_some_and(|n| {
+                            n.text
+                                == if resolution.principal.text == "user" {
+                                    "user_id"
+                                } else {
+                                    "service_id"
+                                }
+                        })
+                    })
+                    .unwrap();
+                line(
+                    output,
+                    &format!(
+                        "      case {}: {{",
+                        ts_string(&format!(
+                            "{}:{}",
+                            strategy.name.text, resolution.principal.text
+                        ))
+                    ),
+                );
+                line(
                 output,
                 "        const authorityRow = expectObject(rows[0], \"authentication.authority\");",
             );
-            line(
-                output,
-                &format!("        const {{ {fields} }} = validate_{entity}({{"),
-            );
-            for field in &record.fields {
-                let raw = format!("authorityRow[{}]", ts_string(&field.name.text));
-                let decoded = self.database_decode_expression(
-                    &field.field_type,
-                    &raw,
-                    "\"authentication.authority\"",
-                );
                 line(
                     output,
-                    &format!("          {}: {},", field.name.text, decoded),
+                    &format!("        const {{ {fields} }} = validate_{entity}({{"),
                 );
+                for field in &record.fields {
+                    let raw = format!("authorityRow[{}]", ts_string(&field.name.text));
+                    let decoded = self.database_decode_expression(
+                        &field.field_type,
+                        &raw,
+                        "\"authentication.authority\"",
+                    );
+                    line(
+                        output,
+                        &format!("          {}: {},", field.name.text, decoded),
+                    );
+                }
+                line(output, "        }, \"authentication.authority\");");
+                line(
+                    output,
+                    &format!(
+                        "        if (!({})) return {{ kind: \"inactive\", failureName: {} }};",
+                        self.expression(&resolution.active),
+                        ts_string(&resolution.inactive.text)
+                    ),
+                );
+                line(output, &format!("        return {{ kind: \"active\", principal: {{ kind: {}, subject: {}, authenticationStrength: strength, values: {{ {}: {} }} }} }};", ts_string(&resolution.principal.text), resolution.authority.path[1].text, if resolution.principal.text == "user" { "user_id" } else { "service_id" }, id.source.text));
+                line(output, "      }");
             }
-            line(output, "        }, \"authentication.authority\");");
-            line(
-                output,
-                &format!(
-                    "        if (!({})) return {{ kind: \"inactive\", failureName: {} }};",
-                    self.expression(&resolution.active),
-                    ts_string(&resolution.inactive.text)
-                ),
-            );
-            line(output, &format!("        return {{ kind: \"active\", principal: {{ kind: \"user\", subject: {}, authenticationStrength: strength, values: {{ user_id: {} }} }} }};", resolution.authority.path[1].text, id.source.text));
-            line(output, "      }");
         }
         line(
             output,
             "      default: throw new AuthenticationFault(\"authentication_misconfigured\", 503);",
         );
         line(output, "    }");
-        line(output, "  });");
+        line(output, "  };");
+        if self.has_jwt() {
+            line(output, "  const jwt = createJwtAuthentication([");
+            for strategy in &self.authentication_strategies {
+                for validator in &strategy.validators {
+                    if validator.mode.text != "jwt" {
+                        continue;
+                    }
+                    let setting = |name: &str| {
+                        validator
+                            .settings
+                            .iter()
+                            .find(|s| s.name.text == name)
+                            .map(|s| self.expression(&s.value))
+                            .unwrap_or("undefined".to_owned())
+                    };
+                    line(
+                        output,
+                        &format!(
+                            "    {{ name: {}, issuer: {}, audience: {}, jwksUri: {} }},",
+                            ts_string(&strategy.name.text),
+                            setting("issuer"),
+                            setting("audience"),
+                            setting("jwks_uri")
+                        ),
+                    );
+                }
+            }
+            line(output, "  ]);");
+            line(output, "  if (!jwt.configured) throw new AuthenticationFault(\"authentication_misconfigured\", 503);");
+            let slots = self
+                .authentication_strategies
+                .iter()
+                .filter(|s| s.validators.iter().any(|v| v.mode.text == "jwt"))
+                .map(|s| ts_string(&s.name.text))
+                .collect::<Vec<_>>()
+                .join(", ");
+            line(output, &format!("  const jwtSlots = new Set([{slots}]);"));
+            output.push_str(r#"
+  const external = { async validate(name: string, credential: string, now: number): Promise<import("./authentication.ts").ValidationResult> {
+    if (!jwtSlots.has(name)) return { kind: "invalid" };
+    const result = await jwt.verify(name, credential, now);
+    if (result.kind !== "valid") return result;
+    const resolution = await resolvePrincipal(name, result.subject, result.authenticationStrength, "user");
+    return { kind: "authoritative", principalKind: "user", subject: result.subject, resolution };
+  } };
+"#);
+        }
+        line(
+            output,
+            "  const initialized = await createFirstPartyAuthentication([",
+        );
+        let delay = self.application.unwrap().authentication.revocation.maximum_delay.as_ref().map(|v| format!("durationMilliseconds(normalizeConfigurationDuration({}, \"authentication.maximum_delay\"), \"authentication.maximum_delay\")", ts_string(&v.text))).unwrap_or("0".to_owned());
+        for strategy in &self.authentication_strategies {
+            for validator in &strategy.validators {
+                if validator.mode.text == "jwt" {
+                    continue;
+                }
+                let setting = |name: &str| {
+                    validator
+                        .settings
+                        .iter()
+                        .find(|s| s.name.text == name)
+                        .map(|s| self.expression(&s.value))
+                        .unwrap_or("undefined".to_owned())
+                };
+                let cookie = match &strategy.transport.location {
+                    jadpo_syntax::CredentialLocation::Cookie(c) => ts_string(unquote(&c.text)),
+                    _ => "null".to_owned(),
+                };
+                line(output, &format!("    {{ name: {}, principal: {}, mode: {}, cookie: {}, secret: {}, previousSecret: {}, audience: {}, origin: {} ?? null, maximumDelayMs: {} }},", ts_string(&strategy.name.text), ts_string(&validator.principal.text), ts_string(&validator.mode.text), cookie, setting("secret"), setting("previous_secret"), setting("audience"), setting("origin"), delay));
+            }
+        }
+        line(
+            output,
+            if self.has_jwt() {
+                "  ], authenticationStorage, resolvePrincipal, external);"
+            } else {
+                "  ], authenticationStorage, resolvePrincipal);"
+            },
+        );
         line(output, "  if (generation !== authenticationInitialization) throw new AuthenticationFault(\"authentication_misconfigured\", 503);");
         line(output, "  firstPartyAuthentication = initialized;");
         line(output, "}");
@@ -209,6 +358,12 @@ else persistenceSync("authentication.schema", () => sqlite!.exec(authenticationS
 const probe = 'SELECT sessions.id, sessions.data, sessions.revoked FROM "__jadpo_auth_sessions" AS sessions LIMIT 0';
 if (postgres !== null) await persistenceAsync("authentication.schema.validate", () => postgres!.unsafe(probe));
 else persistenceSync("authentication.schema.validate", () => sqlite!.prepare(probe).all());
+const serviceSchema = 'CREATE TABLE IF NOT EXISTS "__jadpo_auth_service_credentials" ("id" TEXT PRIMARY KEY, "data" TEXT NOT NULL, "revoked" INTEGER NOT NULL DEFAULT 0)';
+if (postgres !== null) await persistenceAsync("authentication.schema", () => postgres!.unsafe(serviceSchema));
+else persistenceSync("authentication.schema", () => sqlite!.exec(serviceSchema));
+const serviceProbe = 'SELECT credentials.id, credentials.data, credentials.revoked FROM "__jadpo_auth_service_credentials" AS credentials LIMIT 0';
+if (postgres !== null) await persistenceAsync("authentication.schema.validate", () => postgres!.unsafe(serviceProbe));
+else persistenceSync("authentication.schema.validate", () => sqlite!.prepare(serviceProbe).all());
 }
 async function authenticationRows(sql: string, values: string[]): Promise<any[]> {
   if (postgres !== null) return persistenceAsync("authentication.authority", () => postgres!.unsafe(sql, values));
@@ -231,38 +386,55 @@ export const authenticationStorage = {
     if (postgres !== null) await persistenceAsync("authentication.revoke", () => postgres!.unsafe('UPDATE "__jadpo_auth_sessions" SET "revoked" = 1 WHERE "id" = $1', [id]));
     else await serializeSQLiteTransaction(async () => persistenceSync("authentication.revoke", () => sqlite!.prepare('UPDATE "__jadpo_auth_sessions" SET "revoked" = 1 WHERE "id" = ?').run(id)));
   },
+  async getServiceCredential(id: string) {
+    const rows = await authenticationRows('SELECT "data", "revoked" FROM "__jadpo_auth_service_credentials" WHERE "id" = $1', [id]);
+    if (rows.length === 0) return null;
+    if (rows.length !== 1) throw new Error("Invalid service credential cardinality");
+    const record = JSON.parse(rows[0].data);
+    return { ...record, revoked: rows[0].revoked !== 0 };
+  },
+  async putServiceCredential(credential: any) {
+    const values = [credential.id, JSON.stringify(credential)];
+    if (postgres !== null) await persistenceAsync("authentication.issue", () => postgres!.unsafe('INSERT INTO "__jadpo_auth_service_credentials" ("id", "data") VALUES ($1, $2)', values));
+    else await serializeSQLiteTransaction(async () => persistenceSync("authentication.issue", () => sqlite!.prepare('INSERT INTO "__jadpo_auth_service_credentials" ("id", "data") VALUES (?, ?)').run(...values)));
+  },
+  async revokeServiceCredential(id: string) {
+    if (postgres !== null) await persistenceAsync("authentication.revoke", () => postgres!.unsafe('UPDATE "__jadpo_auth_service_credentials" SET "revoked" = 1 WHERE "id" = $1', [id]));
+    else await serializeSQLiteTransaction(async () => persistenceSync("authentication.revoke", () => sqlite!.prepare('UPDATE "__jadpo_auth_service_credentials" SET "revoked" = 1 WHERE "id" = ?').run(id)));
+  },
 };
-export async function resolveAuthenticationAuthority(strategy: string, subject: string): Promise<unknown[]> {
-  switch (strategy) {
+export async function resolveAuthenticationAuthority(strategy: string, subject: string, principalKind = "user"): Promise<unknown[]> {
+  switch (`${strategy}:${principalKind}`) {
 "#);
         for strategy in &self.authentication_strategies {
-            let resolution = &strategy.resolutions[0];
-            let entity = &resolution.authority.path[0].text;
-            let query = format!(
-                "SELECT * FROM {} WHERE {} = $1 LIMIT 2",
-                sql_identifier(&snake_case(entity)),
-                sql_identifier(&resolution.authority.path[1].text)
-            );
-            let record = self.records.get(entity).unwrap();
-            // Reuse the persistence result decoder, including Boolean/Temporal values.
-            line(
-                output,
-                &format!(
+            for resolution in &strategy.resolutions {
+                let entity = &resolution.authority.path[0].text;
+                let query = format!(
+                    "SELECT * FROM {} WHERE {} = $1 LIMIT 2",
+                    sql_identifier(&snake_case(entity)),
+                    sql_identifier(&resolution.authority.path[1].text)
+                );
+                let record = self.records.get(entity).unwrap();
+                // Reuse the persistence result decoder, including Boolean/Temporal values.
+                line(
+                    output,
+                    &format!(
                     "    case {}: return (await authenticationRows({}, [subject])).map(row => ({{",
-                    ts_string(&strategy.name.text),
+                    ts_string(&format!("{}:{}", strategy.name.text, resolution.principal.text)),
                     ts_string(&query)
                 ),
-            );
-            for field in &record.fields {
-                let raw = format!("row[{}]", ts_string(&snake_case(&field.name.text)));
-                let value = if self.representation_root_for(&field.field_type) == "Bool" {
-                    format!("({raw} === 0 ? false : {raw} === 1 ? true : {raw})")
-                } else {
-                    raw
-                };
-                line(output, &format!("      {}: {},", field.name.text, value));
+                );
+                for field in &record.fields {
+                    let raw = format!("row[{}]", ts_string(&snake_case(&field.name.text)));
+                    let value = if self.representation_root_for(&field.field_type) == "Bool" {
+                        format!("({raw} === 0 ? false : {raw} === 1 ? true : {raw})")
+                    } else {
+                        raw
+                    };
+                    line(output, &format!("      {}: {},", field.name.text, value));
+                }
+                line(output, "    }));");
             }
-            line(output, "    }));");
         }
         line(
             output,

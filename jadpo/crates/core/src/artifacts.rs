@@ -750,6 +750,18 @@ impl<'project> ArtifactModel<'project> {
     fn authentication_audit_json(&self, project_path: &Path) -> String {
         let supported =
             crate::target::first_party_authentication_supported(project_path, self.project);
+        let jwt = crate::target::jwt_authentication_supported(project_path, self.project);
+        let dependencies = if jwt {
+            format!("[{}]", include_str!("runtime/jwt/dependency.json"))
+        } else {
+            "[]".to_owned()
+        };
+        let unsupported = if supported {
+            "[\"profile_bearing_principals\",\"public_login_endpoints\"]"
+        } else {
+            "[\"configured_runtime_pending\",\"profile_bearing_principals\",\"public_login_endpoints\"]"
+        };
+        let jwt_authority = if jwt { "\"verified_subject_resolves_once_on_every_request\"" } else { "null" };
         let strategies = self.authentication_strategies().into_iter().map(|strategy| {
             let (transport, location) = match &strategy.transport.location {
                 jadpo_syntax::CredentialLocation::Cookie(cookie) => ("cookie", cookie.text.trim_matches('"')),
@@ -788,7 +800,7 @@ impl<'project> ArtifactModel<'project> {
                 _ => None,
             })
             .unwrap_or("null".to_owned());
-        format!("{{\"schema_version\":1,\"runtime\":{},\"revocation\":{},\"strategies\":{},\"routes\":{},\"credential_selection\":\"exactly_one\",\"verification\":\"runtime_validation\",\"package_dependencies\":[],\"csrf\":\"cookie_mutations_require_configured_origin_and_session_bound_header\",\"unsupported\":[\"service_credentials\",\"jwt\",\"profile_bearing_principals\",\"public_login_endpoints\"],\"assurance\":\"exploratory; not an independent security review\"}}", json_string(if supported { "first_party" } else { "adapter_pending" }), revocation, json_array(strategies), self.routes_json())
+        format!("{{\"schema_version\":1,\"runtime\":{},\"revocation\":{},\"strategies\":{},\"routes\":{},\"credential_selection\":\"exactly_one\",\"verification\":\"runtime_validation\",\"package_dependencies\":{dependencies},\"csrf\":\"cookie_mutations_require_configured_origin_and_session_bound_header\",\"unsupported\":{unsupported},\"jwt_authority\":{jwt_authority},\"query_accounting\":\"principal_lookup_separate_from_credential_checks\",\"assurance\":\"exploratory; not an independent security review\"}}", json_string(if supported { "first_party" } else { "adapter_pending" }), revocation, json_array(strategies), self.routes_json())
     }
 
     fn openapi_json(&self) -> String {

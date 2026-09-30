@@ -1,6 +1,6 @@
 # AUTH-001 authentication implementation plan
 
-**Status:** AUTH-P0–P3 core and the scoped browser/API AUTH-P4/P7 milestone completed; service/JWT, broader principal mappings and full AUTH-P7/P8 exits remain open
+**Status:** AUTH-P0–P3 core and scoped browser/API AUTH-P4/P7 completed; scoped AUTH-P5/P6 runtime extensions verified; broader principal mappings and full AUTH-P7/P8 exits remain open
 **Prepared:** 2026-09-27
 **Accepted-contract digest:** `sha256:5cf32778486586b4645d226f3e4c1ebcd636d0d868b443c2be768d492003fb0b` (section 2, recorded 2026-09-27)
 **Scope:** browser, API, and service-to-service authentication plus
@@ -578,3 +578,34 @@ remain separate work.
 The next phase is the broader comprehensive validation programme requested by
 the owner; Wasm follows that phase. Extended fuzzing, production deployment
 qualification and independent security review remain explicit validation gaps.
+
+### 2026-09-30 service/JWT runtime extension
+
+The through-Wasm continuation also implements AUTH-P5 service credentials and
+AUTH-P6 external JWT validation before the experiment. The
+[runtime extension guide](auth-runtime-extensions.md) records the supported
+source, trusted lifecycle APIs, dependency installation, fixed validation limits,
+query accounting, evidence and remaining exits. This dated entry supersedes the
+earlier service/JWT generation-gated statement for those supported shapes.
+
+The selector inventories credentials once and dispatches recognized formats in
+the selected slot without retrying another verifier after rejection. Service
+keys have an explicit owner binding and separate verifier-only records. Bounded
+exchange preserves service kind/identity and originating authentication strength.
+JWTs yield only a verified subject, resolved authoritatively once per request;
+local IDs/profile/permissions cannot come from external claims. Non-JWT builds
+retain the dependency-free runtime. JWT builds emit the exact compiler-pinned
+package/lock and dated integrity, provenance, license and advisory evidence.
+
+Review corrected two compiler restrictions: policy identity uses the declared
+authority mapping rather than a name guess, and inactive failures can be
+`NotPermitted` (403) as already authored in the golden app, as well as `Rejected`
+(422). Golden assertions were not changed. Cookie JWTs are rejected to preserve
+the separate browser CSRF boundary.
+
+The original browser/API milestone plus comprehensive validation is the
+experiment's prerequisite; the first-party implementation by itself was never
+sufficient. These additional service/JWT suites strengthen that checkpoint.
+Full P11 golden integration, broader principal mappings, complete tooling and
+external assurance remain their separately named exits. The experiment uses
+fixture principals and does not claim portable production authentication.

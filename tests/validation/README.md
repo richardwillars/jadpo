@@ -18,6 +18,14 @@ Windows); Bun 1.2.20 ignores the unsupported `--no-env-file` flag. No existing
 application database is used. Persistence and auth/policy integration cases run
 against both SQLite and fresh PostgreSQL clusters.
 
+The gate explicitly installs the compiler-pinned JWT test dependency into an
+isolated cache before runtime tests. This is a named installation step with the
+compiler-owned manifest/lock; Bun runtime auto-install remains disabled. The
+service and generated JWT integration suites also run in disposable PostgreSQL
+modes. SQLite observes the JWT authority-query count directly; that SQLite-only
+instrumentation is reported as skipped in PostgreSQL, not as a PostgreSQL count
+proof. Non-JWT generated applications retain zero package dependencies.
+
 `--profile quick` explicitly skips live PostgreSQL and records those skips.
 `--require-golden` additionally fails while the full golden behavioural contract
 has no executable evidence. The golden compiler diagnostics and every acceptance
