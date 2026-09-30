@@ -77,6 +77,7 @@ fn require_fixture(root: &Path, project: &Path) -> Result<&'static str, Diagnost
     for (fixture, experiment) in [
         ("experiments/wasm-exp1/fixture", "native-conformance"),
         ("experiments/auth-policy/fixture", "auth-policy"),
+        ("experiments/capability-host/fixture", "capability-host"),
     ] {
         if let (Ok(expected), Ok(actual)) =
             (root.join(fixture).canonicalize(), project.canonicalize())
@@ -87,7 +88,7 @@ fn require_fixture(root: &Path, project: &Path) -> Result<&'static str, Diagnost
         }
     }
     Err(Diagnostic::error("CLI_BUILD_EXPERIMENT_SCOPE").with_note(
-        "supported fixtures: experiments/wasm-exp1/fixture, experiments/auth-policy/fixture",
+        "supported fixtures: experiments/wasm-exp1/fixture, experiments/auth-policy/fixture, experiments/capability-host/fixture",
     ))
 }
 
@@ -205,6 +206,10 @@ mod tests {
         assert_eq!(
             require_fixture(&root, &root.join("experiments/auth-policy/fixture")).unwrap(),
             "auth-policy"
+        );
+        assert_eq!(
+            require_fixture(&root, &root.join("experiments/capability-host/fixture")).unwrap(),
+            "capability-host"
         );
         for other in [
             "examples/jadpo-seed",
