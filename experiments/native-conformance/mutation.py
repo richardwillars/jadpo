@@ -12,7 +12,7 @@ try:
   p=run(['sh',str(base/'build.sh'),str(folder/'projected/program.json')],folder/'build.log');assert p.returncode==0,p.stdout
   env={'NATIVE_EXPECT_REFINED':'1'} if name=='refined' else {}
   p=run(['cargo','test','--offline','--locked','--manifest-path',str(base/'Cargo.toml'),'--target-dir',str(root/'build/native-conformance/target')],folder/'rust-tests.log',env);assert p.returncode==0,p.stdout
-  p=run(['bun','--no-install','--env-file=/dev/null','test',str(base/'wasm.test.ts')],folder/'wasm-tests.log',env);assert p.returncode==0,p.stdout
+  p=run(['bun','--no-install','--env-file=/dev/null','test',str(base/'wasm.test.ts'),str(base/'wasm-sql.test.ts')],folder/'wasm-tests.log',env);assert p.returncode==0,p.stdout
   results.append({'variant':name,'nativeAndWasmPassed':True,'generatedRustSha256':hashlib.sha256((base/'build/application.rs').read_bytes()).hexdigest(),'wasmSha256':hashlib.sha256((base/'build/application.wasm').read_bytes()).hexdigest()})
   (folder/'application.rs').write_bytes((base/'build/application.rs').read_bytes());(folder/'application.wasm').write_bytes((base/'build/application.wasm').read_bytes())
  p=json.loads((root/'experiments/wasm-exp1/compiler/build/projected/program.json').read_text())
