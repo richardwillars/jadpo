@@ -21,5 +21,5 @@
   "uploadKiB": 237.43,
   "uploadGzipKiB": 94.93,
   "scope": "P01-P15 compiler-generated Wasm probe with in-memory synthetic host; no realSQL/atomic/auth/fullslice proof",
-  "cleanup": "pending after remaining experiment"
+  "cleanup": "Deleted; see cleanup.json for migration, Worker deletion and API readback"
 }
