@@ -280,3 +280,22 @@ and fixture, prepare the pinned tools, then execute the equal route probes.
 Do not repeat the completed auth work or wait for another “continue”. The
 scoped auth milestone plus comprehensive validation is satisfied; full P11
 golden/tooling/external assurance remains separately open as documented.
+
+## 2026-09-30 WASM-EXP1 execution started
+
+Authentication extensions are committed as `4dc5604`; the subsequent 45-step
+supported validation gate is recorded above. Continue through the experiment,
+not another auth checkpoint. Frozen protocol, canonical fixture, acceptance
+cases, ABI and toolchain inputs: `7a19a46`; common checked-model projection and
+verified local host tooling: `96016e6`. Coin flip chose Rust-mediated then direct.
+Rust probe started 01:57:27 UTC with a 45-minute cap. The shared Bun baseline and
+portable case runner are being established alongside it. No route conclusion,
+full-slice correctness, performance result or cloud execution is claimed yet.
+
+Wrangler authentication is available. Its local-only packaging smoke passed;
+that is not compiler evidence. Experiment scope remains six cumulative focused
+hours, including setup; `experiments/wasm-exp1/effort.json` tracks allocations.
+Do not modify the frozen fixture/acceptance criteria to rescue a route. The
+actual cloud run, required semantics, measurements, final report and cleanup
+remain required within the stopping rules. The golden application's open gates
+remain separate and explicit.
