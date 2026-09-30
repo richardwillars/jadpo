@@ -115,6 +115,12 @@ slower. Larger-value transport is the next performance question, not a selected
 replacement ABI. This changed artifact has local evidence only; earlier Cloudflare
 passes apply to their recorded artifacts.
 
+The [ownership/speed-build follow-up](wasm-value-path-results.md) then transferred
+completed owned values and selected a speed-oriented release build. It won small
+concurrent reads against generated Bun in the local fixture, with lower p95 and
+CPU, but larger values and unresolved durable-write stalls prevent a general
+performance/adoption conclusion. The JSON ABI remains unchanged.
+
 ## 4. Build outputs
 
 P8 and P9 establish one compiler-owned disposable output root:

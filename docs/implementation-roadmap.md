@@ -176,7 +176,7 @@ which semantic risks remain.
 | DX1   | Compiler-backed language service            | complete    | Standard `jadpo lsp`, live unsaved diagnostics, symbols, cross-file definitions/references, hover, contextual completion, signature help, semantic tokens, rename, formatting, explicit generated-artifact commands, and a persistent VS Code client pass protocol tests |
 | DX2   | Guided diagnostics and agent context        | internal implementation complete; external trials pending | The corrected 480-code inventory includes configuration, policy and test-runner families, with authored copy and audience projection tests. One hundred and eighty compile pairs plus focused Rust scenarios provide bounded trigger evidence. Syntax-aware catalogue references exclude comments and unrelated helper code; this index does not prove assertion execution or exhaustive trigger coverage. Fresh-agent and first-user repair-cycle trials remain separate evidence. |
 | VAL-001 | Comprehensive validation | three local waves verified; release evidence open | `python3 tools/verify.py` passes 39 steps: 374 Rust tests, 155 local runtime/artifact cases and 63 PostgreSQL cases, plus compile/editor/authored checks. Independent review and ten targeted mutations across the programme challenge regressions. A frozen internal cold-start pilot passed 12/12 obligations; it does not replace formal studies. The [ledger](../tests/validation/unattended-progress.md) records fixes and limits. Golden compilation/behaviour, Set/Map wire semantics, compatibility/deprecation, broader campaigns and external comprehension/approval evidence remain open. |
-| WASM-EXP1 | Bounded Wasm runtime experiment | complete, including optimisation and HTTP follow-ups; Bun retained | Both compiler routes passed local/Cloudflare probes; the full Rust slice passed bounded storage/rollback cases with identical core bytes. Initial I/O overhead was substantially reduced by reuse and host caching: 30–31k operations/s versus 38–39k Bun; p95 0.041–0.043ms. The original 20% latency gate still fails at concurrency 1, and ABI-limit fault mapping remains incomplete. Route comparison is inconclusive. The [HTTP follow-up](wasm-http-experiment-results.md) reduced small-read overhead further (21.5k/s versus 23.2k/s Bun at concurrency 16); 16 KiB rows remain materially slower. Retain Bun; investigate larger-value transport before adoption. |
+| WASM-EXP1 | Bounded Wasm runtime experiment | complete, including performance follow-ups; Bun retained | Both compiler routes passed the initial local/Cloudflare probe; later Rust candidates have their own local evidence. Latest candidate won concurrent small-read throughput, p95 and CPU in all five local pairs, but larger rows still lose and concurrent writes show unresolved stalls. No blanket performance or adoption claim; route selection remains inconclusive. See [latest report](wasm-value-path-results.md). |
 | P11   | Authentication, policy, and golden todo   | AUTH-P0–P3 and first-party AUTH-P4/P7 checkpoint implemented; service/JWT/external exits gated | The 2026-09-30 checkpoint reconciles the five recorded golden authentication/query-accounting discrepancies without changing policy; all 44 golden cases remain unexecuted. DATA/query/transaction and CONFIG foundations are executable. Authentication has closed typed principals, reachability enforcement, exact selector behavior, and fake-adapter evidence plus real signed/opaque cookie and bearer adapters and configured protected routes. Policy has scoped direct/membership roles, automatic query/mutation predicates, field/validation composition, route/invoke handling, service-principal enforcement, audit, and multi-company SQLite evidence. Temporal/testing provides the runtime, clocks, deadlines, typed fixtures, and callable reports. The complete golden todo still requires service/JWT adapters, broader principal mappings and the undecided SERVICE/ASYNC contracts; protected approval and P10R remain external exits; broader PostgreSQL coverage is still open. |
 | P12   | Order/payment application and TS baseline | not started | Use the order/payment application to pressure-test WORKFLOW-001 multi-authority state, idempotency, compensation, reconciliation, and outcome uncertainty. External sessions and protocol freeze precede final comparative trials and the continuation decision. |
 
@@ -1670,6 +1670,10 @@ every IDE hover presents the complete successful and failure outcome contract
 from the compiler graph.
 
 ### WASM-EXP1 — Bounded Wasm runtime experiment
+
+Latest checkpoint: [value ownership and speed-build results](wasm-value-path-results.md).
+The experiment and its requested performance follow-ups are complete; Bun remains
+the working target. Earlier measurements below describe their dated checkpoints.
 
 **Status:** complete on 2026-09-30. **Defer adoption for further backend
 development; retain Bun.** Both routes passed the 15-case local/Cloudflare
@@ -3726,3 +3730,17 @@ Two aborted Bun-client runs are retained separately; the final Node-client run
 completed without retries. No new Cloudflare qualification or backend migration
 is claimed. See [report](wasm-http-experiment-results.md). Future work should target
 larger-value transport and controlled load evidence, with separate scope.
+
+### 2026-09-30 — Wasm ownership/speed-build follow-up completed
+
+Transferred completed owned values instead of redundant copies and compared
+size-oriented and speed-oriented release builds separately. The selected combined
+candidate won concurrent small-read HTTP throughput (~9%), p95 (~11%) and server
+CPU (~8%) against generated Bun in all five local pairs. The full comparison ran
+140 measurements / 3,693,399 requests without errors. Local correctness, rejection,
+mutation/rebuild and runtime gates passed. Larger-row reads remain slower; concurrent
+write throughput/tails regressed and a separate diagnostic found long server-side
+application/storage pauses on both targets. Exact causes remain unresolved. This
+is a specific small-read win, not a backend adoption decision or an EC2 result.
+See [report](wasm-value-path-results.md). Next questions are larger-value transport
+and a controlled host/storage comparison; the default target remains Bun.

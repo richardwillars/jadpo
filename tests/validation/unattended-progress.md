@@ -350,3 +350,16 @@ operations. Earlier aborted harness runs remain separate evidence. Small reads
 are near Bun; larger values still cost more. No production target change, new
 cloud qualification or new unattended continuation is implied. See
 [results](../../docs/wasm-http-experiment-results.md). The prior heartbeat stays paused.
+
+### 2026-09-30 — Owner-requested Wasm performance continuation complete
+
+The value-path experiment compared isolated ownership transfers and speed-oriented
+Rust builds, then retained the combined candidate. Local checks passed: 21 tests /
+10,586 assertions, two native runtime tests, P15/A16, five rejection gates, four
+rollback counterexamples and deterministic mutation/rebuild. HTTP: 140 runs /
+3,693,399 requests, zero errors. It won concurrent small-read throughput, p95 and CPU
+in all five pairs; larger values remain slower and concurrent-write stalls remain
+unresolved. Twelve separate diagnostic runs located long pauses inside server-side
+application/storage calls on both targets, without establishing the exact cause.
+No EC2/Cloudflare resources or production migration; heartbeat remains paused.
+See [latest results](../../docs/wasm-value-path-results.md).

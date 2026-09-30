@@ -1,5 +1,10 @@
 # Wasm boundary and HTTP experiment — 30 September 2026
 
+The subsequent [value-ownership/speed-build pass](wasm-value-path-results.md) found
+a repeatable concurrent small-read win over generated Bun. Larger returned values
+and severe durable-write tails remain concerns. This report is the preceding
+checkpoint.
+
 **Recommendation: retain Wasm as a credible backend candidate, keep Bun as the
 working target, and focus the next performance investigation on larger returned
 values. Small-read overhead is now modest; bulk-value transport still matters.**
