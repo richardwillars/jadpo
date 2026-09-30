@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "review": "bounded final draft recommendation audit",
+  "startUtc": "2026-09-30T02:37:58+00:00",
+  "completedUtc": "2026-09-30T02:39:24.644208+00:00",
+  "activeMinutesEstimate": 1.4,
+  "budgetMinutes": 5,
+  "document": "docs/wasm-experiment-results.md",
+  "draftSha256": "486466e22be71b025c2fc96461d86d54263568dcb16bec01ae1c3525c58cbb69",
+  "missingLocalLinks": [],
+  "outcome": "Scope and inconclusive route conclusion supported; defer defensible under conjunctive diagnostic/evidence prerequisites, independent of unfinished timing.",
+  "suggestedClarifications": [
+    "Use the protocol-specific phrase defer adoption for further backend development; none of the experiment dispositions replaces the production Bun target.",
+    "Explicitly separate demonstrated bounded portability benefit from the still-qualified diagnostic gate and unfinished quantitative gate. Unimplemented whole-language features alone do not show failure of the narrower adopt-for-further-development option.",
+    "Both experimental Wasm generators consume the portable structural projection. Existing Bun target generation instead consumes the same successfully checked AnalyzedProject; do not imply it was rewritten onto the experimental JSON IR."
+  ],
+  "verifiedScope": [
+    "Same full core hash/size and final cloud Worker version match linked evidence.",
+    "Direct generic Rust helper is disclosed; no JavaScript application interpreter claimed.",
+    "Single-authority SQL transactions, delayed outerRPC and concurrency limitations explicit.",
+    "A17/A18 separate local evidence not silently counted as runtime passes.",
+    "Nullable fix, closed-output assertion repair and oversized-host telemetry limitation accurately stated.",
+    "Local route timings qualified and formal target ratios left pending.",
+    "Defer differs from reject; portability worked and no universal guarantee incompatibility established."
+  ],
+  "notAudited": [
+    "Final throughput ratios and statistical interpretation: run remains in progress.",
+    "Final deployment/resource cleanup and cumulative effort: placeholders intentionally remain.",
+    "No CPU workloads, tests, builds or remote operations run during this audit."
+  ]
+}
