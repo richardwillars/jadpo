@@ -1,0 +1,52 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/persistence-postgres.test.ts:
+(pass) generated PostgreSQL persistence path > loads multiple bounded collections without Cartesian multiplication [21.03ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"6e5c986a-1d33-4c2a-8bc3-86d272bd022a","operation":"create_atomic_pair","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":2,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) generated PostgreSQL persistence path > automatically rolls back every mutation in a failed action [7.65ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"a7979da9-5a6e-4bf6-9c9d-4c4a60ebf031","operation":"create_account","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"b176211e-3ec7-40f8-88a4-661ec69caef3","operation":"create_account","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"6f93fbce-a751-4da4-b97e-4736c393da5d","operation":"update_account","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":2,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) generated PostgreSQL persistence path > updates several fields atomically in one fixed-shape mutation [9.95ms]
+(pass) generated PostgreSQL persistence path > enforces and indexes the generated User-to-Todo relationship [3.19ms]
+(pass) generated PostgreSQL persistence path > loads a validated parent and deterministically ordered inverse collection [2.88ms]
+(pass) generated PostgreSQL persistence path > returns an empty inverse collection and a typed missing-parent failure [1.59ms]
+(pass) generated PostgreSQL persistence path > paginates parents before joining independently bounded children [1.81ms]
+(pass) generated PostgreSQL persistence path > rejects invalid input without writing a row [0.48ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"76e20206-2fa6-4737-ae40-48f18479b56d","operation":"create_customer","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) generated PostgreSQL persistence path > creates, decodes, and returns a validated entity [1.33ms]
+(pass) generated PostgreSQL persistence path > returns null when an optional query has no row [0.74ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"98cb782d-1627-4be0-968b-be6866710c10","operation":"create_customer","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":0,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) generated PostgreSQL persistence path > returns a validated entity when an optional query has one row [1.28ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"e6a3ba7d-084e-41b3-907c-fbd3c53e085e","operation":"create_customer","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":0,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"6d83c6a0-b929-486e-ab49-00fc5e98be38","operation":"create_customer","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_ec3608f6-3f4c-4e00-bd4f-6ada5bcf7453","traceId":null,"semanticOperationId":"route:POST:/customers/find","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated PostgreSQL persistence path > contains an optional-query cardinality violation [2.05ms]
+(pass) generated PostgreSQL persistence path > maps a missing required query to its declared not-found failure [0.57ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"ac48b9d4-f89b-4eaf-8bc6-6597e04181f4","operation":"create_customer","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":0,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) generated PostgreSQL persistence path > returns a validated entity from a required query [1.31ms]
+(pass) generated PostgreSQL persistence path > maps a missing required update to not-found [1.01ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"86e09217-2c38-47af-adf8-0d83e29d61ff","operation":"create_customer","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"1c663fde-cd8c-4762-974c-ec97a7dbfcea","operation":"update_customer","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) generated PostgreSQL persistence path > updates and returns exactly one validated entity [2.00ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"9f81da14-f59d-4a92-beb7-15b19aa22907","operation":"update_customer","attempt":1,"database":"postgres","phase":"statement","outcome":"no_commit","retryableCause":null,"rollbackProven":true,"commitAcknowledged":false,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_b58577a5-bf86-4411-aab2-2b941c68fcf9","traceId":null,"semanticOperationId":"route:POST:/customers/update","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated PostgreSQL persistence path > rolls back an update whose predicate matches multiple rows [0.96ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"648d932f-ebd3-40fa-9d0e-ac773c027f8b","operation":"create_customer","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":0,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"d0a2b79d-6d29-4f15-bb5c-9d45547d3772","operation":"create_customer","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":0,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) generated PostgreSQL persistence path > maps create and update constraint violations to their declared conflict [4.40ms]
+(pass) generated PostgreSQL persistence path > maps a missing required delete to not-found [1.20ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"670d3687-bdf1-4b9e-bf2f-2f8e3a291735","operation":"create_customer","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"0547da36-da3e-465b-84a7-e2f1f610ac00","operation":"delete_customer","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) generated PostgreSQL persistence path > deletes and returns exactly one validated entity [2.10ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"465a0c08-d5e8-44ef-8ff4-2b1b7bfff98d","operation":"delete_customer","attempt":1,"database":"postgres","phase":"statement","outcome":"no_commit","retryableCause":null,"rollbackProven":true,"commitAcknowledged":false,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_3aa85b4e-24b4-4b1d-9eef-bba8741c9b91","traceId":null,"semanticOperationId":"route:POST:/customers/delete","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated PostgreSQL persistence path > rolls back a delete whose predicate matches multiple rows [1.86ms]
+(pass) generated PostgreSQL persistence path > normalises raw PostgreSQL driver errors at the adapter boundary [0.98ms]
+
+ 22 pass
+ 0 fail
+ 88 expect() calls
+Ran 22 tests across 1 file. [379.00ms]

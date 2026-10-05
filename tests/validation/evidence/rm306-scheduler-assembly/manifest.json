@@ -1,0 +1,49 @@
+{
+  "scope": "Unchanged raw scheduler review and root focused runs; original failure retained",
+  "files": {
+    "tests/validation/evidence/rm306-scheduler-assembly/provider-probe.ts": {
+      "sha256": "46dc97b7c1737f03e2c48c8327f7c713d7ddd54d34634d472e2bc4356a094072",
+      "original_path": "/private/tmp/rm306-scheduler-review-8cb7amu7/provider-probe.ts"
+    },
+    "tests/validation/evidence/rm306-scheduler-assembly/provider-red.log": {
+      "sha256": "f234346bbdcf0fdebc9c4b406089d7c7b71698a68ed8eeaf00225ebced0652b0",
+      "original_path": "/private/tmp/rm306-scheduler-review-8cb7amu7/provider-red.log"
+    },
+    "tests/validation/evidence/rm306-scheduler-assembly/corrected-provider-probe.ts": {
+      "sha256": "923232cf036e060f2600e9c8e4381a73edd7e8e36f76ec09eddd42a535faf3ad",
+      "original_path": "/private/tmp/rm306-scheduler-review-8cb7amu7/corrected-provider-probe.ts"
+    },
+    "tests/validation/evidence/rm306-scheduler-assembly/provider-corrected.log": {
+      "sha256": "14eaa495c38527bbe81b180f785678309ec9299058a24bfa74ca555013f999db",
+      "original_path": "/private/tmp/rm306-scheduler-review-8cb7amu7/provider-corrected.log"
+    },
+    "tests/validation/evidence/rm306-scheduler-assembly/sqlite-focused.log": {
+      "sha256": "8e14cfd51db7cf67aaa2ccda9ebf79cbd538764deef550326cc2acd190c55742",
+      "original_path": "/private/tmp/rm306-scheduler-review-8cb7amu7/sqlite-focused.log"
+    },
+    "tests/validation/evidence/rm306-scheduler-assembly/postgres-focused.log": {
+      "sha256": "c84cee48f32c2e583fc78cae93093e2c84b5b99bc8ff8f17c00f9a8e20af58ef",
+      "original_path": "/private/tmp/rm306-scheduler-review-8cb7amu7/postgres-focused.log"
+    },
+    "tests/validation/evidence/rm306-scheduler-assembly/postgres-corrected.log": {
+      "sha256": "38f31b8cd334860b27a7158ca7565ab1fcc1be8109cad7844202a65b42b5cd67",
+      "original_path": "/private/tmp/rm306-scheduler-review-8cb7amu7/postgres-corrected.log"
+    },
+    "tests/validation/evidence/rm306-scheduler-assembly/postgres-review.sh": {
+      "sha256": "cf104c72ea8acb84ec4974f49fc2eb8eb35d7b61796f8a4cc476503dd63d1098",
+      "original_path": "/private/tmp/rm306-scheduler-review-8cb7amu7/postgres-review.sh"
+    },
+    "tests/validation/evidence/rm306-scheduler-assembly/jadpo-scheduler-sqlite.log": {
+      "sha256": "8a40f89a55008160fd11d4ed54b35ee611bf201484599ead3dc95cbebd5ed95a",
+      "original_path": "/private/tmp/jadpo-scheduler-sqlite.log"
+    },
+    "tests/validation/evidence/rm306-scheduler-assembly/jadpo-scheduler-sqlite-corrected.log": {
+      "sha256": "635c504d93d5c71143747a839d5980316e5bc1aae6f93c83c781e435121f2ded",
+      "original_path": "/private/tmp/jadpo-scheduler-sqlite-corrected.log"
+    },
+    "tests/validation/evidence/rm306-scheduler-assembly/jadpo-scheduler-postgres.log": {
+      "sha256": "93efc5c9ed71355e9f72a14736a8cd41918d502f7c90fd9e45a5387ed8a4706d",
+      "original_path": "/private/tmp/jadpo-scheduler-postgres.log"
+    }
+  }
+}

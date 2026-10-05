@@ -1,0 +1,33 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/delivery-hook-components.test.ts:
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"a35892cf-eaac-41bc-90d4-1f2f4e118362","credentialId":"a77edf15-7edf-4ca5-81f5-773f2af85ca4","occurredAt":1791242399497}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"d8f11b7e-5ef0-42af-8c1e-1b575fb1c0e6","attempt":1,"elapsedMs":10,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+559 |     const f = await fixture();
+560 |     await provider(async calls => {
+561 |       expect(await activate(f.proof)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+562 |       expect(calls).toHaveLength(1); expect(calls[0].possibleDispatch).toBe(1);
+563 |       expect(calls[0].page.intentIds).toEqual([calls[0].body.idempotency_key]);
+564 |       expect(calls[0].body.todo_id).toBe(f.value.id);
+                                          ^
+error: expect(received).toBe(expected)
+
+Expected: "8bfa3585-a62f-4d5b-bb27-bfbf16ea2c48"
+Received: undefined
+
+      at <anonymous> (/Users/richardwillars/Documents/Codex/LLM-coding/tests/runtime/delivery-hook-components.test.ts:564:37)
+(fail) closed scheduler assembly components (sqlite) > generated scheduler commits selection/page and admission before provider dispatch, then finishes one singleton tick [69.29ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"f340d45b-7173-43c1-b7bd-5c84a59d61b7","credentialId":"67ebe5f1-c4bc-48c1-ab08-f1a108f91259","occurredAt":1791242399554}
+(pass) closed scheduler assembly components (sqlite) > forged credential, unknown binding and missing/invalid profiles refuse before durable enrollment or HTTP [16.05ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"54977cd3-97a4-4754-b948-692cf8d548a3","credentialId":"74cc819e-31ac-47b1-b1fd-10ef14954d7d","occurredAt":1791242399571}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"ef70bfd6-f8ec-4f28-a71a-7fdb0934921b","attempt":1,"elapsedMs":3,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (sqlite) > owning page COMMIT failure leaves no intent/activation and cannot dispatch [34.65ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"7a4781b3-0d8e-49e7-bf7c-44b0068bea5a","credentialId":"cf7f3f98-3c7a-40e0-abd0-01d7b83ff914","occurredAt":1791242399604}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"f0051dee-4120-4f8e-b578-88dab10eb9e4","attempt":1,"elapsedMs":3,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (sqlite) > overlapping activation stays idle while the committed singleton page owns the provider call [23.93ms]
+
+ 3 pass
+ 51 filtered out
+ 1 fail
+ 27 expect() calls
+Ran 4 tests across 1 file. [16.81s]

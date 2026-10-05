@@ -1,0 +1,29 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/delivery-hook-components.test.ts:
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"065907ed-2336-4202-9aa6-0b28568a87ba","credentialId":"8742c094-e14f-4cad-af3d-5b0fb0724c09","occurredAt":1791242586709}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"22e90008-ec65-43cb-9f92-e31ec377df15","attempt":1,"elapsedMs":2,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (sqlite) > generated scheduler commits selection/page and admission before provider dispatch, then finishes one singleton tick [31.58ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"0a131bcc-0992-4c9a-87fd-b3e5bc203e52","credentialId":"543d4260-6878-4dd7-9278-c6269ce35197","occurredAt":1791242586737}
+(pass) closed scheduler assembly components (sqlite) > forged credential, unknown binding and missing/invalid profiles refuse before durable enrollment or HTTP [8.63ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"675c236e-760d-42c8-aa78-5e7b8390ee13","credentialId":"dbafdcb3-bb7c-44c8-ba51-a2f8bcf793ca","occurredAt":1791242586746}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"d2f40c8e-0639-4d4b-8bf4-e64996313f06","attempt":1,"elapsedMs":1,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (sqlite) > owning page COMMIT failure leaves no intent/activation and cannot dispatch [25.99ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"19da735f-d248-45ec-a676-a458705fe08c","credentialId":"7652c834-4cd1-47c3-be69-3dff7903bc82","occurredAt":1791242586772}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"795eace6-290a-400c-801e-14f9ca289950","attempt":1,"elapsedMs":3,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (sqlite) > overlapping activation stays idle while the committed singleton page owns the provider call [24.14ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"b03dcf74-a446-4bc2-aab2-a9be9b7635bc","credentialId":"72c1efdc-bfc5-4c42-ad28-63b7b1f5223c","occurredAt":1791242586797}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"13599a63-1c88-476e-933b-4118298f230a","credentialId":"416e195c-4dac-4190-84fc-9f4de0fc88b1","occurredAt":1791242586810}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"ce7ad1f1-8f2f-4788-a316-f0ccd15d86af","credentialId":"e77c603f-8438-4d97-a674-594270bbd4ad","occurredAt":1791242586821}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"7d7a49b4-908c-46f5-b992-1aa6664c90d5","credentialId":"91d6749a-3a5b-48c6-bdeb-e6211cb0704f","occurredAt":1791242586832}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"b7815271-430d-49d5-bc03-0ac1fb6400d4","credentialId":"aa06a023-2161-41d6-bd02-b8e85a3975e0","occurredAt":1791242586844}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"90f9b1a2-cd74-4fd8-a74b-bae468d2be04","credentialId":"adb37cf9-4e1b-4471-95ab-303231f806f9","occurredAt":1791242586854}
+(pass) closed scheduler assembly components (sqlite) > malformed/cross-binding retained page and cursor refuse before commit or provider effect, preserving every durable byte [68.73ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"1333041d-1e37-4308-95ff-3d0a2f59b319","credentialId":"5b877302-d486-4890-9177-3baf9f5bef50","occurredAt":1791242586864}
+(pass) closed scheduler assembly components (sqlite) > fresh generated process resumes the immutable staged page with a new operation snapshot and original intent identity [135.93ms]
+
+ 6 pass
+ 51 filtered out
+ 0 fail
+ 70 expect() calls
+Ran 6 tests across 1 file. [939.00ms]
