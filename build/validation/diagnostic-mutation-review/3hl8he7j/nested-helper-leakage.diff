@@ -1,0 +1,11 @@
+--- a/jadpo/crates/diagnostics/build.rs
++++ b/jadpo/crates/diagnostics/build.rs
+@@ -235,7 +235,7 @@
+     fn visit_attribute(&mut self, _: &'ast syn::Attribute) {}
+     fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
+         // Nested helper declarations are not executed just because a test exists.
+-        if self.production && !test_only(&item.attrs) {
++        if !self.production || !test_only(&item.attrs) {
+             syn::visit::visit_item_fn(self, item);
+         }
+     }

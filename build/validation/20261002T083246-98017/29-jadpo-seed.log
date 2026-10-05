@@ -1,0 +1,17 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/jadpo-seed.test.ts:
+(pass) jadpo-seed generated HTTP target > keeps exception canaries out of operational telemetry and provider adapters [1.99ms]
+(pass) jadpo-seed generated HTTP target > accepts valid input and serialises the exact output [35.06ms]
+(pass) jadpo-seed generated HTTP target > decodes and validates typed route path bindings for an inline action [1.18ms]
+(pass) jadpo-seed generated HTTP target > contains invalid typed route path values behind the safe request envelope [2.17ms]
+(pass) jadpo-seed generated HTTP target > rejects malformed semantic values before the action runs [2.36ms]
+(pass) jadpo-seed generated HTTP target > enforces constrained semantic input values [0.78ms]
+(pass) jadpo-seed generated HTTP target > rejects malformed JSON with the same safe boundary envelope [1.20ms]
+(pass) jadpo-seed generated HTTP target > enforces the canonical closed input shape [0.79ms]
+(pass) jadpo-seed generated HTTP target > maps the declared domain failure without disclosing internal context [0.92ms]
+
+ 9 pass
+ 0 fail
+ 42 expect() calls
+Ran 9 tests across 1 file. [674.00ms]

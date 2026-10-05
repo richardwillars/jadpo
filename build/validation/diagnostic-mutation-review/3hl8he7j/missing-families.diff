@@ -1,0 +1,11 @@
+--- a/jadpo/crates/diagnostics/build.rs
++++ b/jadpo/crates/diagnostics/build.rs
+@@ -130,7 +130,7 @@
+ 
+ fn is_diagnostic_code(value: &str) -> bool {
+     const PREFIXES: &[&str] = &[
+-        "CLI_", "CONFIG_", "POLICY_", "TEST_", "DATA_", "EFFECT_", "FAIL_", "FMT_", "INDEX_",
++        "CLI_", "DATA_", "EFFECT_", "FAIL_", "FMT_", "INDEX_",
+         "JADPO_", "LSP_", "MIG_", "MOD_", "ROUTE_", "RUNTIME_", "SEM_", "SYN_", "TYPE_",
+     ];
+     value != "JADPO_DEBUG_TARGET_STACKS"

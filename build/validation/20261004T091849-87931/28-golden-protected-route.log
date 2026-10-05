@@ -1,0 +1,21 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/golden-protected-route.test.ts:
+(pass) signed user and browser credentials preserve principal identity and the declared strength enum [6.18ms]
+(pass) disabled golden users fail fresh authority and refresh immediately while signed access stays within five minutes [2.99ms]
+(pass) the generated adapter boundary validates the authored strength enum without accepting widened principals [0.37ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"f623076b-fe93-4f3e-88d1-a0ee2052e370","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":2,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"1b032e28-4ff4-4ebd-84b9-ad405e661d92","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) protected create persists the authenticated owner and returns the matching generated row [8.38ms]
+(pass) missing, malformed, tampered and competing credentials fail before todo creation [2.59ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"fd3a6313-f8fc-4c7e-ac1f-f25d9f743a5f","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) browser mutations require both the configured origin and session-bound CSRF proof [4.80ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"35026680-3091-4816-b30e-4490785708fa","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"c9f97608-3d85-4e2e-b472-14e93b43b443","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) node:http adapter preserves protected POST authentication and CSRF boundaries [20.29ms]
+(pass) missing or unsafe origin configuration leaves protected routes unavailable without writes [1.08ms]
+
+ 8 pass
+ 0 fail
+ 121 expect() calls
+Ran 8 tests across 1 file. [827.00ms]

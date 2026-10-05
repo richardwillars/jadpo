@@ -1,0 +1,23 @@
+   Compiling jadpo-diagnostics v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/diagnostics)
+   Compiling jadpo-syntax v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/syntax)
+   Compiling jadpo-semantic v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/semantic)
+   Compiling jadpo-core v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.91s
+     Running tests/validation_config_time_contract.rs (jadpo/target/debug/deps/validation_config_time_contract-fc9eb54cd7c8d491)
+
+running 1 test
+thread 'temporal_literal_calendar_precision_and_offset_boundaries_are_checked' panicked at crates/core/tests/validation_config_time_contract.rs:30:28:
+missing TYPE_INVALID_LITERAL: type ClockReading = Object { now: Instant }
+function invalid_time() -> ClockReading { return ClockReading { now: Instant("0001-01-01T00:00:00+01:00") } }
+[]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test temporal_literal_calendar_precision_and_offset_boundaries_are_checked ... FAILED
+
+failures:
+
+failures:
+    temporal_literal_calendar_precision_and_offset_boundaries_are_checked
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p jadpo-core --test validation_config_time_contract`

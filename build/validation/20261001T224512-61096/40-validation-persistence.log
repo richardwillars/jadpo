@@ -1,0 +1,22 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/validation-persistence.test.ts:
+(pass) inherited nullable persistence and transaction contracts (sqlite) > SQL and persistence metadata preserve inherited nullable contracts [0.13ms]
+(pass) inherited nullable persistence and transaction contracts (sqlite) > explicit none survives HTTP creation, actual storage and a later read [4.04ms]
+(pass) inherited nullable persistence and transaction contracts (sqlite) > a nullable field is still mandatory and required fields cannot become null [0.27ms]
+(pass) inherited nullable persistence and transaction contracts (sqlite) > patch omission preserves a nullable value while supplied none clears it [3.52ms]
+(pass) inherited nullable persistence and transaction contracts (sqlite) > patch lowering uses the local binding at its lexical use, not a shadowed parameter [1.82ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_52de2146-3bc0-4834-af14-158246307d65","traceId":null,"semanticOperationId":"route:POST:/batch","sourceRevision":"src_d9c6644df8b75268","attributes":{}}
+(pass) inherited nullable persistence and transaction contracts (sqlite) > ambiguous required mutation rolls back without clearing either nullable field [1.88ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_OUTCOME_UNKNOWN","requestId":"req_eb2cc973-0037-4319-8402-baacc4a6dfe3","traceId":null,"semanticOperationId":"route:POST:/find","sourceRevision":"src_d9c6644df8b75268","attributes":{}}
+(pass) inherited nullable persistence and transaction contracts (sqlite) > unknown persistence outcomes use the safe non-retryable HTTP envelope [0.30ms]
+(pass) inherited nullable persistence and transaction contracts (sqlite) > propagated nested failure rolls back both entries including a nullable insert [0.93ms]
+(pass) inherited nullable persistence and transaction contracts (sqlite) > handled nested failure rolls back only its nullable insert and change record [1.08ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_0f9b721b-5de0-442b-aa98-6f8f57b2676b","traceId":null,"semanticOperationId":"route:POST:/find","sourceRevision":"src_d9c6644df8b75268","attributes":{}}
+(pass) inherited nullable persistence and transaction contracts (sqlite) > corrupt persisted semantic values are contained before entering trusted code [1.25ms]
+(pass) inherited nullable persistence and transaction contracts (sqlite) > parameterized text cannot change SQL shape [1.56ms]
+
+ 11 pass
+ 0 fail
+ 69 expect() calls
+Ran 11 tests across 1 file. [272.00ms]

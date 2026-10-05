@@ -1,0 +1,23 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/golden-todo-routes.test.ts:
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"0f702611-c4d9-41b5-b18d-3faa643b64ed","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":2,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"a4483a30-597a-41e0-ac64-1997660552f2","operation":"Todo.patch_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":2,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) create, read and patch preserve the declared owner and public projection [14.67ms]
+(pass) list pages use stable owner-scoped keysets and exclude deleted or foreign rows [9.07ms]
+(pass) list filters compose, defaults are bounded, and generated SQL has an indexed one-query keyset plan [7.24ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"5c4d26c9-6b4d-41cf-b2dc-9102bde06b41","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) foreign and missing reads are indistinguishable and perform no write [8.66ms]
+(pass) self todo collection returns bounded ordered TodoView values with two data reads [51.18ms]
+(pass) self todo collection conceals another or missing user before querying children [2.65ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"2c8d8ea8-c875-4463-9d8b-08e8727f0c0f","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"ce1b8c38-3f9d-4b27-a03d-894b58b1ba68","operation":"Todo.patch_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"2e4462f1-227a-412a-a22f-6ec93037f3ea","operation":"Todo.patch_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) patch distinguishes omitted due date, explicit null, supplied due date and empty input [6.46ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"4dde887a-59ea-4098-af59-ec270337b0ff","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) invalid create and patch dates are rejected without writes [5.44ms]
+
+ 8 pass
+ 0 fail
+ 78 expect() calls
+Ran 8 tests across 1 file. [770.00ms]

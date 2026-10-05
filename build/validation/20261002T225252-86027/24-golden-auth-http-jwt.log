@@ -1,0 +1,14 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/golden-auth-http-jwt.test.ts:
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"b056176a-4399-43bf-a6a4-5e3a637c022c","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":2,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) actual HTTP protected todo creation binds the signed user's identity and rejects absent or invalid credentials [10.53ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"23e537a9-8205-4ecb-a41d-95c74780f570","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) the selected golden JWT validator resolves a typed primary user and authorizes real HTTP creation [11.44ms]
+(pass) self todo output omits the provisioning-only email even when a JWT supplies a different email [3.69ms]
+(pass) a corrupted signature cannot pass the selected golden JWT validator or mutate over HTTP [2.39ms]
+
+ 4 pass
+ 0 fail
+ 30 expect() calls
+Ran 4 tests across 1 file. [717.00ms]

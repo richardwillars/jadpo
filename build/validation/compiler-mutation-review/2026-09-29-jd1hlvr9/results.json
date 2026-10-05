@@ -1,0 +1,122 @@
+[
+  {
+    "label": "dotted_constructor-baseline",
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--manifest-path",
+      "/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/Cargo.toml",
+      "-p",
+      "jadpo-core",
+      "--test",
+      "validation_types_contract",
+      "explicit_construction_narrows_to_field_contract",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "exit_code": 0,
+    "log": "/private/tmp/jadpo-compiler-mutations-jd1hlvr9/dotted_constructor-baseline.log"
+  },
+  {
+    "label": "failure_reachability-baseline",
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--manifest-path",
+      "/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/Cargo.toml",
+      "-p",
+      "jadpo-core",
+      "--test",
+      "validation_failures",
+      "exact_reachable_failures_exclude_statements_after_return",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "exit_code": 0,
+    "log": "/private/tmp/jadpo-compiler-mutations-jd1hlvr9/failure_reachability-baseline.log"
+  },
+  {
+    "label": "dotted_constructor-mutant",
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--manifest-path",
+      "/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/Cargo.toml",
+      "-p",
+      "jadpo-core",
+      "--test",
+      "validation_types_contract",
+      "explicit_construction_narrows_to_field_contract",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "exit_code": 101,
+    "log": "/private/tmp/jadpo-compiler-mutations-jd1hlvr9/dotted_constructor-mutant.log"
+  },
+  {
+    "label": "failure_reachability-mutant",
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--manifest-path",
+      "/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/Cargo.toml",
+      "-p",
+      "jadpo-core",
+      "--test",
+      "validation_failures",
+      "exact_reachable_failures_exclude_statements_after_return",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "exit_code": 101,
+    "log": "/private/tmp/jadpo-compiler-mutations-jd1hlvr9/failure_reachability-mutant.log"
+  },
+  {
+    "label": "dotted_constructor-restored",
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--manifest-path",
+      "/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/Cargo.toml",
+      "-p",
+      "jadpo-core",
+      "--test",
+      "validation_types_contract",
+      "explicit_construction_narrows_to_field_contract",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "exit_code": 0,
+    "log": "/private/tmp/jadpo-compiler-mutations-jd1hlvr9/dotted_constructor-restored.log"
+  },
+  {
+    "label": "failure_reachability-restored",
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--manifest-path",
+      "/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/Cargo.toml",
+      "-p",
+      "jadpo-core",
+      "--test",
+      "validation_failures",
+      "exact_reachable_failures_exclude_statements_after_return",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "exit_code": 0,
+    "log": "/private/tmp/jadpo-compiler-mutations-jd1hlvr9/failure_reachability-restored.log"
+  }
+]

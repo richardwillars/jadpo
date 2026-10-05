@@ -1,0 +1,17 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/policy-runtime.test.ts:
+(pass) generated scoped policy enforcement > uses separate stable user projections for regular and administrator audiences [1.83ms]
+(pass) generated scoped policy enforcement > conceals rows outside the principal's authoritative role scope [0.62ms]
+(pass) generated scoped policy enforcement > uses entity permissions and narrowing field permissions conjunctively [2.62ms]
+(pass) generated scoped policy enforcement > injects row policy before ordering and pagination [0.36ms]
+(pass) generated scoped policy enforcement > rejects a create before insertion when the role lacks create [1.01ms]
+(pass) generated scoped policy enforcement > authorizes create from proposed scope and conceals denied deletes [2.69ms]
+(pass) generated scoped policy enforcement > resolves application roles for non-entity invoke policies [0.58ms]
+(pass) generated scoped policy enforcement > enforces a public callable invoke policy through the route [1.03ms]
+(pass) generated scoped policy enforcement > observes membership revocation on the next authoritative operation [1.43ms]
+
+ 9 pass
+ 0 fail
+ 21 expect() calls
+Ran 9 tests across 1 file. [274.00ms]

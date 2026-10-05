@@ -1,0 +1,14 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/golden-protected-route.test.ts:
+(pass) signed user and browser credentials preserve principal identity and the declared strength enum [7.61ms]
+(pass) the generated adapter boundary validates the authored strength enum without accepting widened principals [0.63ms]
+(pass) protected create persists the authenticated owner and returns the matching generated row [5.04ms]
+(pass) missing, malformed, tampered and competing credentials fail before todo creation [2.07ms]
+(pass) browser mutations require both the configured origin and session-bound CSRF proof [4.49ms]
+(pass) missing or unsafe origin configuration leaves protected routes unavailable without writes [1.09ms]
+
+ 6 pass
+ 0 fail
+ 104 expect() calls
+Ran 6 tests across 1 file. [468.00ms]

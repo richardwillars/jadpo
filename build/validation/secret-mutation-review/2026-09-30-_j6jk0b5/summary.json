@@ -1,0 +1,11 @@
+{
+  "status": "both_mutants_caught",
+  "snapshot": "/private/tmp/jadpo-secret-mutations-_j6jk0b5/jadpo",
+  "evidence": "/Users/richardwillars/Documents/Codex/LLM-coding/build/validation/secret-mutation-review/2026-09-30-_j6jk0b5",
+  "mutations": 2,
+  "runs": 6,
+  "source_restored": true,
+  "tests_unchanged": true,
+  "production_files_modified": false,
+  "no_application_database_used": true
+}

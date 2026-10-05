@@ -1,0 +1,25 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/field-contracts.test.ts:
+(pass) generated field construction and boundary contracts > a checked field constructor executes as validation [1.19ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_0d7f099e-0493-4087-bbe4-cb270adb4349","traceId":null,"semanticOperationId":"route:POST:/dynamic","sourceRevision":"src_b5505114a954a8c2","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_58b8d93c-a66b-4943-8140-4495d32094df","traceId":null,"semanticOperationId":"route:POST:/dynamic","sourceRevision":"src_b5505114a954a8c2","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_ab605d4d-9250-41ef-b213-6b6e9135f6ab","traceId":null,"semanticOperationId":"route:POST:/dynamic","sourceRevision":"src_b5505114a954a8c2","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_ab315a99-cedb-4646-8f52-1efda01339b5","traceId":null,"semanticOperationId":"route:POST:/dynamic","sourceRevision":"src_b5505114a954a8c2","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_a6ca3443-d0e8-4486-ba16-da339dfd7ff9","traceId":null,"semanticOperationId":"route:POST:/unused","sourceRevision":"src_b5505114a954a8c2","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_d5585bf9-5ee7-4b83-a601-3c31234041c4","traceId":null,"semanticOperationId":"route:POST:/unused","sourceRevision":"src_b5505114a954a8c2","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_8a00ac45-f5fc-464c-bced-6bfc5f2f769a","traceId":null,"semanticOperationId":"route:POST:/unused","sourceRevision":"src_b5505114a954a8c2","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_22789a87-dd42-4910-ab13-e931dd79dd61","traceId":null,"semanticOperationId":"route:POST:/unused","sourceRevision":"src_b5505114a954a8c2","attributes":{}}
+(pass) generated field construction and boundary contracts > dynamic field constructors validate before their results are used or discarded [1.22ms]
+(pass) generated field construction and boundary contracts > record boundaries enforce both parent and field-local lengths [0.30ms]
+(pass) generated field construction and boundary contracts > chained field references preserve every inherited refinement [0.59ms]
+(pass) generated field construction and boundary contracts > named refinements of field types retain parent and own constraints [0.40ms]
+(pass) generated field construction and boundary contracts > nullable field references remain nullable through multiple records [0.10ms]
+(pass) generated field construction and boundary contracts > named nullable refinements accept null and enforce constraints when present [0.31ms]
+(pass) generated field construction and boundary contracts > omission bypasses only an optional field, never its supplied constraints [0.17ms]
+(pass) generated field construction and boundary contracts > field validation evaluates a supplied nullable value once [0.13ms]
+
+ 9 pass
+ 0 fail
+ 127 expect() calls
+Ran 9 tests across 1 file. [390.00ms]

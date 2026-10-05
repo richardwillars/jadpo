@@ -1,0 +1,12 @@
+--- crates/semantic/src/typecheck.rs
++++ crates/semantic/src/typecheck.rs
+@@ -2850,8 +2850,7 @@
+             .graph
+             .node(&authored_callee)
+             .is_some_and(|node| node.kind.is_type());
+-        if !is_type_constructor
+-            && !self.catalogue.callables.contains_key(&callee)
++        if !self.catalogue.callables.contains_key(&callee)
+             && invocation.callee.path.len() >= 2
+         {
+             let receiver_path = &invocation.callee.path[..invocation.callee.path.len() - 1];

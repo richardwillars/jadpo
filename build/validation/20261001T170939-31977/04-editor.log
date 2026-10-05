@@ -1,0 +1,12 @@
+✔ Problems uses only the canonical human summary (0.537833ms)
+✔ Details preserves the complete shared repair protocol (0.393916ms)
+✔ Details escapes every compiler-supplied field (0.115791ms)
+✔ Source underlines are reserved for compiler diagnostics (0.898209ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 52.380125

@@ -1,0 +1,19 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/validation-unicode-length.test.ts:
+(pass) one supplementary character satisfies the same one-scalar boundary as ASCII [5.15ms]
+(pass) minimum length does not count a supplementary character twice [1.15ms]
+(pass) field-local and inherited lengths use scalar counts [1.27ms]
+(pass) nullable wrappers preserve scalar-length constraints for present values [0.44ms]
+(pass) collection length remains an element count [0.94ms]
+(pass) literals accepted by the compiler execute with the same length contract [0.33ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_6ba803f7-d5a8-4566-9a10-f239587ebf6d","traceId":null,"semanticOperationId":"route:POST:/dynamic","sourceRevision":"src_66a21b6b03c01b01","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_8ca16bb6-14a7-4222-99e3-640aa4fc284f","traceId":null,"semanticOperationId":"route:POST:/dynamic","sourceRevision":"src_66a21b6b03c01b01","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_f2c87a91-bc32-4aca-9862-2cecde43d3f1","traceId":null,"semanticOperationId":"route:POST:/dynamic","sourceRevision":"src_66a21b6b03c01b01","attributes":{}}
+(pass) dynamic constructors enforce the same scalar bounds [0.89ms]
+(pass) the compiler rejects the same multi-scalar literals as a one-scalar type [14.91ms]
+
+ 8 pass
+ 0 fail
+ 87 expect() calls
+Ran 8 tests across 1 file. [237.00ms]

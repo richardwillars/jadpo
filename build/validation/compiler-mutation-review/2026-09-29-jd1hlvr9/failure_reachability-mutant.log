@@ -1,0 +1,83 @@
+   Compiling jadpo-diagnostics v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/diagnostics)
+   Compiling jadpo-syntax v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/syntax)
+   Compiling jadpo-semantic v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/semantic)
+warning: function `block_can_continue` is never used
+   --> crates/semantic/src/failurecheck.rs:838:4
+    |
+838 | fn block_can_continue(block: &Block) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: function `statement_can_continue` is never used
+   --> crates/semantic/src/failurecheck.rs:842:4
+    |
+842 | fn statement_can_continue(statement: &Statement) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^^^^^
+
+   Compiling jadpo-core v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/core)
+warning: `jadpo-semantic` (lib) generated 2 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.67s
+     Running tests/validation_failures.rs (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/target/debug/deps/validation_failures-004ae9cc267ed9c9)
+
+running 1 test
+thread 'exact_reachable_failures_exclude_statements_after_return' panicked at crates/core/tests/validation_failures.rs:260:5:
+unreachable rejection included: [
+    CompilerDiagnostic {
+        code: "FAIL_UNDECLARED_PROPAGATION",
+        rule_id: "failure.undeclared_propagation",
+        severity: Error,
+        message: "`Missing` can leave `done` but isn't listed after `fails`",
+        reason: "Callers of `done` need to know that `Missing` can happen.",
+        recommended_next_step: RepairStep {
+            kind: GuidedChoice,
+            title: "Add `Missing` after `fails`, or handle it inside `done`",
+            reason: "Callers of `done` need to know that `Missing` can happen.",
+            decision_owner: Agent,
+            preferred: false,
+            edits: [],
+            behavioral_effect: "No behavioural change is applied until the proposed edit is validated.",
+            public_contract_effect: "Review generated contract impact before applying the edit.",
+        },
+        alternatives: [],
+        decision_owner: Agent,
+        help_id: "diagnostics/failure.undeclared_propagation",
+        source_revision: "unversioned",
+        context: [
+            (
+                "callable",
+                "done",
+            ),
+            (
+                "failure",
+                "Missing",
+            ),
+        ],
+        impact: DiagnosticImpact {
+            behavioral: "Compilation is blocked until this problem is fixed.",
+            public_contract: "No public-contract change has been applied.",
+            affected: [],
+            query_id: None,
+        },
+        primary: Some(
+            SourceSpan {
+                source: "validation.jadpo",
+                start: 148,
+                end: 162,
+            },
+        ),
+        related: [],
+        notes: [],
+    },
+]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test exact_reachable_failures_exclude_statements_after_return ... FAILED
+
+failures:
+
+failures:
+    exact_reachable_failures_exclude_statements_after_return
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p jadpo-core --test validation_failures`

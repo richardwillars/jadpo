@@ -1,0 +1,19 @@
+✔ Problems uses only the canonical human summary (0.752ms)
+✔ Details preserves the complete shared repair protocol (0.342917ms)
+✔ Details escapes every compiler-supplied field (0.116792ms)
+✔ Source underlines are reserved for compiler diagnostics (1.095125ms)
+✔ Generated artifact picker exposes each stable artifact through a safe relative path (0.466917ms)
+✔ Generated artifact picker is contributed and activated as a command (0.128917ms)
+✔ Prism adapter registers the canonical Jadpo lexical categories (1.657625ms)
+✔ Highlight.js adapter returns a language definition from TextMate vocabulary (0.173167ms)
+✔ Monaco adapter registers the canonical language ID, tokenizer, and editor pairs (1.934667ms)
+✔ Shiki adapter registers the same TextMate grammar under the fenced identifier (0.661167ms)
+✔ renderer fixtures use the stable fence and cover the documented syntax families (0.376416ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 50.027

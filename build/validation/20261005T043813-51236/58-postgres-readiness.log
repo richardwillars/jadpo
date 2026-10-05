@@ -1,0 +1,28 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/readiness-recovery.test.ts:
+(pass) compiler-private bounded readiness response > the generated persistence includes the exact controller and stages recovery publication [2.93ms]
+(pass) compiler-private bounded readiness response > stalled probe and initialization share one finite response and retain one native observer [1.51ms]
+(pass) compiler-private bounded readiness response > publication rejects exact or late deadlines even when the timer has not fired [0.09ms]
+(pass) compiler-private bounded readiness response > a newer availability failure cannot be erased by an older successful probe [0.12ms]
+(pass) compiler-private bounded readiness response > backoff is once per failure, capped, and only a fresh fenced success resets it [0.35ms]
+(pass) compiler-private bounded readiness response > throwing cancellation, late rejection and genuine fatal initialization stay contained [0.39ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated runtime readiness > retry-cutoff requests can observe mixed readiness while eligible requests share one initialization [31.05ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated runtime readiness > initial and recovery-time SQLite schema locks stay recoverable after contention clears [35.37ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_879d724f81edd863","attributes":{}}
+(pass) generated runtime readiness > recovers required storage and authenticated reads through generated handlers without binding a listener [371.91ms]
+(pass) generated runtime readiness > keeps the process live, gates traffic, and recovers when the required database returns [764.60ms]
+(pass) generated runtime readiness > recovers first-party authentication after its required database returns [376.82ms]
+(pass) generated runtime readiness > recovers PostgreSQL authentication sessions after a post-startup authority-store outage without restart [148.28ms]
+(pass) generated runtime readiness > recovers concurrent PostgreSQL readiness and the same credential after connection loss without restarting [1437.37ms]
+(pass) generated runtime readiness > runs the readiness ping against the disposable PostgreSQL adapter [118.09ms]
+
+ 14 pass
+ 0 fail
+ 4418 expect() calls
+Ran 14 tests across 1 file. [3.49s]

@@ -1,0 +1,14 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/route-inputs.test.ts:
+(pass) query omission materializes defaults and preserves optional absence [5.59ms]
+(pass) query values decode once and validate through the declared object [0.94ms]
+(pass) malformed transport syntax is 400 [3.41ms]
+(pass) well-formed values that fail declared types or constraints are 422 [1.84ms]
+(pass) OpenAPI derives query requirements, schemas, and the source default [0.42ms]
+(pass) raw-header adapter accepts one declared value and rejects duplicates [3.72ms]
+
+ 6 pass
+ 0 fail
+ 37 expect() calls
+Ran 6 tests across 1 file. [572.00ms]

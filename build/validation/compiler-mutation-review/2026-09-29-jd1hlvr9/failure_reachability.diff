@@ -1,0 +1,11 @@
+--- crates/semantic/src/failurecheck.rs
++++ crates/semantic/src/failurecheck.rs
+@@ -831,7 +831,7 @@
+                 rejection.reachable = false;
+             }
+         }
+-        reachable &= statement_can_continue(statement);
++        reachable = true;
+     }
+ }
+ 

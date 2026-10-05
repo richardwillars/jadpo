@@ -1,0 +1,21 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/entity-lifecycle.test.ts:
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"b28392a0-ee5d-470c-b66a-6e3e4ec25c05","operation":"User.create_user","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":3,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"3c0a4896-deb7-43b7-8db2-3e1426968f0b","operation":"Todo.create_todo","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":2,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) entity lifecycle transition lowering > creates lifecycle-owned initial values through generated routes [11.29ms]
+(pass) entity lifecycle transition lowering > atomically disables one visible identity and conceals it afterward [9.42ms]
+(pass) entity lifecycle transition lowering > serializes a transition against an ordinary update [5.06ms]
+(pass) entity lifecycle transition lowering > keeps the logical delete effect while racing an ordinary Todo update [13.88ms]
+(pass) entity lifecycle transition lowering > retains visible child Todos when their User is disabled [6.93ms]
+(pass) entity lifecycle transition lowering > filters disabled owners before the bounded joined page and required child read [14.26ms]
+(pass) entity lifecycle transition lowering > filters deleted Todos before the bounded visible page [6.46ms]
+(pass) entity lifecycle transition lowering > purges only expired post-transition rows in audited batches of 500 [147.61ms]
+(pass) entity lifecycle transition lowering > serializes competing retention-eligibility changes with purge [2.02ms]
+
+ 9 pass
+ 0 fail
+ 78 expect() calls
+Ran 9 tests across 1 file. [508.00ms]

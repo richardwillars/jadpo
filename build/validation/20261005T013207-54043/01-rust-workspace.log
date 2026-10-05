@@ -1,0 +1,292 @@
+   Compiling jadpo-diagnostics v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/diagnostics)
+   Compiling jadpo-core v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/core)
+   Compiling jadpo-syntax v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/syntax)
+   Compiling jadpo-semantic v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/semantic)
+   Compiling jadpo-cli v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.15s
+     Running unittests src/main.rs (jadpo/target/debug/deps/jadpo-98fe91c640258373)
+
+running 45 tests
+test experimental_build::tests::target_options_accept_both_positions_and_native_alias ... ok
+test lsp::tests::converts_utf8_bytes_and_lsp_utf16_positions ... ok
+test experimental_build::tests::default_build_stays_bun_and_requires_a_project ... ok
+test experimental_build::tests::malformed_targets_never_fall_back_to_bun ... ok
+test experimental_build::tests::experimental_builds_are_confined_to_the_checkout_fixture ... ok
+test lsp::tests::preserves_multi_file_repairs_as_one_workspace_preview ... ok
+test lsp::tests::completion_is_contextual_for_enums_and_typed_parameters ... ok
+test lsp::tests::navigates_imported_symbols_across_files ... ok
+test lsp::tests::presents_the_route_contract_for_an_inline_action ... ok
+test lsp::tests::round_trips_file_uris_with_spaces ... ok
+test lsp::tests::orders_the_recommended_guided_choice_before_bounded_alternatives ... ok
+test lsp::tests::provides_callable_signature_help ... ok
+test lsp::tests::publishes_related_locations_from_the_shared_diagnostic_object ... ok
+test lsp::tests::exposes_the_canonical_seed_over_the_protocol ... ok
+test lsp::tests::publishes_live_diagnostics_for_unsaved_document_text ... ok
+test lsp::tests::invalid_auth_value_is_one_precise_ide_problem_with_two_unpreferred_choices ... ok
+test terminal::tests::invalid_auth_value_terminal_projection_is_a_security_decision_not_a_token_error ... ok
+test terminal::tests::plain_output_is_deterministic_and_escape_free ... ok
+test terminal::tests::presentation_defaults_protect_noninteractive_consumers ... ok
+test lsp::tests::presents_complete_callable_outcomes_on_declarations_references_and_signatures ... ok
+test terminal::tests::operational_diagnostic_emitter_contracts_are_human_readable ... ok
+test terminal::tests::rich_colour_is_opt_in_and_ascii_mode_has_no_unicode_framing ... ok
+test terminal::tests::the_whole_human_surface_has_a_plain_escape_free_fallback ... ok
+test lsp::tests::every_catalogue_code_has_a_complete_ide_hover_projection ... ok
+test terminal::tests::rich_output_has_hierarchy_source_and_repair_without_changing_source ... ok
+test lsp::tests::presents_handled_mapped_and_propagated_outcomes_at_call_sites ... ok
+test tests::configuration_cli_failures_have_stable_safe_copy ... ok
+test tests::emits_a_stable_versioned_check_envelope ... ok
+test tests::emits_versioned_watch_lifecycle_events ... ok
+test lsp::tests::serves_guided_diagnostic_hover_repairs_and_rejects_stale_edits ... ok
+test tests::empty_project_fails_check ... ok
+test tests::rollback_failures_have_stable_diagnostic_contracts ... ok
+test tests::human_diagnostics_show_source_line_column_and_caret ... ok
+test tests::preserves_and_restores_the_last_known_good_runtime_revision ... ok
+test tests::separates_presentation_flags_from_command_arguments ... ok
+test tests::json_check_report_preserves_precise_frontend_diagnostics ... ok
+test tests::validates_the_dev_server_port ... ok
+test tests::check_summary_counts_persistence_declarations ... ok
+test tests::watch_snapshot_tracks_checked_inputs_and_ignores_generated_output ... ok
+test lsp::tests::temporal_tooling_is_contextual_and_standard_symbols_are_not_renameable ... ok
+test lsp::tests::serves_symbols_definition_hover_completion_rename_and_semantic_tokens ... ok
+test tests::runnable_build_includes_the_compiler_health_route ... ok
+test tests::enriches_safe_runtime_ids_locally_without_copying_event_payloads ... ok
+test terminal::tests::every_catalogue_code_has_complete_plain_and_rich_terminal_projections ... ok
+test tests::approval_cli_compares_pinned_source_and_preserves_text_facts ... ok
+
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+     Running tests/configuration_cli.rs (jadpo/target/debug/deps/configuration_cli-a9a1f56d185962d7)
+
+running 2 tests
+test config_set_refuses_a_captured_non_terminal ... ok
+test config_check_reports_status_without_values ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s
+
+     Running tests/experimental_build_command.rs (jadpo/target/debug/deps/experimental_build_command-2cddfca36ff246ef)
+
+running 4 tests
+test unavailable_checkout_fails_without_starting_tools ... ok
+test missing_build_tool_is_a_failure ... ok
+test child_failure_propagates_and_success_preserves_target_and_working_directory ... ok
+test default_and_explicit_bun_builds_generate_the_same_target_without_running_bun ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running tests/validation_test_command.rs (jadpo/target/debug/deps/validation_test_command-c7820dcd6607a82a)
+
+running 3 tests
+test no_authored_tests_is_a_distinct_error ... ok
+test missing_runtime_is_a_distinct_startup_error ... ok
+test unsuccessful_test_process_is_reported_and_success_is_not ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
+     Running tests/validation_tooling_protocol.rs (jadpo/target/debug/deps/validation_tooling_protocol-e5f90733812d53de)
+
+running 4 tests
+test utf16_navigation_and_rename_use_unsaved_semantics_without_touching_literal_lookalikes ... ok
+test code_actions_use_utf16_ranges_and_reject_a_real_previous_document_revision ... ok
+test rename_cannot_capture_an_existing_local_binding ... ok
+test rename_allows_the_same_name_in_disjoint_functions_and_sibling_blocks ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/watch_protocol.rs (jadpo/target/debug/deps/watch_protocol-65a15c0e029f1ebd)
+
+running 3 tests
+Python 3.14.0
+test dev_reports_a_missing_bun_runtime_and_still_shuts_down_cleanly ... ok
+test dev_restores_the_ready_runtime_when_a_candidate_fails_startup ... ok
+test watch_protocol_covers_coalescing_failure_recovery_file_changes_and_shutdown ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.47s
+
+     Running unittests src/lib.rs (jadpo/target/debug/deps/jadpo_core-9bdd59cc2f8db472)
+
+running 88 tests
+test artifacts::approval::tests::restricted_field_subject_changes_keep_the_field_surface ... ok
+test artifacts::tests::failed_staging_preserves_the_last_complete_build ... ok
+test artifacts::tests::exposes_route_deadline_in_inventory_and_openapi ... ok
+test artifacts::tests::exposes_enum_variants_to_validators_and_openapi ... ok
+test artifacts::tests::exposes_nested_objects_collections_and_validated_prelude_types ... ok
+test configuration::tests::updates_one_binding_without_exposing_or_reordering_others ... ok
+test configuration::tests::validates_textual_configuration_representations_strictly ... ok
+test configuration::validation_revision_guard::concurrent_configuration_change_is_rejected_without_disclosing_values ... ok
+test artifacts::tests::exposes_proved_restricted_field_reads_in_policy_audit ... ok
+test configuration::validation_revision_guard::foreign_staging_file_is_neither_removed_nor_promoted ... ok
+test artifacts::tests::exposes_tagged_sum_payloads_and_discriminator_to_openapi ... ok
+test configuration::validation_revision_guard::edit_after_staging_is_preserved_and_owned_temporary_is_cleaned ... ok
+test entity_model::tests::entity_query_and_transaction_diagnostics_have_public_contracts ... ok
+test formatter::tests::canonicalizes_token_spacing_without_rewriting_literals_or_comments ... ok
+test configuration::validation_revision_guard::newly_created_file_after_staging_is_preserved ... ok
+test formatter::tests::distinguishes_generic_angles_from_comparison_operators_and_duration_units ... ok
+test formatter::tests::formats_checked_service_contract_and_preserves_its_parsed_body ... ok
+test formatter::tests::formats_indentation_blank_lines_comments_and_is_idempotent ... ok
+test artifacts::tests::derives_the_complete_seed_artifact_set ... ok
+test formatter::tests::missing_line_breaks_do_not_change_the_parsed_token_stream ... ok
+test formatter::tests::formatter_rule_matrix_covers_each_named_grammar_production ... ok
+test formatter::tests::orders_route_items_and_keeps_leading_comments_with_their_item ... ok
+test formatter::tests::preserves_compact_route_paths_when_whitespace_splits_route_headers ... ok
+test formatter::tests::formats_grammar_alternatives_missing_from_compile_pass_fixtures ... ok
+test formatter::tests::preserves_multiline_callable_signature_structure ... ok
+test language_service::tests::exposes_inferred_types_at_child_properties ... ok
+test language_service::tests::indexes_global_and_local_symbols_with_semantic_references ... ok
+test index_advisor::tests::recommends_query_fields_and_accepts_one_explicitly ... ok
+test artifacts::tests::emits_a_scoped_audit_for_checked_service_effects ... ok
+test formatter::tests::normalizes_whitespace_for_every_surface_family_in_the_rule_matrix ... ok
+test migration_identity::tests::coalesces_compatible_sqlite_field_additions_into_one_rebuild ... ok
+test migration_identity::tests::emits_reversible_sql_for_required_to_nullable_widening ... ok
+test migration_identity::tests::emits_checked_sqlite_rebuild_for_one_required_field ... ok
+test scaffold::tests::identical_names_produce_identical_scaffolds ... ok
+test scaffold::tests::refuses_to_overwrite_a_non_empty_directory ... ok
+test migration_identity::tests::requires_checked_not_null_evidence_for_nullability_narrowing ... ok
+test artifacts::tests::openapi_input_schema_allows_omission_for_defaulted_nullable_field ... ok
+test target::tests::creates_compiler_owned_uuid_identity_values ... ok
+test artifacts::tests::repeated_emission_is_byte_identical ... ok
+test target::tests::checked_service_operation_uses_generated_adapter_and_propagates_suspension ... ok
+test target::tests::derives_internal_suspension_through_the_action_call_graph ... ok
+test artifacts::tests::exposes_typed_route_paths_and_behavior_in_inventory_and_openapi ... ok
+test migration_identity::tests::initializes_a_deterministic_non_overwriting_registry ... ok
+test target::tests::declared_service_exchange_generates_a_fail_closed_http_endpoint ... ok
+test target::tests::generates_dependency_free_startup_configuration_loading ... ok
+test target::tests::generates_a_structured_authored_test_runner ... ok
+test target::tests::applies_entity_lifecycle_initial_values_to_created_rows ... ok
+test target::tests::generates_enum_validation_and_exhaustive_match_dispatch ... ok
+test target::tests::generates_mutable_local_reassignment_without_reference_syntax ... ok
+test target::tests::generates_operator_precedence_with_explicit_parentheses ... ok
+test target::tests::generates_tagged_sum_validation_construction_and_narrowing ... ok
+test target::tests::generates_the_public_health_scaffold ... ok
+test scaffold::tests::creates_a_valid_static_base ... ok
+test target::tests::jwt_exception_is_exactly_pinned_and_confined_to_its_adapter ... ok
+test target::tests::first_party_authentication_opens_only_complete_supported_routes ... ok
+test target::tests::generates_the_seed_runtime_contract ... ok
+test target::tests::keeps_pure_call_chains_synchronous_in_the_generated_target ... ok
+test target::tests::generates_the_strategy_independent_authentication_selector ... ok
+test target::tests::non_jwt_application_has_no_dependency_or_jose_footprint ... ok
+test target::tests::lifecycle_audit_separates_policy_lifecycle_generated_fields_and_sql_effect ... ok
+test target::tests::lowers_exhaustive_outcome_recovery_mapping_and_propagation ... ok
+test target::tests::protected_route_generation_names_and_locates_the_route ... ok
+test target::tests::rejects_external_runtime_dependencies_and_manifests ... ok
+test target::tests::rejects_an_unimplemented_entity_authority_store ... ok
+test target::tests::rejects_unimplemented_durable_workflow_execution ... ok
+test target::tests::route_headers_generate_a_raw_multiplicity_adapter ... ok
+test target::tests::nullable_input_default_materializes_none_when_request_omits_field ... ok
+test tests::builds_the_seed_semantic_contract ... ok
+test tests::discovers_the_jadpo_seed ... ok
+test tests::emits_a_deterministic_scaffold_manifest ... ok
+test target::tests::typed_query_lowering_uses_raw_decoding_and_split_boundary_failures ... ok
+test tests::discovers_all_compile_fixtures ... ok
+test tests::never_discovers_generated_sources_beneath_build ... ok
+test target::tests::generates_parameterised_persistence_contracts ... ok
+test tests::parses_the_jadpo_seed_without_diagnostics ... ok
+test tests::permits_an_empty_file_beside_project_declarations ... ok
+test tests::preserves_specific_parser_diagnostics ... ok
+test tests::rejects_a_project_with_no_declarations ... ok
+test artifacts::tests::metadata_is_independent_of_relative_or_absolute_invocation ... ok
+test tests::failure_fixtures_emit_contracts_routes_diagnostics_and_spans ... ok
+test tests::p106_fixtures_cover_failure_flow_paths_and_inline_routes ... ok
+test artifacts::tests::approval_subject_digest_is_stable_and_changes_with_checked_graph ... ok
+test target::tests::first_party_authentication_checks_strength_vocabulary_not_type_name ... ok
+test tests::type_fixtures_emit_their_contract_diagnostics_and_spans ... ok
+test target::tests::lifecycle_authority_lookup_projects_only_subject_identity_and_lifecycle_state ... ok
+test target::tests::first_party_authentication_binds_credentials_to_separate_service_identity ... ok
+test formatter::tests::formats_every_compile_pass_fixture_to_its_exact_golden_output ... ok
+test tests::indexes_each_syntax_valid_fixture_without_name_errors ... ok
+
+test result: ok. 88 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.08s
+
+     Running tests/auth_adapter_settings.rs (jadpo/target/debug/deps/auth_adapter_settings-45aacdd290c10592)
+
+running 4 tests
+test endpoint_settings_cannot_be_added_to_non_jwt_validators ... ok
+test inactive_principals_preserve_declared_permission_or_domain_failure ... ok
+test service_owner_is_explicit_required_persistent_reference ... ok
+test jwt_accepts_only_nonsecret_endpoint_and_audience_configuration ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/auth_credential_binding.rs (jadpo/target/debug/deps/auth_credential_binding-13a9249a8722af93)
+
+running 7 tests
+test lifecycle_generated_fields_cannot_replace_credential_roles ... ok
+test binding_is_only_available_on_service_api_keys ... ok
+test active_predicate_must_be_constructible_and_cannot_alias_identity_fields ... ok
+test credential_authority_uses_same_store_and_service_identity ... ok
+test credential_field_types_references_and_roles_fail_closed ... ok
+test binding_requires_exactly_one_of_each_known_role ... ok
+test renamed_binding_roundtrips_and_exports_source_contract ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
+     Running tests/auth_extension_review.rs (jadpo/target/debug/deps/auth_extension_review-e551fdebc735dbd0)
+
+running 4 tests
+test accepted_jwt_bearer_topology_remains_valid ... ok
+test jwt_cookie_transport_is_rejected_even_when_its_slot_is_unique ... ok
+test duplicate_owner_setting_is_not_silently_selected ... ok
+test owner_setting_is_rejected_outside_service_api_key_mode ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/formatter_grammar_conformance.rs (jadpo/target/debug/deps/formatter_grammar_conformance-34d210b64adeb0f1)
+
+running 3 tests
+test compile_pass_grammar_corpus_survives_formatter_and_whitespace_variations ... ok
+test compile_fail_fixture_tokens_and_diagnostics_survive_formatting ... ok
+test compile_pass_grammar_corpus_survives_added_and_removed_line_breaks ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+
+     Running tests/identity_role_binding.rs (jadpo/target/debug/deps/identity_role_binding-b96c33cea70a113a)
+
+running 5 tests
+test identity_bound_self_role_scopes_reads_and_preserves_field_narrowing ... ok
+test role_bound_owner_accepts_its_explicit_constructor_from_the_principal ... ok
+test role_bound_owner_rejects_the_same_constructor_from_request_input ... ok
+test same_entity_role_binding_is_rejected_on_a_non_identity_field ... ok
+test self_read_cannot_project_a_provisioning_only_field ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/validation_approval_subject.rs (jadpo/target/debug/deps/validation_approval_subject-902da17ff61c7692)
+
+running 23 tests
+test invalid_source_cannot_masquerade_as_an_empty_effect_graph ... ok
+test lifecycle_impact_exposes_distinct_policy_nodes_generated_fields_and_logical_effect ... ok
+test body_value_change_is_visible_even_with_identical_graph_topology ... ok
+test checked_job_impact_binds_exact_nonexecuting_interval_and_absence ... ok
+test compiler_input_provenance_is_bound_and_has_no_checkout_paths ... ok
+test actor_bindings_expose_checked_source_contracts_and_explicit_absence_not_live_roles ... ok
+test nested_source_read_has_a_complete_route_witness ... ok
+test job_impact_is_sorted_by_semantic_identity_not_source_order ... ok
+test canonical_digest_binds_intent_and_text_contains_identical_facts ... ok
+test job_transitive_service_effect_is_bound_and_rehashed_omission_rejects ... ok
+test new_reachability_of_unchanged_declaration_is_a_separate_decision ... ok
+test omission_of_a_transitive_effect_fails_export_conformance_even_when_rehashed ... ok
+test role_binding_change_and_removal_have_individual_exact_decisions ... FAILED
+test route_policy_scenario_lists_exact_added_and_removed_actor_subjects ... ok
+test route_auth_change_retains_actor_scope_scenario_when_effect_paths_are_unchanged ... ok
+test nested_checked_service_effect_is_bound_to_route_impact_and_cannot_be_omitted ... ok
+test job_contract_changes_cannot_hide_behind_unchanged_call_graph ... ok
+test two_new_permission_grants_have_two_distinct_decisions ... ok
+test state_pin_requires_a_baseline_and_binds_compiler_provenance ... ok
+test membership_contract_change_and_rehashed_binding_omissions_fail_export_conformance ... ok
+test source_baseline_is_pinned_and_rebuilds_across_roots_are_identical ... ok
+test registry_only_change_invalidates_state_pin_and_is_a_separate_decision ... ok
+test supported_examples_all_emit_checked_subjects ... ok
+
+failures:
+
+---- role_binding_change_and_removal_have_individual_exact_decisions stdout ----
+thread 'role_binding_change_and_removal_have_individual_exact_decisions' panicked at crates/core/tests/validation_approval_subject.rs:50:9:
+Approval subjects require checked source with no frontend errors.: [] [] []
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    role_binding_change_and_removal_have_individual_exact_decisions
+
+test result: FAILED. 22 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.81s
+
+error: test failed, to rerun pass `-p jadpo-core --test validation_approval_subject`

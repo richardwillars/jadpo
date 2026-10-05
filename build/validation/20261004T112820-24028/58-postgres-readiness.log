@@ -1,0 +1,21 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/readiness-recovery.test.ts:
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated runtime readiness > retry-cutoff requests can observe mixed readiness while eligible requests share one initialization [38.58ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated runtime readiness > initial and recovery-time SQLite schema locks stay recoverable after contention clears [86.38ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_879d724f81edd863","attributes":{}}
+(pass) generated runtime readiness > recovers required storage and authenticated reads through generated handlers without binding a listener [392.91ms]
+(pass) generated runtime readiness > keeps the process live, gates traffic, and recovers when the required database returns [878.56ms]
+(pass) generated runtime readiness > recovers first-party authentication after its required database returns [423.55ms]
+(pass) generated runtime readiness > recovers PostgreSQL authentication sessions after a post-startup authority-store outage without restart [220.47ms]
+(pass) generated runtime readiness > runs the readiness ping against the disposable PostgreSQL adapter [189.35ms]
+
+ 7 pass
+ 0 fail
+ 688 expect() calls
+Ran 7 tests across 1 file. [2.50s]

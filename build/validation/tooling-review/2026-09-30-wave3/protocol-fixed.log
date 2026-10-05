@@ -1,0 +1,16 @@
+   Compiling jadpo-diagnostics v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/diagnostics)
+   Compiling jadpo-syntax v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/syntax)
+   Compiling jadpo-semantic v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/semantic)
+   Compiling jadpo-core v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/core)
+   Compiling jadpo-cli v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.68s
+     Running tests/validation_tooling_protocol.rs (jadpo/target/debug/deps/validation_tooling_protocol-e2f2dd7cb8339366)
+
+running 4 tests
+test utf16_navigation_and_rename_use_unsaved_semantics_without_touching_literal_lookalikes ... ok
+test rename_cannot_capture_an_existing_local_binding ... ok
+test code_actions_use_utf16_ranges_and_reject_a_real_previous_document_revision ... ok
+test rename_allows_the_same_name_in_disjoint_functions_and_sibling_blocks ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+

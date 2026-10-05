@@ -1,0 +1,26 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/jwt-authentication.test.ts:
+(pass) compiler-owned JWT verification with pinned jose > real RS256 and ES256 signatures resolve only a frozen subject [8.74ms]
+(pass) compiler-owned JWT verification with pinned jose > explicit JWKS skips discovery and concurrent requests share one bounded fetch [4.09ms]
+(pass) compiler-owned JWT verification with pinned jose > invalid issuer configuration never reaches network [3.27ms]
+(pass) compiler-owned JWT verification with pinned jose > invalid operation clocks fail before fetching [3.16ms]
+(pass) compiler-owned JWT verification with pinned jose > missing, wrong-type, wrong-issuer and wrong-audience claims reject [14.76ms]
+(pass) compiler-owned JWT verification with pinned jose > expiry, not-before, future issuance and inconsistent times reject with fixed skew [7.90ms]
+(pass) compiler-owned JWT verification with pinned jose > tampering and different signing key reject [50.60ms]
+(pass) compiler-owned JWT verification with pinned jose > none, HMAC confusion, arbitrary URLs, embedded keys and critical headers reject before fetch [0.58ms]
+(pass) compiler-owned JWT verification with pinned jose > duplicate escaped header/claim names, invalid UTF-8 and nested JSON reject before fetch [0.69ms]
+(pass) compiler-owned JWT verification with pinned jose > malformed, oversized, padded and noncanonical compact tokens reject [0.98ms]
+(pass) compiler-owned JWT verification with pinned jose > unknown key refreshes only after cooldown and rotation replaces cache [3.47ms]
+(pass) compiler-owned JWT verification with pinned jose > expired key cache fails closed during outage and outage requests are coalesced [1.91ms]
+(pass) compiler-owned JWT verification with pinned jose > discovery issuer mismatch and unsafe JWKS addresses are operational failures [3.01ms]
+(pass) compiler-owned JWT verification with pinned jose > provider response size, status, malformed JSON and duplicate keys are bounded [5.40ms]
+(pass) compiler-owned JWT verification with pinned jose > JWKS rejects ambiguous kids, private keys, oversized keys and excessive key counts [6.13ms]
+(pass) compiler-owned JWT verification with pinned jose > hung fetch is aborted and produces a bounded safe failure [2010.27ms]
+(pass) compiler-owned JWT verification with pinned jose > structured mutation fuzz rejects 1024 corruptions of a real signed JWT [99.24ms]
+(pass) compiler-owned JWT verification with pinned jose > deterministic parser fuzz corpus rejects 2048 malformed credentials without fetching [6.89ms]
+
+ 18 pass
+ 0 fail
+ 3239 expect() calls
+Ran 18 tests across 1 file. [2.46s]

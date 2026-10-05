@@ -1,0 +1,64 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/service-adapter.test.ts:
+(pass) keeps the emitted service audit pinned and honest about broader runtime conformance [0.11ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"4c7a86c9-7e26-4d65-b9fb-a70acb1236d6","attempt":1,"elapsedMs":8,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) pins host, path, body and idempotency header and returns a checked receipt [9.32ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"d4b6f273-66ca-4b5a-9725-b323a1c6baf1","attempt":1,"elapsedMs":14,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) uses verified TLS and the pinned DNS identity for provider egress [14.75ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"ebda030d-ef05-4b8e-a2d5-c475c737b93e","attempt":1,"elapsedMs":11,"outcome":"pre_dispatch_failure","retryScheduled":true,"retryDelayMs":1}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"ebda030d-ef05-4b8e-a2d5-c475c737b93e","attempt":2,"elapsedMs":23,"outcome":"pre_dispatch_failure","retryScheduled":true,"retryDelayMs":193}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"ebda030d-ef05-4b8e-a2d5-c475c737b93e","attempt":3,"elapsedMs":230,"outcome":"pre_dispatch_failure","retryScheduled":false,"retryDelayMs":null}
+(pass) rejects a trusted TLS certificate whose hostname does not match the pinned provider [230.99ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"2228e504-fcf1-473d-acde-ff3021bd055c","attempt":1,"elapsedMs":10,"outcome":"pre_dispatch_failure","retryScheduled":true,"retryDelayMs":92}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"2228e504-fcf1-473d-acde-ff3021bd055c","attempt":2,"elapsedMs":114,"outcome":"pre_dispatch_failure","retryScheduled":true,"retryDelayMs":182}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"2228e504-fcf1-473d-acde-ff3021bd055c","attempt":3,"elapsedMs":308,"outcome":"pre_dispatch_failure","retryScheduled":false,"retryDelayMs":null}
+(pass) fails closed and never writes HTTP when a TLS handshake fails [312.30ms]
+(pass) retries a TLS handshake timeout only before any HTTP write [207.81ms]
+(pass) test transport cannot target non-loopback or host-selected egress [0.16ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"681d08e8-4e5d-4664-ba96-c2126a581eab","attempt":1,"elapsedMs":1,"outcome":"recipient_rejected","retryScheduled":false,"retryDelayMs":null}
+(pass) maps only the exact recipient response and keeps provider text private [1.66ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"a6a7d9e6-208a-4a21-8fe4-23d8f785d68f","attempt":1,"elapsedMs":1,"outcome":"misconfigured","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_SERVICE_MISCONFIGURED","requestId":"req_5831435e-e681-4a43-a6d5-27964961fc67","traceId":null,"semanticOperationId":"route:POST:/deliver","sourceRevision":"src_2766cfa292e84b22","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"aa6640dc-8421-4727-ac5f-ae02959938aa","attempt":1,"elapsedMs":1,"outcome":"misconfigured","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_SERVICE_MISCONFIGURED","requestId":"req_19bf5e34-5d40-4d28-a9d3-90a2fd77edfd","traceId":null,"semanticOperationId":"route:POST:/deliver","sourceRevision":"src_2766cfa292e84b22","attributes":{}}
+(pass) contains authentication and idempotency conflicts as misconfiguration [2.28ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"da67ae49-b8b4-42ab-9fe6-25765f7a5820","attempt":1,"elapsedMs":1,"outcome":"rate_limited","retryScheduled":true,"retryDelayMs":83}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"da67ae49-b8b4-42ab-9fe6-25765f7a5820","attempt":2,"elapsedMs":88,"outcome":"rate_limited","retryScheduled":true,"retryDelayMs":161}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"da67ae49-b8b4-42ab-9fe6-25765f7a5820","attempt":3,"elapsedMs":252,"outcome":"rate_limited","retryScheduled":false,"retryDelayMs":null}
+(pass) retries only explicit no-acceptance rate limits and preserves the exact key and payload [253.07ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"service-adapter-test-operation","attempt":1,"elapsedMs":225,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"service-adapter-test-operation","attempt":2,"elapsedMs":303,"outcome":"outcome_unknown","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"service-adapter-test-operation","attempt":1,"elapsedMs":2,"outcome":"rate_limited","retryScheduled":true,"retryDelayMs":25}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"service-adapter-test-operation","attempt":2,"elapsedMs":32,"outcome":"rate_limited","retryScheduled":true,"retryDelayMs":62}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"service-adapter-test-operation","attempt":3,"elapsedMs":98,"outcome":"rate_limited","retryScheduled":false,"retryDelayMs":null}
+(pass) shares one elapsed deadline and three-attempt budget across adapter calls [402.44ms]
+(pass) bounds credential bytes before constructing or dispatching the HTTP request [0.50ms]
+(pass) a timeout after the request is written is unknown and never retried [33.98ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"deb99bc8-be3c-4da8-ba67-8ba324c18023","attempt":1,"elapsedMs":2,"outcome":"outcome_unknown","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_OUTCOME_UNKNOWN","requestId":"req_f67a4c9a-9124-466a-9717-a82bb3286e6b","traceId":null,"semanticOperationId":"route:POST:/deliver","sourceRevision":"src_2766cfa292e84b22","attributes":{}}
+(pass) cancellation after dispatch is unknown and stops all further attempts [2.53ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"982f950c-aba8-4397-b9db-e80e259841ca","attempt":1,"elapsedMs":1,"outcome":"pre_dispatch_failure","retryScheduled":true,"retryDelayMs":58}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"982f950c-aba8-4397-b9db-e80e259841ca","attempt":2,"elapsedMs":62,"outcome":"pre_dispatch_failure","retryScheduled":true,"retryDelayMs":182}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"982f950c-aba8-4397-b9db-e80e259841ca","attempt":3,"elapsedMs":247,"outcome":"pre_dispatch_failure","retryScheduled":false,"retryDelayMs":null}
+(pass) retries a connection refusal known to occur before HTTP dispatch [254.03ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"6c5df35b-9a27-43d1-a919-8eff8e92291c","attempt":1,"elapsedMs":2,"outcome":"outcome_unknown","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_OUTCOME_UNKNOWN","requestId":"req_6c375a90-1ac6-41e1-b43d-f8be72c24d0d","traceId":null,"semanticOperationId":"route:POST:/deliver","sourceRevision":"src_2766cfa292e84b22","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"b14480e7-947d-4abb-a2b0-014b198a6dc1","attempt":1,"elapsedMs":3,"outcome":"outcome_unknown","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_OUTCOME_UNKNOWN","requestId":"req_2fa29417-fd80-4d84-9ea8-f65be7fb6a2a","traceId":null,"semanticOperationId":"route:POST:/deliver","sourceRevision":"src_2766cfa292e84b22","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"df9d0164-aa81-4895-9d5c-859b0b83e1aa","attempt":1,"elapsedMs":1,"outcome":"outcome_unknown","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_OUTCOME_UNKNOWN","requestId":"req_c6411f74-ba26-458f-8cb9-7141982c5226","traceId":null,"semanticOperationId":"route:POST:/deliver","sourceRevision":"src_2766cfa292e84b22","attributes":{}}
+(pass) treats a mismatched receipt, redirect and malformed response as unknown without retry [7.15ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"9af7c5e3-7b7f-4e08-a06b-42e3a34645b3","attempt":1,"elapsedMs":1,"outcome":"outcome_unknown","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_OUTCOME_UNKNOWN","requestId":"req_b4a132d8-3a08-4ae8-95dd-bddf01e43aef","traceId":null,"semanticOperationId":"route:POST:/deliver","sourceRevision":"src_2766cfa292e84b22","attributes":{}}
+(pass) classifies a committed provider acceptance with a lost acknowledgement as unknown [1.18ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"service-adapter-test-operation","attempt":1,"elapsedMs":1,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"service-adapter-test-operation","attempt":1,"elapsedMs":1,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"service-adapter-test-operation","attempt":1,"elapsedMs":1,"outcome":"misconfigured","retryScheduled":false,"retryDelayMs":null}
+(pass) deduplicates an exact key and body using the stored provider receipt [1.82ms]
+(pass) never exposes provider credentials or response contents in safe attempt logs [1.13ms]
+
+ 19 pass
+ 0 fail
+ 90 expect() calls
+Ran 19 tests across 1 file. [2.51s]

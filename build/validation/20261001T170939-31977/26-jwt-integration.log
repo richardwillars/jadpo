@@ -1,0 +1,22 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/jwt-integration.test.ts:
+(pass) real RS256 JWT resolves an authoritative principal on protected and fresh HTTP routes [17.78ms]
+(pass) missing authentication precedes malformed protected input [3.08ms]
+(pass) wrong issuer, audience, unknown subject and expired JWT cannot enter the route [8.15ms]
+(pass) signature corruption is rejected by real verification [2.63ms]
+(pass) disabled authority is checked on ordinary and fresh external JWT requests [4.58ms]
+(pass) JWT, opaque bearer and browser cookie preserve dispatch without validator fallback [12.69ms]
+(pass) mixed, duplicate and invalid-beside-valid credential slots reject before provider work [1.81ms]
+(pass) public liveness ignores malformed and conflicting credentials [0.47ms]
+(pass) JWT profile, identity and permission claims cannot replace local identity or policy [9.79ms]
+(pass) concurrent verified subjects retain their own authoritative local identities [16.03ms]
+(pass) provider failure is a safe operational response rather than a principal or provider disclosure [2.65ms]
+(pass) ordinary and fresh JWT each execute exactly one native SQLite authority query [3.49ms]
+(pass) invalid JWT configuration fails initialization and leaves authentication unavailable [5.09ms]
+(pass) invalid JWT configuration exits generated production startup before a listener is opened [111.89ms]
+
+ 14 pass
+ 0 fail
+ 178 expect() calls
+Ran 14 tests across 1 file. [589.00ms]

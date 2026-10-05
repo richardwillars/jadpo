@@ -1,0 +1,43 @@
+   Compiling jadpo-diagnostics v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/diagnostics)
+   Compiling jadpo-syntax v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/syntax)
+   Compiling jadpo-semantic v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/semantic)
+   Compiling jadpo-core v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.12s
+     Running tests/validation_config_time_contract.rs (jadpo/target/debug/deps/validation_config_time_contract-fc9eb54cd7c8d491)
+
+running 10 tests
+test fixture_secret_values_still_obey_nominal_constraints ... ok
+test production_actions_cannot_advance_the_test_clock ... ok
+test explicit_construction_cannot_remove_secret_classification ... FAILED
+test secret_classification_survives_local_aliases ... ok
+test secret_comparisons_cannot_disclose_information_as_a_boolean ... ok
+test secret_defaults_are_rejected_even_when_nominally_valid ... ok
+test secret_values_cannot_cross_record_or_callable_boundaries ... ok
+test fixture_secret_wrappers_are_required_and_cannot_mark_public_configuration ... ok
+test pure_callables_receive_time_instead_of_reading_the_clock ... ok
+test temporal_literal_calendar_precision_and_offset_boundaries_are_checked ... FAILED
+
+failures:
+
+---- explicit_construction_cannot_remove_secret_classification stdout ----
+thread 'explicit_construction_cannot_remove_secret_classification' panicked at crates/core/tests/validation_config_time_contract.rs:13:78:
+missing CONFIG_SECRET_FLOW: type ApiKey = Text { min_length: 8 }
+config Settings { api_key: ApiKey { binding: "WAVE_KEY" secret: true } }
+function leak() -> ApiKey { var alias = config.api_key return ApiKey(alias) }
+[]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- temporal_literal_calendar_precision_and_offset_boundaries_are_checked stdout ----
+thread 'temporal_literal_calendar_precision_and_offset_boundaries_are_checked' panicked at crates/core/tests/validation_config_time_contract.rs:13:78:
+missing TYPE_INVALID_LITERAL: type ClockReading = Object { now: Instant }
+function invalid_time() -> ClockReading { return ClockReading { now: Instant("2026-01-01T12:00:00-00:00") } }
+[]
+
+
+failures:
+    explicit_construction_cannot_remove_secret_classification
+    temporal_literal_calendar_precision_and_offset_boundaries_are_checked
+
+test result: FAILED. 8 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+error: test failed, to rerun pass `-p jadpo-core --test validation_config_time_contract`

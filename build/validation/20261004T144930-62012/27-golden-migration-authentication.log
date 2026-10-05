@@ -1,0 +1,12 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/golden-migration-authentication.test.ts:
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"26ba0f25-af04-44ce-96d8-70626237499f","occurredAt":1791121834580}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"02ffc8a8-5c0a-491a-bf1f-94f39e672c1d","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":2,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"70edd700-ac5e-4532-9b96-ef8a630db0e9","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) generated migration target enforces authentication and browser origin [9.98ms]
+
+ 1 pass
+ 0 fail
+ 8 expect() calls
+Ran 1 test across 1 file. [742.00ms]

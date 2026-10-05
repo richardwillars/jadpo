@@ -1,0 +1,17 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/validation-auth-policy.test.ts:
+(pass) independent authentication, policy and transaction integration > policy denial in a later nested mutation rolls back the earlier authorized write [13.57ms]
+(pass) independent authentication, policy and transaction integration > authorized nested writes commit together while domain rejection rolls them back [5.97ms]
+(pass) independent authentication, policy and transaction integration > missing and unauthorized second rows have the same safe public failure and rollback [5.75ms]
+(pass) independent authentication, policy and transaction integration > bounded signed identity never freezes direct ownership authority [4.14ms]
+(pass) independent authentication, policy and transaction integration > same-principal and conflicting credentials reject before malformed body or writes [2.23ms]
+(pass) independent authentication, policy and transaction integration > revoked opaque credentials and fresh signed credentials cannot begin mutation [2.60ms]
+(pass) independent authentication, policy and transaction integration > concurrent transactions keep each principal and all nested policy checks isolated [18.00ms]
+
+ 7 pass
+ 0 fail
+ 60 expect() calls
+Ran 7 tests across 1 file. [304.00ms]

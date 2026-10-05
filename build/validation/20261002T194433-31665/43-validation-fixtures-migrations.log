@@ -1,0 +1,13 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/validation-fixtures-migrations.test.ts:
+(pass) authored database fixtures isolate failed tests, reordered tests and repeated runs [6.20ms]
+(pass) concurrent authored-suite invocations retain independent database fixtures [1.20ms]
+(pass) authored fixture database isolation survives a fresh process [75.86ms]
+(pass) reviewed additive SQLite rebuild preserves data, identities, foreign keys and unique indexes [123.26ms]
+(pass) failed required-column narrowing can roll back without changing rows or leaving shadow tables [112.84ms]
+
+ 5 pass
+ 0 fail
+ 46 expect() calls
+Ran 5 tests across 1 file. [753.00ms]

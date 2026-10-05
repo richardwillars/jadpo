@@ -1,0 +1,36 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/persistence-seed.test.ts:
+(pass) generated SQLite persistence path > preserves omission separately from explicit none in a fixed-shape patch [14.61ms]
+(pass) generated SQLite persistence path > loads multiple bounded collections without Cartesian multiplication [7.23ms]
+(pass) generated SQLite persistence path > automatically rolls back every mutation in a failed action [3.32ms]
+(pass) generated SQLite persistence path > updates several fields atomically in one fixed-shape mutation [6.89ms]
+(pass) generated SQLite persistence path > enforces generated identity, uniqueness, and lookup indexes [1.19ms]
+(pass) generated SQLite persistence path > enforces and indexes the generated User-to-Todo relationship [2.33ms]
+(pass) generated SQLite persistence path > loads an optional inverse only when its owning reference is unique [6.78ms]
+(pass) generated SQLite persistence path > loads a validated parent and ordered inverse collection with a bounded plan [5.42ms]
+(pass) generated SQLite persistence path > returns an empty inverse collection and a typed missing-parent failure [1.13ms]
+(pass) generated SQLite persistence path > paginates parents before joining their independently bounded children [13.47ms]
+(pass) generated SQLite persistence path > rejects invalid input without writing a row [0.73ms]
+(pass) generated SQLite persistence path > creates, decodes, and returns a validated entity [1.33ms]
+(pass) generated SQLite persistence path > returns null when an optional query has no row [0.39ms]
+(pass) generated SQLite persistence path > returns a validated entity when an optional query has one row [0.80ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_c5741e51-7185-4575-9c8c-3d5c3292960a","traceId":null,"semanticOperationId":"route:POST:/customers/find","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated SQLite persistence path > contains an optional-query cardinality violation [1.50ms]
+(pass) generated SQLite persistence path > maps a missing required query to its declared not-found failure [0.39ms]
+(pass) generated SQLite persistence path > returns a validated entity from a required query [1.14ms]
+(pass) generated SQLite persistence path > maps a missing required update to not-found [0.77ms]
+(pass) generated SQLite persistence path > updates and returns exactly one validated entity [2.15ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_4f21816f-cb97-434d-8b98-1352439d4c8d","traceId":null,"semanticOperationId":"route:POST:/customers/update","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated SQLite persistence path > rolls back an update whose predicate matches multiple rows [0.78ms]
+(pass) generated SQLite persistence path > maps create and update constraint violations to their declared conflict [2.86ms]
+(pass) generated SQLite persistence path > maps a missing required delete to not-found [0.63ms]
+(pass) generated SQLite persistence path > deletes and returns exactly one validated entity [1.50ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_1526e60d-91ce-447a-88ac-e8fb32ec2f90","traceId":null,"semanticOperationId":"route:POST:/customers/delete","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated SQLite persistence path > rolls back a delete whose predicate matches multiple rows [0.52ms]
+(pass) generated SQLite persistence path > normalises raw SQLite driver errors at the adapter boundary [1.15ms]
+
+ 25 pass
+ 0 fail
+ 130 expect() calls
+Ran 25 tests across 1 file. [254.00ms]

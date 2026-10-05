@@ -1,0 +1,22 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/validation-persistence.test.ts:
+(pass) inherited nullable persistence and transaction contracts (postgres) > SQL and persistence metadata preserve inherited nullable contracts [0.96ms]
+(pass) inherited nullable persistence and transaction contracts (postgres) > explicit none survives HTTP creation, actual storage and a later read [9.53ms]
+(pass) inherited nullable persistence and transaction contracts (postgres) > a nullable field is still mandatory and required fields cannot become null [0.91ms]
+(pass) inherited nullable persistence and transaction contracts (postgres) > patch omission preserves a nullable value while supplied none clears it [5.78ms]
+(pass) inherited nullable persistence and transaction contracts (postgres) > patch lowering uses the local binding at its lexical use, not a shadowed parameter [3.83ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_d9b0ed86-aad5-424c-b40b-747efcd8c55f","traceId":null,"semanticOperationId":"route:POST:/batch","sourceRevision":"src_d9c6644df8b75268","attributes":{}}
+(pass) inherited nullable persistence and transaction contracts (postgres) > ambiguous required mutation rolls back without clearing either nullable field [4.54ms]
+(pass) inherited nullable persistence and transaction contracts (postgres) > propagated nested failure rolls back both entries including a nullable insert [2.28ms]
+(pass) inherited nullable persistence and transaction contracts (postgres) > handled nested failure rolls back only its nullable insert and change record [2.36ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_84c65e6c-c444-44bc-8e3e-3f871c446d66","traceId":null,"semanticOperationId":"route:POST:/find","sourceRevision":"src_d9c6644df8b75268","attributes":{}}
+(pass) inherited nullable persistence and transaction contracts (postgres) > corrupt persisted semantic values are contained before entering trusted code [1.51ms]
+(pass) inherited nullable persistence and transaction contracts (postgres) > parameterized text cannot change SQL shape [1.07ms]
+
+ 10 pass
+ 0 fail
+ 65 expect() calls
+Ran 10 tests across 1 file. [266.00ms]

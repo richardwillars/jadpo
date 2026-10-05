@@ -1,0 +1,35 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/first-party-authentication.test.ts:
+(pass) generated first-party authentication > signed cookie and opaque bearer reach a protected route with the typed principal [6.43ms]
+(pass) generated first-party authentication > protected routes narrow the current principal to the declared variant [1.35ms]
+(pass) generated first-party authentication > authentication precedes input decoding and public health ignores credentials [4.03ms]
+(pass) generated first-party authentication > duplicates, conflicting slots and invalid beside valid all reject [0.78ms]
+(pass) generated first-party authentication > cookie mutations require an exact configured origin and a session-bound CSRF token [12.41ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"705fa628-6d07-4e13-988f-0b9d958fb18c","operation":"Note.rename","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) generated first-party authentication > authenticated principal reaches policy-scoped reads and mutations [5.54ms]
+(pass) generated first-party authentication > concurrent requests never exchange principals [6.55ms]
+(pass) generated first-party authentication > bounded ordinary requests avoid authority while fresh and opaque requests check it [6.45ms]
+(pass) generated first-party authentication > logout is immediate for opaque credentials and bounded for signed credentials [4.09ms]
+(pass) generated first-party authentication > expiry is exclusive and future issued times reject [1.29ms]
+(pass) generated first-party authentication > refresh checks authority and cannot extend the absolute session expiry [0.82ms]
+(pass) generated first-party authentication > key overlap works for signed and opaque credentials; retiring the old key rejects both [1.77ms]
+(pass) generated first-party authentication > malformed configuration fails before authentication becomes available [0.27ms]
+(pass) generated first-party authentication > a failed newer initialization cannot be overwritten by an older success [1.84ms]
+(pass) generated first-party authentication > reusing a subject for another identity cannot inherit an existing credential [9.25ms]
+(pass) generated first-party authentication > persisted credentials and revocation survive a separate runtime process [108.82ms]
+(pass) generated first-party authentication > tampering, unknown key versions, wrong transports and bounded parser mutations reject [5.71ms]
+(pass) generated first-party authentication > credentials and keys are absent from stored session records and public errors [3.14ms]
+(pass) generated first-party authentication > authority outage returns a safe operational failure; bounded reads keep working [3.89ms]
+(pass) generated first-party authentication > generated handler serves an authenticated request over real HTTP [21.00ms]
+(pass) built-in strength mapping preserves legacy text and rejects unconfigured principal kinds [0.57ms]
+(pass) generated immediate mode uses opaque cookies and checks authority on every request [1108.08ms]
+(pass) generated signed bearer works and rejects correctly signed wrong-audience envelopes [1084.27ms]
+(pass) OpenAPI preserves both methods and agrees with the authentication audit [8.52ms]
+(pass) invalid startup secrets cannot open a listener or escape through startup logs [72.98ms]
+(pass) an incompatible internal session table fails startup with a safe diagnostic [71.19ms]
+
+ 26 pass
+ 0 fail
+ 259 expect() calls
+Ran 26 tests across 1 file. [2.89s]

@@ -1,0 +1,17 @@
+{
+  "bun_version": "1.2.20",
+  "results": [
+    {
+      "flag": "--no-env-file",
+      "exit_code": 0,
+      "stdout": "{\"loaded\":true}\n",
+      "stderr": ""
+    },
+    {
+      "flag": "--env-file=/dev/null",
+      "exit_code": 0,
+      "stdout": "{\"loaded\":false}\n",
+      "stderr": ""
+    }
+  ]
+}

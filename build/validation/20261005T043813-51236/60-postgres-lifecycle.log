@@ -1,0 +1,25 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/entity-lifecycle.test.ts:
+(pass) entity lifecycle transition lowering > fails closed when direct purge runs before retention is initialized [3.50ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"26f03c98-5b62-4fbe-9033-5b51996fa88b","operation":"User.create_user","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":2,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"4eac7799-dce4-4a98-b11b-fbe255179649","operation":"Todo.create_todo","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":2,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) entity lifecycle transition lowering > creates lifecycle-owned initial values through generated routes [10.00ms]
+(pass) entity lifecycle transition lowering > rejects host persistence attempts to override lifecycle initial state [4.04ms]
+(pass) entity lifecycle transition lowering > binds direct host purge eligibility to configured retention [9.09ms]
+(pass) entity lifecycle transition lowering > uses initialized retention instead of a different process environment value [5.24ms]
+(pass) entity lifecycle transition lowering > atomically disables one visible identity and conceals it afterward [4.93ms]
+(pass) entity lifecycle transition lowering > serializes a transition against an ordinary update [3.54ms]
+(pass) entity lifecycle transition lowering > keeps the logical delete effect while racing an ordinary Todo update [10.66ms]
+(pass) entity lifecycle transition lowering > retains visible child Todos when their User is disabled [5.64ms]
+(pass) entity lifecycle transition lowering > filters disabled owners before the bounded joined page and required child read [14.13ms]
+(pass) entity lifecycle transition lowering > filters deleted Todos before the bounded visible page [4.48ms]
+(pass) entity lifecycle transition lowering > purges only expired post-transition rows in audited batches of 500 [124.73ms]
+(pass) entity lifecycle transition lowering > serializes competing retention-eligibility changes with purge [1.98ms]
+
+ 13 pass
+ 0 fail
+ 86 expect() calls
+Ran 13 tests across 1 file. [530.00ms]

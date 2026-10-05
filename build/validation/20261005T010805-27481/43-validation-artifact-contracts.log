@@ -1,0 +1,21 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/validation-artifact-contracts.test.ts:
+(pass) field-local and ancestor constraints agree at the public boundary [7.33ms]
+(pass) field chains and named refinements preserve intersections [2.26ms]
+(pass) numeric field bounds intersect with named parent bounds [2.01ms]
+(pass) inline nested shapes retain field contracts without exposing synthesized names [1.61ms]
+(pass) nullable and omitted values preserve shape independently of constraints [0.65ms]
+(pass) collection elements preserve local field constraints and nullable values [1.30ms]
+(pass) tagged enum payload fields retain their constraints and closed shape [2.02ms]
+(pass) entity references use the identity wire contract [0.48ms]
+(pass) failure public fields are typed and internal fields remain absent [0.41ms]
+(pass) every declared failure remains representable when HTTP status is shared [0.19ms]
+(pass) created routes return a typed 201 response and publish it in OpenAPI [0.42ms]
+(pass) no-content routes return an empty 204 response and omit an OpenAPI body schema
+(pass) unchanged builds reproduce contract artifacts byte for byte [182.34ms]
+
+ 13 pass
+ 0 fail
+ 657 expect() calls
+Ran 13 tests across 1 file. [665.00ms]

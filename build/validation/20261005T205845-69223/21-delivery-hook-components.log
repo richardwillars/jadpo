@@ -1,0 +1,19 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/delivery-hook-components.test.ts:
+(pass) opaque-binding generated schedule hook component (sqlite) > public ordinary target encodes owning-reference Instant patch input with its actual destination representation [5.61ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > complete checked binding remains nonexecuting and unrelated entities have no schedule hook [5.53ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > successful actual generated create establishes revision1 atomically and duplicate creation cannot reset it [5.11ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > supplied due, equal-value due and explicit clear all advance and atomically clear sent [6.23ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > omitted due and disjoint generated status writes preserve schedule and sent [2.84ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > failed encoding, missing rows and source rollback neither advance nor clear sent [2.78ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > unchanged ordinary owner policy refuses another principal without creating or advancing private state [2.04ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > A-to-B-to-A retains distinct business revisions even when the value returns [3.20ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > caught hook exhaustion rolls back the source patch and sent reset, not surrounding source work [4.35ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > caught schedule identity collision rolls back successful INSERT inside its create savepoint [1.87ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > actual generated patches serialize concurrent revisions and survive fresh process restart [46.03ms]
+
+ 11 pass
+ 0 fail
+ 54 expect() calls
+Ran 11 tests across 1 file. [12.62s]

@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "profile": "full",
+  "status": "failed",
+  "steps": [
+    {
+      "name": "verification-contract",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/validation",
+        "-p",
+        "test_*.py"
+      ],
+      "status": "passed",
+      "log": "00-verification-contract.log",
+      "exit_code": 0,
+      "seconds": 0.209
+    },
+    {
+      "name": "rust-workspace",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--manifest-path",
+        "jadpo/Cargo.toml",
+        "--workspace"
+      ],
+      "status": "failed",
+      "log": "01-rust-workspace.log",
+      "exit_code": 101,
+      "seconds": 12.682
+    }
+  ],
+  "release_equivalent": false,
+  "golden": {
+    "status": "not_run"
+  },
+  "toolchain": {
+    "cargo": "cargo 1.78.0 (54d8815d0 2024-03-26)",
+    "rustc": "rustc 1.78.0 (9b00956e5 2024-04-29)",
+    "bun": "1.2.20",
+    "node": "v24.18.1",
+    "ruby": "ruby 2.6.10p210 (2022-04-12 revision 67958) [universal.arm64e-darwin26]",
+    "bash": "GNU bash, version 3.2.57(1)-release (arm64-apple-darwin26)",
+    "postgres": "postgres (PostgreSQL) 16.3 (Postgres.app)"
+  },
+  "examples": {
+    "examples/authentication-selector": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/configuration-seed": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/first-party-authentication": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/golden-todo": {
+      "status": "design_contract",
+      "reason": "Unimplemented full application contract; tracked by every acceptance ID, never counted as passing runtime evidence"
+    },
+    "examples/golden-todo-migration": {
+      "status": "design_contract",
+      "reason": "Exploratory compiler-checked P11 source migration; it is incomplete and supplies no integrated runtime or acceptance evidence"
+    },
+    "examples/jadpo-seed": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/module-seed": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/outcome-sequencing": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/persistence-seed": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/policy-runtime": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/temporal": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/test-fixtures": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/test1": {
+      "status": "legacy",
+      "reason": "Historical scratch example with superseded constraint/failure syntax; not current teaching material or runtime evidence"
+    }
+  },
+  "remaining_gates": [
+    "Golden todo syntax migration and all 44 integrated behavioural cases",
+    "Remaining golden source/behavior reconciliation and unsupported route/lifecycle/service/job contracts",
+    "Source compatibility/deprecation and public documentation alignment",
+    "Coverage-guided/deep-resource fuzzing and targeted compiler mutation evidence",
+    "Broader PostgreSQL transaction/policy coverage beyond bounded P10.7 savepoint and concurrency cases, SQLite cross-process contention handling, deadlock/retry behavior, plus database migration drills",
+    "Fresh-agent trial and comprehension evidence",
+    "Independent P10R review and protected approval attestation",
+    "Production deployment qualification",
+    "Bun versus future WASM differential conformance",
+    "Set/Map HTTP wire contract: schemas advertise JSON shapes rejected by handlers; key encoding and duplicate semantics unresolved"
+  ],
+  "failure": "rust-workspace failed (exit 101)"
+}

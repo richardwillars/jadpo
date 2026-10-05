@@ -1,0 +1,12 @@
+{
+  "root": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j",
+  "workspace": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/jadpo",
+  "evidence": "/Users/richardwillars/Documents/Codex/LLM-coding/build/validation/diagnostic-mutation-review/3hl8he7j",
+  "target": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/cargo-target",
+  "hashes": {
+    "jadpo/crates/diagnostics/build.rs": "40b41559eb997773ae0c752d38a3fa4ec047d1d1ee682f2995d2c6310d3b7ded",
+    "jadpo/crates/diagnostics/tests/validation_catalogue_discovery.rs": "830e28d96c20c05cb880f0d5e93298529324c180434f48fdd54f938c446a4770",
+    "jadpo/crates/diagnostics/Cargo.toml": "6823b0d028767c2f65f1d552afef17ce5044bc1447f3cbb9202f84181b8b70a7",
+    "jadpo/Cargo.lock": "eece3e0c27f7f424bb4ac7f483367cc8aa1cabb9a38f8a290c51c0376100c5ad"
+  }
+}

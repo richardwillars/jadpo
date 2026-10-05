@@ -1,0 +1,16 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/golden-todo-routes.test.ts:
+(pass) create, read and patch preserve the declared owner and public projection [11.49ms]
+(pass) list pages use stable owner-scoped keysets and exclude deleted or foreign rows [7.43ms]
+(pass) list filters compose, defaults are bounded, and generated SQL has an indexed one-query keyset plan [6.96ms]
+(pass) foreign and missing reads are indistinguishable and perform no write [4.42ms]
+(pass) self todo collection returns bounded ordered TodoView values with two data reads [53.75ms]
+(pass) self todo collection conceals another or missing user before querying children [2.20ms]
+(pass) patch distinguishes omitted due date, explicit null, supplied due date and empty input [5.56ms]
+(pass) invalid create and patch dates are rejected without writes [4.26ms]
+
+ 8 pass
+ 0 fail
+ 78 expect() calls
+Ran 8 tests across 1 file. [713.00ms]

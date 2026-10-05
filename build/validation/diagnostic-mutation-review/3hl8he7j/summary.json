@@ -1,0 +1,6 @@
+{
+  "targeted_mutations": 2,
+  "all_intended_outcomes": true,
+  "runs": 6,
+  "limits": "Two targeted diagnostic discovery regression detectors; no overall mutation score or executed-trigger coverage proof."
+}

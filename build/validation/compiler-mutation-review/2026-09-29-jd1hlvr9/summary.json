@@ -1,0 +1,23 @@
+{
+  "scope": "Two targeted compiler mutation challenges; not an overall mutation score.",
+  "isolated_workspace": "/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo",
+  "baseline_tests_passed": 2,
+  "mutants_killed_by_intended_assertions": 2,
+  "restored_tests_passed": 2,
+  "no_repository_production_changes": true,
+  "dotted_constructor": {
+    "mutation": "Remove !is_type_constructor from infer_invocation receiver-probing condition",
+    "test": "validation_types_contract::explicit_construction_narrows_to_field_contract",
+    "failure": "TYPE_UNKNOWN_VALUE causes expected-accepted-source assertion failure"
+  },
+  "failure_reachability": {
+    "mutation": "Replace reachable &= statement_can_continue(statement) with reachable = true",
+    "test": "validation_failures::exact_reachable_failures_exclude_statements_after_return",
+    "failure": "FAIL_UNDECLARED_PROPAGATION causes unreachable-rejection assertion failure"
+  },
+  "excluded_setup_failure": {
+    "log": "setup-missing-source-target-directory.log",
+    "reason": "Initial copy ignored every directory named target, accidentally omitting compiler source target/first_party.rs. Required source directory restored before either baseline passed. Not a mutation result."
+  },
+  "support_data": "Copied only compiler-required checked-in data/iana-zones-2026c.txt; no application databases copied."
+}

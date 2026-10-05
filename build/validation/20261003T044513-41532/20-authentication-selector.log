@@ -1,0 +1,21 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/authentication-selector.test.ts:
+(pass) compiler-owned authentication selector > verified external identities use one request-local authority result even on fresh routes [3.76ms]
+(pass) compiler-owned authentication selector > external authority outcomes preserve failures and reject identity substitution [1.12ms]
+(pass) compiler-owned authentication selector > a pre-resolved identity cannot bypass its configured validator or closed envelope [0.37ms]
+(pass) compiler-owned authentication selector > zero credentials fails before adapter work [0.22ms]
+(pass) compiler-owned authentication selector > one bounded credential returns its normalised principal [0.16ms]
+(pass) compiler-owned authentication selector > fresh authority resolves after validation [0.15ms]
+(pass) compiler-owned authentication selector > duplicates and competing locations are ambiguous without validation
+(pass) compiler-owned authentication selector > malformed, inactive, unavailable and duplicate authority outcomes stay classified [0.30ms]
+(pass) compiler-owned authentication selector > a strategy cannot return a principal kind it does not declare [0.47ms]
+(pass) compiler-owned authentication selector > malformed or widened adapter principals fail as authority invariants [0.19ms]
+(pass) compiler-owned authentication selector > authoritative resolution cannot switch principal identity
+(pass) compiler-owned authentication selector > malformed adapter outcomes are contained at the authentication boundary [0.27ms]
+(pass) compiler-owned authentication selector > thrown adapter faults become availability failures [0.14ms]
+
+ 13 pass
+ 0 fail
+ 81 expect() calls
+Ran 13 tests across 1 file. [495.00ms]

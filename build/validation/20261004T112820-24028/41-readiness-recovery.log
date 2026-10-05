@@ -1,0 +1,17 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/readiness-recovery.test.ts:
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated runtime readiness > retry-cutoff requests can observe mixed readiness while eligible requests share one initialization [28.25ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated runtime readiness > initial and recovery-time SQLite schema locks stay recoverable after contention clears [49.79ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_879d724f81edd863","attributes":{}}
+(pass) generated runtime readiness > recovers required storage and authenticated reads through generated handlers without binding a listener [381.89ms]
+(pass) generated runtime readiness > keeps the process live, gates traffic, and recovers when the required database returns [786.80ms]
+(pass) generated runtime readiness > recovers first-party authentication after its required database returns [406.11ms]
+
+ 5 pass
+ 0 fail
+ 649 expect() calls
+Ran 5 tests across 1 file. [1.89s]
