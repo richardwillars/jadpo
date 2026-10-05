@@ -1,0 +1,1721 @@
+{
+  "schema_version": 1,
+  "profile": "full",
+  "status": "supported_checks_passed_with_open_gates",
+  "steps": [
+    {
+      "name": "verification-contract",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/validation",
+        "-p",
+        "test_*.py"
+      ],
+      "status": "passed",
+      "log": "00-verification-contract.log",
+      "exit_code": 0,
+      "seconds": 0.393
+    },
+    {
+      "name": "rust-workspace",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--manifest-path",
+        "jadpo/Cargo.toml",
+        "--workspace"
+      ],
+      "status": "passed",
+      "log": "01-rust-workspace.log",
+      "exit_code": 0,
+      "seconds": 96.415
+    },
+    {
+      "name": "compiler-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--manifest-path",
+        "jadpo/Cargo.toml",
+        "-p",
+        "jadpo-cli"
+      ],
+      "status": "passed",
+      "log": "02-compiler-build.log",
+      "exit_code": 0,
+      "seconds": 11.259
+    },
+    {
+      "name": "compile-fixtures",
+      "command": [
+        "ruby",
+        "tests/compile/verify.rb"
+      ],
+      "status": "passed",
+      "log": "03-compile-fixtures.log",
+      "exit_code": 0,
+      "seconds": 6.292
+    },
+    {
+      "name": "editor",
+      "command": [
+        "node",
+        "--test",
+        "editors/vscode/test/diagnostic-presentation.test.js",
+        "editors/vscode/test/rendering-adapters.test.js"
+      ],
+      "status": "passed",
+      "log": "04-editor.log",
+      "exit_code": 0,
+      "seconds": 0.345
+    },
+    {
+      "name": "candidate-contract",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "tools/verify-p10r.py"
+      ],
+      "status": "passed",
+      "log": "05-candidate-contract.log",
+      "exit_code": 0,
+      "seconds": 0.186
+    },
+    {
+      "name": "build-authentication-selector",
+      "command": [
+        "/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/target/debug/jadpo",
+        "build",
+        "examples/authentication-selector"
+      ],
+      "status": "passed",
+      "log": "06-build-authentication-selector.log",
+      "exit_code": 0,
+      "seconds": 0.289
+    },
+    {
+      "name": "build-configuration-seed",
+      "command": [
+        "/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/target/debug/jadpo",
+        "build",
+        "examples/configuration-seed"
+      ],
+      "status": "passed",
+      "log": "07-build-configuration-seed.log",
+      "exit_code": 0,
+      "seconds": 0.234
+    },
+    {
+      "name": "build-first-party-authentication",
+      "command": [
+        "/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/target/debug/jadpo",
+        "build",
+        "examples/first-party-authentication"
+      ],
+      "status": "passed",
+      "log": "08-build-first-party-authentication.log",
+      "exit_code": 0,
+      "seconds": 1.104
+    },
+    {
+      "name": "build-jadpo-seed",
+      "command": [
+        "/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/target/debug/jadpo",
+        "build",
+        "examples/jadpo-seed"
+      ],
+      "status": "passed",
+      "log": "09-build-jadpo-seed.log",
+      "exit_code": 0,
+      "seconds": 0.345
+    },
+    {
+      "name": "build-module-seed",
+      "command": [
+        "/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/target/debug/jadpo",
+        "build",
+        "examples/module-seed"
+      ],
+      "status": "passed",
+      "log": "10-build-module-seed.log",
+      "exit_code": 0,
+      "seconds": 0.234
+    },
+    {
+      "name": "build-outcome-sequencing",
+      "command": [
+        "/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/target/debug/jadpo",
+        "build",
+        "examples/outcome-sequencing"
+      ],
+      "status": "passed",
+      "log": "11-build-outcome-sequencing.log",
+      "exit_code": 0,
+      "seconds": 0.825
+    },
+    {
+      "name": "build-persistence-seed",
+      "command": [
+        "/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/target/debug/jadpo",
+        "build",
+        "examples/persistence-seed"
+      ],
+      "status": "passed",
+      "log": "12-build-persistence-seed.log",
+      "exit_code": 0,
+      "seconds": 2.432
+    },
+    {
+      "name": "build-policy-runtime",
+      "command": [
+        "/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/target/debug/jadpo",
+        "build",
+        "examples/policy-runtime"
+      ],
+      "status": "passed",
+      "log": "13-build-policy-runtime.log",
+      "exit_code": 0,
+      "seconds": 0.609
+    },
+    {
+      "name": "build-temporal",
+      "command": [
+        "/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/target/debug/jadpo",
+        "build",
+        "examples/temporal"
+      ],
+      "status": "passed",
+      "log": "14-build-temporal.log",
+      "exit_code": 0,
+      "seconds": 0.178
+    },
+    {
+      "name": "build-test-fixtures",
+      "command": [
+        "/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/target/debug/jadpo",
+        "build",
+        "examples/test-fixtures"
+      ],
+      "status": "passed",
+      "log": "15-build-test-fixtures.log",
+      "exit_code": 0,
+      "seconds": 0.235
+    },
+    {
+      "name": "build-120_entity_dossier_queries",
+      "command": [
+        "/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/target/debug/jadpo",
+        "build",
+        "tests/compile/pass/120_entity_dossier_queries.jadpo"
+      ],
+      "status": "passed",
+      "log": "16-build-120_entity_dossier_queries.log",
+      "exit_code": 0,
+      "seconds": 0.34
+    },
+    {
+      "name": "build-170_lifecycle_initial_values",
+      "command": [
+        "/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/target/debug/jadpo",
+        "build",
+        "tests/compile/pass/lifecycle/170_lifecycle_initial_values.jadpo"
+      ],
+      "status": "passed",
+      "log": "17-build-170_lifecycle_initial_values.log",
+      "exit_code": 0,
+      "seconds": 1.1
+    },
+    {
+      "name": "authored-tests",
+      "command": [
+        "/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/target/debug/jadpo",
+        "test",
+        "examples/test-fixtures"
+      ],
+      "status": "passed",
+      "log": "18-authored-tests.log",
+      "exit_code": 0,
+      "seconds": 0.404
+    },
+    {
+      "name": "jwt-explicit-dependency-install",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "tools/install-jwt-dependency.py"
+      ],
+      "status": "passed",
+      "log": "19-jwt-explicit-dependency-install.log",
+      "exit_code": 0,
+      "seconds": 0.183
+    },
+    {
+      "name": "authentication-selector",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/authentication-selector.test.ts"
+      ],
+      "status": "passed",
+      "log": "20-authentication-selector.log",
+      "exit_code": 0,
+      "seconds": 0.873
+    },
+    {
+      "name": "entity-dossier",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/entity-dossier.test.ts"
+      ],
+      "status": "passed",
+      "log": "21-entity-dossier.log",
+      "exit_code": 0,
+      "seconds": 0.288
+    },
+    {
+      "name": "entity-lifecycle",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/entity-lifecycle.test.ts"
+      ],
+      "status": "passed",
+      "log": "22-entity-lifecycle.log",
+      "exit_code": 0,
+      "seconds": 0.454
+    },
+    {
+      "name": "field-contracts",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/field-contracts.test.ts"
+      ],
+      "status": "passed",
+      "log": "23-field-contracts.log",
+      "exit_code": 0,
+      "seconds": 0.882
+    },
+    {
+      "name": "first-party-authentication",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/first-party-authentication.test.ts"
+      ],
+      "status": "passed",
+      "log": "24-first-party-authentication.log",
+      "exit_code": 0,
+      "seconds": 3.123
+    },
+    {
+      "name": "generated-identity",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/generated-identity.test.ts"
+      ],
+      "status": "passed",
+      "log": "25-generated-identity.log",
+      "exit_code": 0,
+      "seconds": 0.565
+    },
+    {
+      "name": "golden-auth-http-jwt",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/golden-auth-http-jwt.test.ts"
+      ],
+      "status": "passed",
+      "log": "26-golden-auth-http-jwt.log",
+      "exit_code": 0,
+      "seconds": 4.023
+    },
+    {
+      "name": "golden-migration-authentication",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/golden-migration-authentication.test.ts"
+      ],
+      "status": "passed",
+      "log": "27-golden-migration-authentication.log",
+      "exit_code": 0,
+      "seconds": 3.887
+    },
+    {
+      "name": "golden-protected-route",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/golden-protected-route.test.ts"
+      ],
+      "status": "passed",
+      "log": "28-golden-protected-route.log",
+      "exit_code": 0,
+      "seconds": 3.93
+    },
+    {
+      "name": "golden-service-credentials",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/golden-service-credentials.test.ts"
+      ],
+      "status": "passed",
+      "log": "29-golden-service-credentials.log",
+      "exit_code": 0,
+      "seconds": 4.108
+    },
+    {
+      "name": "golden-todo-routes",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/golden-todo-routes.test.ts"
+      ],
+      "status": "passed",
+      "log": "30-golden-todo-routes.log",
+      "exit_code": 0,
+      "seconds": 3.991
+    },
+    {
+      "name": "jadpo-seed",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/jadpo-seed.test.ts"
+      ],
+      "status": "passed",
+      "log": "31-jadpo-seed.log",
+      "exit_code": 0,
+      "seconds": 0.286
+    },
+    {
+      "name": "jwt-authentication",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/jwt-authentication.test.ts"
+      ],
+      "status": "passed",
+      "log": "32-jwt-authentication.log",
+      "exit_code": 0,
+      "seconds": 2.438
+    },
+    {
+      "name": "jwt-integration",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/jwt-integration.test.ts"
+      ],
+      "status": "passed",
+      "log": "33-jwt-integration.log",
+      "exit_code": 0,
+      "seconds": 1.529
+    },
+    {
+      "name": "outcome-sequencing",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/outcome-sequencing.test.ts"
+      ],
+      "status": "passed",
+      "log": "34-outcome-sequencing.log",
+      "exit_code": 0,
+      "seconds": 0.287
+    },
+    {
+      "name": "persistence-seed",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/persistence-seed.test.ts"
+      ],
+      "status": "passed",
+      "log": "35-persistence-seed.log",
+      "exit_code": 0,
+      "seconds": 0.395
+    },
+    {
+      "name": "policy-runtime",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/policy-runtime.test.ts"
+      ],
+      "status": "passed",
+      "log": "36-policy-runtime.log",
+      "exit_code": 0,
+      "seconds": 0.346
+    },
+    {
+      "name": "route-inputs",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/route-inputs.test.ts"
+      ],
+      "status": "passed",
+      "log": "37-route-inputs.log",
+      "exit_code": 0,
+      "seconds": 0.67
+    },
+    {
+      "name": "service-adapter",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/service-adapter.test.ts"
+      ],
+      "status": "passed",
+      "log": "38-service-adapter.log",
+      "exit_code": 0,
+      "seconds": 2.636
+    },
+    {
+      "name": "service-authentication",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/service-authentication.test.ts"
+      ],
+      "status": "passed",
+      "log": "39-service-authentication.log",
+      "exit_code": 0,
+      "seconds": 3.088
+    },
+    {
+      "name": "service-fakes",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/service-fakes.test.ts"
+      ],
+      "status": "passed",
+      "log": "40-service-fakes.log",
+      "exit_code": 0,
+      "seconds": 1.944
+    },
+    {
+      "name": "readiness-recovery",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/readiness-recovery.test.ts"
+      ],
+      "status": "passed",
+      "log": "41-readiness-recovery.log",
+      "exit_code": 0,
+      "seconds": 1.891
+    },
+    {
+      "name": "temporal",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/temporal.test.ts"
+      ],
+      "status": "passed",
+      "log": "42-temporal.log",
+      "exit_code": 0,
+      "seconds": 0.295
+    },
+    {
+      "name": "validation-artifact-contracts",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/validation-artifact-contracts.test.ts"
+      ],
+      "status": "passed",
+      "log": "43-validation-artifact-contracts.log",
+      "exit_code": 0,
+      "seconds": 1.912
+    },
+    {
+      "name": "validation-artifact-nullability",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/validation-artifact-nullability.test.ts"
+      ],
+      "status": "passed",
+      "log": "44-validation-artifact-nullability.log",
+      "exit_code": 0,
+      "seconds": 0.45
+    },
+    {
+      "name": "validation-auth-policy",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/validation-auth-policy.test.ts"
+      ],
+      "status": "passed",
+      "log": "45-validation-auth-policy.log",
+      "exit_code": 0,
+      "seconds": 2.132
+    },
+    {
+      "name": "validation-config-time",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/validation-config-time.test.ts"
+      ],
+      "status": "passed",
+      "log": "46-validation-config-time.log",
+      "exit_code": 0,
+      "seconds": 1.912
+    },
+    {
+      "name": "validation-fixtures-migrations",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/validation-fixtures-migrations.test.ts"
+      ],
+      "status": "passed",
+      "log": "47-validation-fixtures-migrations.log",
+      "exit_code": 0,
+      "seconds": 1.374
+    },
+    {
+      "name": "validation-persistence",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/validation-persistence.test.ts"
+      ],
+      "status": "passed",
+      "log": "48-validation-persistence.log",
+      "exit_code": 0,
+      "seconds": 8.717
+    },
+    {
+      "name": "validation-unicode-length",
+      "command": [
+        "bun",
+        "--no-install",
+        "--env-file=/dev/null",
+        "test",
+        "tests/runtime/validation-unicode-length.test.ts"
+      ],
+      "status": "passed",
+      "log": "49-validation-unicode-length.log",
+      "exit_code": 0,
+      "seconds": 0.929
+    },
+    {
+      "name": "postgres-persistence",
+      "command": [
+        "bash",
+        "tests/runtime/postgres.sh",
+        "persistence"
+      ],
+      "status": "passed",
+      "log": "50-postgres-persistence.log",
+      "exit_code": 0,
+      "seconds": 1.536
+    },
+    {
+      "name": "postgres-golden-todo-routes",
+      "command": [
+        "bash",
+        "tests/runtime/postgres.sh",
+        "golden-todo-routes"
+      ],
+      "status": "passed",
+      "log": "51-postgres-golden-todo-routes.log",
+      "exit_code": 0,
+      "seconds": 4.728
+    },
+    {
+      "name": "postgres-authentication",
+      "command": [
+        "bash",
+        "tests/runtime/postgres.sh",
+        "authentication"
+      ],
+      "status": "passed",
+      "log": "52-postgres-authentication.log",
+      "exit_code": 0,
+      "seconds": 4.046
+    },
+    {
+      "name": "postgres-validation-persistence",
+      "command": [
+        "bash",
+        "tests/runtime/postgres.sh",
+        "validation-persistence"
+      ],
+      "status": "passed",
+      "log": "53-postgres-validation-persistence.log",
+      "exit_code": 0,
+      "seconds": 11.742
+    },
+    {
+      "name": "postgres-validation-auth-policy",
+      "command": [
+        "bash",
+        "tests/runtime/postgres.sh",
+        "validation-auth-policy"
+      ],
+      "status": "passed",
+      "log": "54-postgres-validation-auth-policy.log",
+      "exit_code": 0,
+      "seconds": 3.218
+    },
+    {
+      "name": "postgres-service-authentication",
+      "command": [
+        "bash",
+        "tests/runtime/postgres.sh",
+        "service-authentication"
+      ],
+      "status": "passed",
+      "log": "55-postgres-service-authentication.log",
+      "exit_code": 0,
+      "seconds": 3.774
+    },
+    {
+      "name": "postgres-golden-service-credentials",
+      "command": [
+        "bash",
+        "tests/runtime/postgres.sh",
+        "golden-service-credentials"
+      ],
+      "status": "passed",
+      "log": "56-postgres-golden-service-credentials.log",
+      "exit_code": 0,
+      "seconds": 4.845
+    },
+    {
+      "name": "postgres-jwt-authentication",
+      "command": [
+        "bash",
+        "tests/runtime/postgres.sh",
+        "jwt-authentication"
+      ],
+      "status": "passed",
+      "log": "57-postgres-jwt-authentication.log",
+      "exit_code": 0,
+      "seconds": 2.271
+    },
+    {
+      "name": "postgres-readiness",
+      "command": [
+        "bash",
+        "tests/runtime/postgres.sh",
+        "readiness"
+      ],
+      "status": "passed",
+      "log": "58-postgres-readiness.log",
+      "exit_code": 0,
+      "seconds": 4.688
+    },
+    {
+      "name": "postgres-entity-dossier",
+      "command": [
+        "bash",
+        "tests/runtime/postgres.sh",
+        "entity-dossier"
+      ],
+      "status": "passed",
+      "log": "59-postgres-entity-dossier.log",
+      "exit_code": 0,
+      "seconds": 1.684
+    },
+    {
+      "name": "postgres-lifecycle",
+      "command": [
+        "bash",
+        "tests/runtime/postgres.sh",
+        "lifecycle"
+      ],
+      "status": "passed",
+      "log": "60-postgres-lifecycle.log",
+      "exit_code": 0,
+      "seconds": 1.792
+    }
+  ],
+  "release_equivalent": false,
+  "golden": {
+    "status": "compile_failed",
+    "diagnostic_count": 49,
+    "behavioural_evidence": "not_run",
+    "obligations": {
+      "AUTH-001": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/application.jadpo",
+            "examples/golden-todo-migration/authentication.jadpo",
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/service.jadpo",
+            "examples/golden-todo-migration/entities/service_credential.jadpo"
+          ],
+          "existing_declarations": "Closed user/service principal and browser, bearer and JWT strategies; active-user resolution.",
+          "remaining_work": "Protected target rejects selected principal/adapter shapes; GET /todos absent.",
+          "task_ids": [
+            "RM-102",
+            "RM-103",
+            "RM-105"
+          ],
+          "required_observation": "Execute the original credential-selection, principal and authority-query assertions on GET /todos; include pre-validation ambiguity and bounded cache-unavailable paths."
+        }
+      },
+      "AUTH-002": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/application.jadpo",
+            "examples/golden-todo-migration/authentication.jadpo",
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/service.jadpo",
+            "examples/golden-todo-migration/entities/service_credential.jadpo"
+          ],
+          "existing_declarations": "Closed user/service principal and browser, bearer and JWT strategies; active-user resolution.",
+          "remaining_work": "Protected target rejects selected principal/adapter shapes; GET /todos absent.",
+          "task_ids": [
+            "RM-102",
+            "RM-103",
+            "RM-105"
+          ],
+          "required_observation": "Execute the original credential-selection, principal and authority-query assertions on GET /todos; include pre-validation ambiguity and bounded cache-unavailable paths."
+        }
+      },
+      "AUTH-003": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/application.jadpo",
+            "examples/golden-todo-migration/authentication.jadpo",
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/service.jadpo",
+            "examples/golden-todo-migration/entities/service_credential.jadpo"
+          ],
+          "existing_declarations": "Closed user/service principal and browser, bearer and JWT strategies; active-user resolution.",
+          "remaining_work": "Protected target rejects selected principal/adapter shapes; GET /todos absent.",
+          "task_ids": [
+            "RM-102",
+            "RM-103",
+            "RM-105"
+          ],
+          "required_observation": "Execute the original credential-selection, principal and authority-query assertions on GET /todos; include pre-validation ambiguity and bounded cache-unavailable paths."
+        }
+      },
+      "AUTH-004": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/application.jadpo",
+            "examples/golden-todo-migration/authentication.jadpo",
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/service.jadpo",
+            "examples/golden-todo-migration/entities/service_credential.jadpo"
+          ],
+          "existing_declarations": "Closed user/service principal and browser, bearer and JWT strategies; active-user resolution.",
+          "remaining_work": "Protected target rejects selected principal/adapter shapes; GET /todos absent.",
+          "task_ids": [
+            "RM-102",
+            "RM-103",
+            "RM-105"
+          ],
+          "required_observation": "Execute the original credential-selection, principal and authority-query assertions on GET /todos; include pre-validation ambiguity and bounded cache-unavailable paths."
+        }
+      },
+      "AUTH-005": {
+        "status": "not_executed",
+        "gap": "Authentication expectation reconciled with approved AUTH-001 and the recorded query-budget decision; full golden source still does not compile, and this case has not executed.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/application.jadpo",
+            "examples/golden-todo-migration/authentication.jadpo",
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/service.jadpo",
+            "examples/golden-todo-migration/entities/service_credential.jadpo"
+          ],
+          "existing_declarations": "Closed user/service principal and browser, bearer and JWT strategies; active-user resolution.",
+          "remaining_work": "Protected target rejects selected principal/adapter shapes; GET /todos absent.",
+          "task_ids": [
+            "RM-102",
+            "RM-103",
+            "RM-105"
+          ],
+          "required_observation": "Execute the original credential-selection, principal and authority-query assertions on GET /todos; include pre-validation ambiguity and bounded cache-unavailable paths."
+        }
+      },
+      "AUTH-006": {
+        "status": "not_executed",
+        "gap": "Authentication expectation reconciled with approved AUTH-001 and the recorded query-budget decision; full golden source still does not compile, and this case has not executed.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/application.jadpo",
+            "examples/golden-todo-migration/authentication.jadpo",
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/service.jadpo",
+            "examples/golden-todo-migration/entities/service_credential.jadpo"
+          ],
+          "existing_declarations": "User status and bounded application authority freshness declared.",
+          "remaining_work": "User disable action/route, fresh authority enforcement and lifecycle integration absent.",
+          "task_ids": [
+            "RM-102",
+            "RM-103",
+            "RM-106"
+          ],
+          "required_observation": "Frozen disable/refresh/bounded-expiry timelines; fresh principal queries counted separately from credential queries; no unauthorised writes."
+        }
+      },
+      "AUTH-007": {
+        "status": "not_executed",
+        "gap": "Focused real-HTTP JWT coverage now proves self-scoped output omits a conflicting provider email claim; the frozen case remains not_executed until the source-bound golden harness runs.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo"
+          ],
+          "existing_declarations": "UserWithTodos is served by a self-scoped User lookup and bounded Todo page projected as TodoView; email remains provisioning-only and is absent from output.",
+          "remaining_work": "Run the source-bound golden case and record provider-use and output observations alongside the focused runtime evidence.",
+          "task_ids": [
+            "RM-102",
+            "RM-107"
+          ],
+          "required_observation": "JWT email cannot override stored email; authenticated self-scope; provisioning-only email absent from response."
+        }
+      },
+      "AUTH-008": {
+        "status": "not_executed",
+        "gap": "Authentication expectation reconciled with approved AUTH-001 and the recorded query-budget decision; full golden source still does not compile, and this case has not executed.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/application.jadpo",
+            "examples/golden-todo-migration/authentication.jadpo",
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/service.jadpo",
+            "examples/golden-todo-migration/entities/service_credential.jadpo"
+          ],
+          "existing_declarations": "Closed user/service principal and browser, bearer and JWT strategies; active-user resolution.",
+          "remaining_work": "Protected target rejects selected principal/adapter shapes; GET /todos absent.",
+          "task_ids": [
+            "RM-102",
+            "RM-103",
+            "RM-105"
+          ],
+          "required_observation": "Execute the original credential-selection, principal and authority-query assertions on GET /todos; include pre-validation ambiguity and bounded cache-unavailable paths."
+        }
+      },
+      "AUTH-009": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/application.jadpo",
+            "examples/golden-todo-migration/authentication.jadpo",
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/service.jadpo",
+            "examples/golden-todo-migration/entities/service_credential.jadpo"
+          ],
+          "existing_declarations": "Service and separate ServiceCredential entities, API-key validator, strategy-level exchange declaration and generated POST route with separate credential owner/service identity.",
+          "remaining_work": "Run AUTH-009 through the full golden application gate after RM-109/RM-110 and complete RM-104's independent runtime/security review.",
+          "task_ids": [
+            "RM-102",
+            "RM-104"
+          ],
+          "required_observation": "Service key exchange, disabled-service rejection, variant separation and no raw secret disclosure."
+        }
+      },
+      "AUTH-010": {
+        "status": "not_executed",
+        "gap": "Authentication expectation reconciled with approved AUTH-001 and the recorded query-budget decision; full golden source still does not compile, and this case has not executed.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/application.jadpo",
+            "examples/golden-todo-migration/authentication.jadpo",
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/service.jadpo",
+            "examples/golden-todo-migration/entities/service_credential.jadpo"
+          ],
+          "existing_declarations": "User status and bounded application authority freshness declared.",
+          "remaining_work": "User disable action/route, fresh authority enforcement and lifecycle integration absent.",
+          "task_ids": [
+            "RM-102",
+            "RM-103",
+            "RM-106"
+          ],
+          "required_observation": "Frozen disable/refresh/bounded-expiry timelines; fresh principal queries counted separately from credential queries; no unauthorised writes."
+        }
+      },
+      "AUTH-011": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/application.jadpo",
+            "examples/golden-todo-migration/authentication.jadpo",
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/service.jadpo",
+            "examples/golden-todo-migration/entities/service_credential.jadpo"
+          ],
+          "existing_declarations": "Service and separate ServiceCredential entities, API-key validator, strategy-level exchange declaration and generated POST route with separate credential owner/service identity.",
+          "remaining_work": "Run AUTH-011 through the full golden application gate after RM-109/RM-110 and complete RM-104's independent runtime/security review.",
+          "task_ids": [
+            "RM-102",
+            "RM-104"
+          ],
+          "required_observation": "Service key exchange, disabled-service rejection, variant separation and no raw secret disclosure."
+        }
+      },
+      "AUTH-012": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/routes/liveness.jadpo"
+          ],
+          "existing_declarations": "Explicit auth:none GET /health/live returning PublicHealth.healthy.",
+          "remaining_work": "Integrated target generation and public route inventory proof.",
+          "task_ids": [
+            "RM-102"
+          ],
+          "required_observation": "Invalid bearer skipped; healthy response, zero database access; only intended public route."
+        }
+      },
+      "PUBLIC-001": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/routes/liveness.jadpo"
+          ],
+          "existing_declarations": "Explicit auth:none GET /health/live returning PublicHealth.healthy.",
+          "remaining_work": "Integrated target generation and public route inventory proof.",
+          "task_ids": [
+            "RM-102"
+          ],
+          "required_observation": "Invalid bearer skipped; healthy response, zero database access; only intended public route."
+        }
+      },
+      "CREATE-001": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/routes/todos.jadpo"
+          ],
+          "existing_declarations": "POST /todos, Todo.create_todo, CreateTodo default none, generated UUID/timestamps, principal-derived owner, future due validation.",
+          "remaining_work": "Integrated execution; preserve HTTP 422 invalid_input for validation failures; malformed JSON remains HTTP 400 invalid_request.",
+          "task_ids": [
+            "RM-102",
+            "RM-107"
+          ],
+          "required_observation": "Frozen owner, generated fields, omission/null, fixed-clock due-date, injection rejection and database-write assertions."
+        }
+      },
+      "CREATE-002": {
+        "status": "not_executed",
+        "gap": "Golden requires HTTP 422 invalid_input for validation failures; the owner selected preserving that frozen contract while malformed JSON remains HTTP 400 invalid_request. Full application and this obligation remain unexecuted.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/routes/todos.jadpo"
+          ],
+          "existing_declarations": "POST /todos, Todo.create_todo, CreateTodo default none, generated UUID/timestamps, principal-derived owner, future due validation.",
+          "remaining_work": "Integrated execution; preserve HTTP 422 invalid_input for validation failures; malformed JSON remains HTTP 400 invalid_request.",
+          "task_ids": [
+            "RM-102",
+            "RM-107"
+          ],
+          "required_observation": "Frozen owner, generated fields, omission/null, fixed-clock due-date, injection rejection and database-write assertions."
+        }
+      },
+      "CREATE-003": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/routes/todos.jadpo"
+          ],
+          "existing_declarations": "POST /todos, Todo.create_todo, CreateTodo default none, generated UUID/timestamps, principal-derived owner, future due validation.",
+          "remaining_work": "Integrated execution; preserve HTTP 422 invalid_input for validation failures; malformed JSON remains HTTP 400 invalid_request.",
+          "task_ids": [
+            "RM-102",
+            "RM-107"
+          ],
+          "required_observation": "Frozen owner, generated fields, omission/null, fixed-clock due-date, injection rejection and database-write assertions."
+        }
+      },
+      "CREATE-004": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/routes/todos.jadpo"
+          ],
+          "existing_declarations": "POST /todos, Todo.create_todo, CreateTodo default none, generated UUID/timestamps, principal-derived owner, future due validation.",
+          "remaining_work": "Integrated execution; preserve HTTP 422 invalid_input for validation failures; malformed JSON remains HTTP 400 invalid_request.",
+          "task_ids": [
+            "RM-102",
+            "RM-107"
+          ],
+          "required_observation": "Frozen owner, generated fields, omission/null, fixed-clock due-date, injection rejection and database-write assertions."
+        }
+      },
+      "READ-001": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/routes/liveness.jadpo"
+          ],
+          "existing_declarations": "GET /todos/{todo_id}, Todo.get/by_id, owner policy, deleted-row concealment and TodoView projection.",
+          "remaining_work": "Integrated execution; preserve HTTP 422 invalid_value for malformed path values; malformed JSON remains HTTP 400 invalid_request.",
+          "task_ids": [
+            "RM-102",
+            "RM-107"
+          ],
+          "required_observation": "Owned projection, indistinguishable foreign/missing 404 and malformed-ID rejection before database access."
+        }
+      },
+      "READ-002": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/routes/liveness.jadpo"
+          ],
+          "existing_declarations": "GET /todos/{todo_id}, Todo.get/by_id, owner policy, deleted-row concealment and TodoView projection.",
+          "remaining_work": "Integrated execution; preserve HTTP 422 invalid_value for malformed path values; malformed JSON remains HTTP 400 invalid_request.",
+          "task_ids": [
+            "RM-102",
+            "RM-107"
+          ],
+          "required_observation": "Owned projection, indistinguishable foreign/missing 404 and malformed-ID rejection before database access."
+        }
+      },
+      "READ-003": {
+        "status": "not_executed",
+        "gap": "Golden requires HTTP 422 invalid_value for malformed path values; the owner selected preserving that frozen contract while malformed JSON remains HTTP 400 invalid_request. Full application and this obligation remain unexecuted.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/routes/liveness.jadpo"
+          ],
+          "existing_declarations": "GET /todos/{todo_id}, Todo.get/by_id, owner policy, deleted-row concealment and TodoView projection.",
+          "remaining_work": "Integrated execution; preserve HTTP 422 invalid_value for malformed path values; malformed JSON remains HTTP 400 invalid_request.",
+          "task_ids": [
+            "RM-102",
+            "RM-107"
+          ],
+          "required_observation": "Owned projection, indistinguishable foreign/missing 404 and malformed-ID rejection before database access."
+        }
+      },
+      "LIST-001": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/entities/todo.jadpo"
+          ],
+          "existing_declarations": "PageSize, TodoCursor, TodoPage and Todo authority declaration.",
+          "remaining_work": "Typed query binding, ListTodos input/default, optional predicates, keyset query and GET /todos absent; preserve HTTP 422 invalid_value for invalid query values while malformed JSON remains HTTP 400 invalid_request.",
+          "task_ids": [
+            "RM-102",
+            "RM-204",
+            "RM-105"
+          ],
+          "required_observation": "Original stable two-key order/cursor, filter composition, owner scope, no gaps/duplicates and query/page bounds on both databases."
+        }
+      },
+      "LIST-002": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/entities/todo.jadpo"
+          ],
+          "existing_declarations": "PageSize, TodoCursor, TodoPage and Todo authority declaration.",
+          "remaining_work": "Typed query binding, ListTodos input/default, optional predicates, keyset query and GET /todos absent; preserve HTTP 422 invalid_value for invalid query values while malformed JSON remains HTTP 400 invalid_request.",
+          "task_ids": [
+            "RM-102",
+            "RM-204",
+            "RM-105"
+          ],
+          "required_observation": "Original stable two-key order/cursor, filter composition, owner scope, no gaps/duplicates and query/page bounds on both databases."
+        }
+      },
+      "LIST-003": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/entities/todo.jadpo"
+          ],
+          "existing_declarations": "PageSize, TodoCursor, TodoPage and Todo authority declaration.",
+          "remaining_work": "Typed query binding, ListTodos input/default, optional predicates, keyset query and GET /todos absent; preserve HTTP 422 invalid_value for invalid query values while malformed JSON remains HTTP 400 invalid_request.",
+          "task_ids": [
+            "RM-102",
+            "RM-204",
+            "RM-105"
+          ],
+          "required_observation": "Original stable two-key order/cursor, filter composition, owner scope, no gaps/duplicates and query/page bounds on both databases."
+        }
+      },
+      "LIST-004": {
+        "status": "not_executed",
+        "gap": "Golden requires HTTP 422 invalid_value for invalid query values; the owner selected preserving that frozen contract while malformed JSON remains HTTP 400 invalid_request. Full application and this obligation remain unexecuted.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/entities/todo.jadpo"
+          ],
+          "existing_declarations": "PageSize, TodoCursor, TodoPage and Todo authority declaration.",
+          "remaining_work": "Typed query binding, ListTodos input/default, optional predicates, keyset query and GET /todos absent; preserve HTTP 422 invalid_value for invalid query values while malformed JSON remains HTTP 400 invalid_request.",
+          "task_ids": [
+            "RM-102",
+            "RM-204",
+            "RM-105"
+          ],
+          "required_observation": "Original stable two-key order/cursor, filter composition, owner scope, no gaps/duplicates and query/page bounds on both databases."
+        }
+      },
+      "REL-001": {
+        "status": "not_executed",
+        "gap": "Focused SQLite/PostgreSQL route tests now prove bounded UserWithTodos behavior, including two SQLite data reads; the frozen case remains not_executed until the source-bound golden harness runs.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo"
+          ],
+          "existing_declarations": "GET /users/{user_id}/todos uses one self-scoped User lookup and one indexed Todo page query, projecting only TodoView and omitting email.",
+          "remaining_work": "Run the source-bound golden case as part of the complete harness; focused tests already cover zero, one and a 100-result cap with deleted/foreign rows.",
+          "task_ids": [
+            "RM-102",
+            "RM-107"
+          ],
+          "required_observation": "Zero/one/100 child cases, TodoView projection, email absent, at most two database queries, child limit/order and no cross-parent rows."
+        }
+      },
+      "REL-002": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo"
+          ],
+          "existing_declarations": "Todo.owner authority reference to User with on_delete restrict.",
+          "remaining_work": "Golden persistence harness not integrated.",
+          "task_ids": [
+            "RM-107"
+          ],
+          "required_observation": "Direct orphan insert/hard-delete rejection and retained rows, safe relationship_conflict without backend detail."
+        }
+      },
+      "REL-003": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo"
+          ],
+          "existing_declarations": "Todo.owner_id immutable role binding and entity owner policy; original human-owned policy preserved.",
+          "remaining_work": "Mutation-to-approval artifact/attestation evidence absent.",
+          "task_ids": [
+            "RM-601",
+            "RM-603"
+          ],
+          "required_observation": "Original adversarial ownership mutation cannot obtain release-equivalent success without human decision on Todo.owner_id."
+        }
+      },
+      "REL-004": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo"
+          ],
+          "existing_declarations": "Todo.owner authority reference to User with on_delete restrict.",
+          "remaining_work": "Golden persistence harness not integrated.",
+          "task_ids": [
+            "RM-107"
+          ],
+          "required_observation": "Direct orphan insert/hard-delete rejection and retained rows, safe relationship_conflict without backend detail."
+        }
+      },
+      "PATCH-001": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/routes/todos.jadpo"
+          ],
+          "existing_declarations": "PATCH route, PatchTodo, Todo.patch_todo with empty-patch rejection, owner lookup, due validation and reminder reset.",
+          "remaining_work": "Integrated runtime/persistence assertions absent.",
+          "task_ids": [
+            "RM-102",
+            "RM-107"
+          ],
+          "required_observation": "Distinguish omitted from null, reject empty/foreign writes, reset reminder on supplied due date and preserve exact frozen response."
+        }
+      },
+      "PATCH-002": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/routes/todos.jadpo"
+          ],
+          "existing_declarations": "PATCH route, PatchTodo, Todo.patch_todo with empty-patch rejection, owner lookup, due validation and reminder reset.",
+          "remaining_work": "Integrated runtime/persistence assertions absent.",
+          "task_ids": [
+            "RM-102",
+            "RM-107"
+          ],
+          "required_observation": "Distinguish omitted from null, reject empty/foreign writes, reset reminder on supplied due date and preserve exact frozen response."
+        }
+      },
+      "PATCH-003": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/routes/todos.jadpo"
+          ],
+          "existing_declarations": "PATCH route, PatchTodo, Todo.patch_todo with empty-patch rejection, owner lookup, due validation and reminder reset.",
+          "remaining_work": "Integrated runtime/persistence assertions absent.",
+          "task_ids": [
+            "RM-102",
+            "RM-107"
+          ],
+          "required_observation": "Distinguish omitted from null, reject empty/foreign writes, reset reminder on supplied due date and preserve exact frozen response."
+        }
+      },
+      "PATCH-004": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/routes/todos.jadpo"
+          ],
+          "existing_declarations": "PATCH route, PatchTodo, Todo.patch_todo with empty-patch rejection, owner lookup, due validation and reminder reset.",
+          "remaining_work": "Integrated runtime/persistence assertions absent.",
+          "task_ids": [
+            "RM-102",
+            "RM-107"
+          ],
+          "required_observation": "Distinguish omitted from null, reject empty/foreign writes, reset reminder on supplied due date and preserve exact frozen response."
+        }
+      },
+      "PATCH-005": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/routes/todos.jadpo"
+          ],
+          "existing_declarations": "PATCH route, PatchTodo, Todo.patch_todo with empty-patch rejection, owner lookup, due validation and reminder reset.",
+          "remaining_work": "Integrated runtime/persistence assertions absent.",
+          "task_ids": [
+            "RM-102",
+            "RM-107"
+          ],
+          "required_observation": "Distinguish omitted from null, reject empty/foreign writes, reset reminder on supplied due date and preserve exact frozen response."
+        }
+      },
+      "DELETE-001": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/routes/todos.jadpo"
+          ],
+          "existing_declarations": "Todo.deleted_at field and get concealment exist.",
+          "remaining_work": "Entity-owned lifecycle implementation and DELETE route missing.",
+          "task_ids": [
+            "RM-102",
+            "RM-205",
+            "RM-206",
+            "RM-106"
+          ],
+          "required_observation": "Soft-delete at fixed clock retaining row; later get/repeated delete concealed; repeated delete performs zero writes."
+        }
+      },
+      "DELETE-002": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/entities/todo.jadpo",
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/routes/todos.jadpo"
+          ],
+          "existing_declarations": "Todo.deleted_at field and get concealment exist.",
+          "remaining_work": "Entity-owned lifecycle implementation and DELETE route missing.",
+          "task_ids": [
+            "RM-102",
+            "RM-205",
+            "RM-206",
+            "RM-106"
+          ],
+          "required_observation": "Soft-delete at fixed clock retaining row; later get/repeated delete concealed; repeated delete performs zero writes."
+        }
+      },
+      "USER-001": {
+        "status": "not_executed",
+        "gap": "Authentication expectation reconciled with approved AUTH-001 and the recorded query-budget decision; full golden source still does not compile, and this case has not executed.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/application.jadpo",
+            "examples/golden-todo-migration/authentication.jadpo",
+            "examples/golden-todo-migration/entities/user.jadpo",
+            "examples/golden-todo-migration/entities/service.jadpo",
+            "examples/golden-todo-migration/entities/service_credential.jadpo"
+          ],
+          "existing_declarations": "User status and bounded application authority freshness declared.",
+          "remaining_work": "User disable action/route, fresh authority enforcement and lifecycle integration absent.",
+          "task_ids": [
+            "RM-102",
+            "RM-103",
+            "RM-106"
+          ],
+          "required_observation": "Frozen disable/refresh/bounded-expiry timelines; fresh principal queries counted separately from credential queries; no unauthorised writes."
+        }
+      },
+      "JOB-001": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/entities/todo.jadpo"
+          ],
+          "existing_declarations": "ReminderMessage/ReminderReceipt and due/reminder fields exist.",
+          "remaining_work": "Mail service adapter, eligible reminder query, durable scheduled job and completion integration missing.",
+          "task_ids": [
+            "RM-106",
+            "RM-301",
+            "RM-302",
+            "RM-303",
+            "RM-304",
+            "RM-305",
+            "RM-306",
+            "RM-307",
+            "RM-108"
+          ],
+          "required_observation": "Reviewed JOB-001 successor: persisted intent UUID equals body and header, matching schedule revision marked with compiler receipt observation; replay has no extra provider call. Preserve frozen base as comparison evidence."
+        }
+      },
+      "JOB-002": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/entities/todo.jadpo"
+          ],
+          "existing_declarations": "ReminderMessage/ReminderReceipt and due/reminder fields exist.",
+          "remaining_work": "Mail service adapter, eligible reminder query, durable scheduled job and completion integration missing.",
+          "task_ids": [
+            "RM-106",
+            "RM-301",
+            "RM-302",
+            "RM-303",
+            "RM-304",
+            "RM-305",
+            "RM-306",
+            "RM-307",
+            "RM-108"
+          ],
+          "required_observation": "Frozen eligible/excluded rows, recipient and idempotency key, accepted mark and completed replay with no extra provider call."
+        }
+      },
+      "JOB-003": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/entities/todo.jadpo"
+          ],
+          "existing_declarations": "ReminderMessage/ReminderReceipt and due/reminder fields exist.",
+          "remaining_work": "Mail service adapter, eligible reminder query, durable scheduled job and completion integration missing.",
+          "task_ids": [
+            "RM-106",
+            "RM-301",
+            "RM-302",
+            "RM-303",
+            "RM-304",
+            "RM-305",
+            "RM-306",
+            "RM-307",
+            "RM-108"
+          ],
+          "required_observation": "Frozen eligible/excluded rows, recipient and idempotency key, accepted mark and completed replay with no extra provider call."
+        }
+      },
+      "JOB-004": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/entities/todo.jadpo"
+          ],
+          "existing_declarations": "Todo deletion timestamp and SOFT_DELETE_RETENTION configuration exist.",
+          "remaining_work": "Purge lifecycle action, bounded query and schedule missing.",
+          "task_ids": [
+            "RM-106",
+            "RM-305",
+            "RM-306",
+            "RM-307",
+            "RM-108"
+          ],
+          "required_observation": "Frozen retention ages, hard-delete count, retained active/recent rows and 500-row bound."
+        }
+      },
+      "CONFIG-001": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/config.jadpo"
+          ],
+          "existing_declarations": "Typed required secret/URL configuration and retention default declared.",
+          "remaining_work": "Migrated target origin configuration and browser startup boundary are verified under RM-103; this original golden case remains unexecuted until RM-109.",
+          "task_ids": [
+            "RM-103"
+          ],
+          "required_observation": "Invalid/missing configuration diagnosed safely with declaration context before listener binding."
+        }
+      },
+      "CONFIG-002": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/config.jadpo"
+          ],
+          "existing_declarations": "Typed required secret/URL configuration and retention default declared.",
+          "remaining_work": "Migrated target origin configuration and browser startup boundary are verified under RM-103; this original golden case remains unexecuted until RM-109.",
+          "task_ids": [
+            "RM-103"
+          ],
+          "required_observation": "Invalid/missing configuration diagnosed safely with declaration context before listener binding."
+        }
+      },
+      "CONFIG-003": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/config.jadpo"
+          ],
+          "existing_declarations": "DATABASE_URL configuration and independent public liveness declared.",
+          "remaining_work": "Deployment-plane database readiness missing; RM-403 is included in selected scope and remains queued behind RM-303.",
+          "task_ids": [
+            "RM-103",
+            "RM-403"
+          ],
+          "required_observation": "Database outage gives deployment readiness 503 while liveness stays 200 without process restart; recovery remains observable."
+        }
+      },
+      "BOUNDARY-001": {
+        "status": "not_executed",
+        "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+        "mapping": {
+          "source": [
+            "examples/golden-todo-migration/values/contracts.jadpo",
+            "examples/golden-todo-migration/entities/todo.jadpo"
+          ],
+          "existing_declarations": "Mail payload types only; list and mail execution absent.",
+          "remaining_work": "Safe database/provider failure integration and default retry classification missing.",
+          "task_ids": [
+            "RM-105",
+            "RM-303",
+            "RM-304",
+            "RM-402"
+          ],
+          "required_observation": "Original database-outage/provider-auth failures expose safe code/request ID and no SQL, stack or provider body; preserve unknown outcomes."
+        }
+      }
+    }
+  },
+  "toolchain": {
+    "cargo": "cargo 1.78.0 (54d8815d0 2024-03-26)",
+    "rustc": "rustc 1.78.0 (9b00956e5 2024-04-29)",
+    "bun": "1.2.20",
+    "node": "v24.18.1",
+    "ruby": "ruby 2.6.10p210 (2022-04-12 revision 67958) [universal.arm64e-darwin26]",
+    "bash": "GNU bash, version 3.2.57(1)-release (arm64-apple-darwin26)",
+    "postgres": "postgres (PostgreSQL) 16.3 (Postgres.app)"
+  },
+  "examples": {
+    "examples/authentication-selector": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/configuration-seed": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/first-party-authentication": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/golden-todo": {
+      "status": "design_contract",
+      "reason": "Unimplemented full application contract; tracked by every acceptance ID, never counted as passing runtime evidence"
+    },
+    "examples/golden-todo-migration": {
+      "status": "design_contract",
+      "reason": "Exploratory compiler-checked P11 source migration; it is incomplete and supplies no integrated runtime or acceptance evidence"
+    },
+    "examples/jadpo-seed": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/module-seed": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/outcome-sequencing": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/persistence-seed": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/policy-runtime": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/temporal": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/test-fixtures": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/test1": {
+      "status": "legacy",
+      "reason": "Historical scratch example with superseded constraint/failure syntax; not current teaching material or runtime evidence"
+    }
+  },
+  "remaining_gates": [
+    "Golden todo syntax migration and all 44 integrated behavioural cases",
+    "Remaining golden source/behavior reconciliation and unsupported route/lifecycle/service/job contracts",
+    "Source compatibility/deprecation and public documentation alignment",
+    "Coverage-guided/deep-resource fuzzing and targeted compiler mutation evidence",
+    "Broader PostgreSQL transaction/policy coverage beyond bounded P10.7 savepoint and concurrency cases, SQLite cross-process contention handling, deadlock/retry behavior, plus database migration drills",
+    "Fresh-agent trial and comprehension evidence",
+    "Independent P10R review and protected approval attestation",
+    "Production deployment qualification",
+    "Bun versus future WASM differential conformance",
+    "Set/Map HTTP wire contract: schemas advertise JSON shapes rejected by handlers; key encoding and duplicate semantics unresolved"
+  ]
+}

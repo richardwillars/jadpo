@@ -1,0 +1,15 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/validation-auth-policy.test.ts:
+(pass) independent authentication, policy and transaction integration > policy denial in a later nested mutation rolls back the earlier authorized write [15.55ms]
+(pass) independent authentication, policy and transaction integration > authorized nested writes commit together while domain rejection rolls them back [3.78ms]
+(pass) independent authentication, policy and transaction integration > missing and unauthorized second rows have the same safe public failure and rollback [3.78ms]
+(pass) independent authentication, policy and transaction integration > bounded signed identity never freezes direct ownership authority [3.09ms]
+(pass) independent authentication, policy and transaction integration > same-principal and conflicting credentials reject before malformed body or writes [2.21ms]
+(pass) independent authentication, policy and transaction integration > revoked opaque credentials and fresh signed credentials cannot begin mutation [4.74ms]
+(pass) independent authentication, policy and transaction integration > concurrent transactions keep each principal and all nested policy checks isolated [17.61ms]
+
+ 7 pass
+ 0 fail
+ 60 expect() calls
+Ran 7 tests across 1 file. [363.00ms]

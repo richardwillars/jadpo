@@ -1,0 +1,13 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/entity-dossier.test.ts:
+(pass) entity dossier transaction and change-record runtime > rolls back a handled nested action to its savepoint with its change record [14.21ms]
+(pass) entity dossier transaction and change-record runtime > isolates concurrent transaction contexts and appends ordered revisions [21.10ms]
+(pass) entity dossier transaction and change-record runtime > serializes concurrent writers from separate PostgreSQL processes [57.61ms]
+
+ 3 pass
+ 0 fail
+ 65 expect() calls
+Ran 3 tests across 1 file. [287.00ms]

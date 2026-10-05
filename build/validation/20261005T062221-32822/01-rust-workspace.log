@@ -1,0 +1,116 @@
+   Compiling jadpo-diagnostics v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/diagnostics)
+   Compiling jadpo-core v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/core)
+   Compiling jadpo-syntax v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/syntax)
+   Compiling jadpo-semantic v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/semantic)
+   Compiling jadpo-cli v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.20s
+     Running unittests src/main.rs (jadpo/target/debug/deps/jadpo-98fe91c640258373)
+
+running 45 tests
+test experimental_build::tests::target_options_accept_both_positions_and_native_alias ... ok
+test lsp::tests::converts_utf8_bytes_and_lsp_utf16_positions ... ok
+test experimental_build::tests::default_build_stays_bun_and_requires_a_project ... ok
+test experimental_build::tests::malformed_targets_never_fall_back_to_bun ... ok
+test experimental_build::tests::experimental_builds_are_confined_to_the_checkout_fixture ... ok
+test lsp::tests::preserves_multi_file_repairs_as_one_workspace_preview ... ok
+test lsp::tests::completion_is_contextual_for_enums_and_typed_parameters ... ok
+test lsp::tests::presents_the_route_contract_for_an_inline_action ... ok
+test lsp::tests::navigates_imported_symbols_across_files ... ok
+test lsp::tests::round_trips_file_uris_with_spaces ... ok
+test lsp::tests::publishes_live_diagnostics_for_unsaved_document_text ... ok
+test lsp::tests::provides_callable_signature_help ... ok
+test lsp::tests::publishes_related_locations_from_the_shared_diagnostic_object ... ok
+test lsp::tests::orders_the_recommended_guided_choice_before_bounded_alternatives ... ok
+test lsp::tests::exposes_the_canonical_seed_over_the_protocol ... ok
+test terminal::tests::invalid_auth_value_terminal_projection_is_a_security_decision_not_a_token_error ... ok
+test terminal::tests::plain_output_is_deterministic_and_escape_free ... ok
+test terminal::tests::presentation_defaults_protect_noninteractive_consumers ... ok
+test terminal::tests::rich_colour_is_opt_in_and_ascii_mode_has_no_unicode_framing ... ok
+test lsp::tests::invalid_auth_value_is_one_precise_ide_problem_with_two_unpreferred_choices ... ok
+test terminal::tests::the_whole_human_surface_has_a_plain_escape_free_fallback ... ok
+test terminal::tests::operational_diagnostic_emitter_contracts_are_human_readable ... ok
+test terminal::tests::rich_output_has_hierarchy_source_and_repair_without_changing_source ... ok
+test tests::configuration_cli_failures_have_stable_safe_copy ... ok
+test tests::emits_a_stable_versioned_check_envelope ... ok
+test lsp::tests::every_catalogue_code_has_a_complete_ide_hover_projection ... ok
+test tests::emits_versioned_watch_lifecycle_events ... ok
+test lsp::tests::presents_handled_mapped_and_propagated_outcomes_at_call_sites ... ok
+test tests::empty_project_fails_check ... ok
+test tests::check_summary_counts_persistence_declarations ... ok
+test tests::human_diagnostics_show_source_line_column_and_caret ... ok
+test tests::rollback_failures_have_stable_diagnostic_contracts ... ok
+test tests::json_check_report_preserves_precise_frontend_diagnostics ... ok
+test tests::preserves_and_restores_the_last_known_good_runtime_revision ... ok
+test tests::separates_presentation_flags_from_command_arguments ... ok
+test tests::validates_the_dev_server_port ... ok
+test lsp::tests::presents_complete_callable_outcomes_on_declarations_references_and_signatures ... ok
+test tests::watch_snapshot_tracks_checked_inputs_and_ignores_generated_output ... ok
+test lsp::tests::serves_guided_diagnostic_hover_repairs_and_rejects_stale_edits ... ok
+test lsp::tests::temporal_tooling_is_contextual_and_standard_symbols_are_not_renameable ... ok
+test lsp::tests::serves_symbols_definition_hover_completion_rename_and_semantic_tokens ... ok
+test terminal::tests::every_catalogue_code_has_complete_plain_and_rich_terminal_projections ... ok
+test tests::runnable_build_includes_the_compiler_health_route ... ok
+test tests::enriches_safe_runtime_ids_locally_without_copying_event_payloads ... ok
+test tests::approval_cli_compares_pinned_source_and_preserves_text_facts ... ok
+
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.30s
+
+     Running tests/configuration_cli.rs (jadpo/target/debug/deps/configuration_cli-a9a1f56d185962d7)
+
+running 2 tests
+test config_set_refuses_a_captured_non_terminal ... ok
+test config_check_reports_status_without_values ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.67s
+
+     Running tests/experimental_build_command.rs (jadpo/target/debug/deps/experimental_build_command-2cddfca36ff246ef)
+
+running 4 tests
+test unavailable_checkout_fails_without_starting_tools ... ok
+test missing_build_tool_is_a_failure ... ok
+test child_failure_propagates_and_success_preserves_target_and_working_directory ... ok
+test default_and_explicit_bun_builds_generate_the_same_target_without_running_bun ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+     Running tests/validation_test_command.rs (jadpo/target/debug/deps/validation_test_command-c7820dcd6607a82a)
+
+running 3 tests
+test missing_runtime_is_a_distinct_startup_error ... ok
+test no_authored_tests_is_a_distinct_error ... ok
+test unsuccessful_test_process_is_reported_and_success_is_not ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+
+     Running tests/validation_tooling_protocol.rs (jadpo/target/debug/deps/validation_tooling_protocol-e5f90733812d53de)
+
+running 4 tests
+test utf16_navigation_and_rename_use_unsaved_semantics_without_touching_literal_lookalikes ... ok
+test code_actions_use_utf16_ranges_and_reject_a_real_previous_document_revision ... ok
+test rename_cannot_capture_an_existing_local_binding ... ok
+test rename_allows_the_same_name_in_disjoint_functions_and_sibling_blocks ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/watch_protocol.rs (jadpo/target/debug/deps/watch_protocol-65a15c0e029f1ebd)
+
+running 3 tests
+Python 3.14.0
+test dev_restores_the_ready_runtime_when_a_candidate_fails_startup ... FAILED
+test dev_reports_a_missing_bun_runtime_and_still_shuts_down_cleanly ... ok
+test watch_protocol_covers_coalescing_failure_recovery_file_changes_and_shutdown ... ok
+
+failures:
+
+---- dev_restores_the_ready_runtime_when_a_candidate_fails_startup stdout ----
+thread 'dev_restores_the_ready_runtime_when_a_candidate_fails_startup' panicked at crates/cli/tests/watch_protocol.rs:284:23:
+dev rollback test requires permission to bind a localhost socket
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    dev_restores_the_ready_runtime_when_a_candidate_fails_startup
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.88s
+
+error: test failed, to rerun pass `-p jadpo-cli --test watch_protocol`

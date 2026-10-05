@@ -1,0 +1,18 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/validation-config-time.test.ts:
+(pass) failed authored tests cannot leak clock or configuration state into later tests or later runs [2.05ms]
+(pass) fixture isolation also holds across a fresh process [132.45ms]
+(pass) missing and malformed startup configuration exits safely without reporting a listening server [413.01ms]
+(pass) production launch cannot satisfy missing configuration from ambient env files [60.66ms]
+(pass) a successful process restart loads its own configuration and serves stable nested operation time [138.36ms]
+(pass) the generated request boundary normalizes offsets and millisecond arithmetic across leap midnight [0.83ms]
+(pass) invalid date precision and offsets are rejected before authored arithmetic [0.40ms]
+(pass) every accepted offset instant remains valid when its canonical output is decoded again [0.39ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_abfa7596-59d7-4fc8-8e85-8d88b46d244b","traceId":null,"semanticOperationId":"route:POST:/time","sourceRevision":"src_a5c4b3651ea410ca","attributes":{}}
+(pass) elapsed arithmetic overflow is contained as a safe runtime fault [0.29ms]
+
+ 9 pass
+ 0 fail
+ 101 expect() calls
+Ran 9 tests across 1 file. [1046.00ms]

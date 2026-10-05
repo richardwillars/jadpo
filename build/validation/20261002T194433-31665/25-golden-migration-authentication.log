@@ -1,0 +1,10 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/golden-migration-authentication.test.ts:
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"d2fe258b-18f5-41d4-9d06-290f3bd7eb22","occurredAt":1790966723966}
+(pass) generated migration target enforces authentication and browser origin [8.61ms]
+
+ 1 pass
+ 0 fail
+ 8 expect() calls
+Ran 1 test across 1 file. [626.00ms]

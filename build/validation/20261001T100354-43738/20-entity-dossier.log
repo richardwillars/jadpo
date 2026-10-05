@@ -1,0 +1,9 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/entity-dossier.test.ts:
+(pass) entity dossier transaction and change-record runtime > rolls back a handled nested action to its savepoint with its change record [5.04ms]
+
+ 1 pass
+ 0 fail
+ 7 expect() calls
+Ran 1 test across 1 file. [124.00ms]

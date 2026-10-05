@@ -1,0 +1,20 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/validation-persistence.test.ts:
+(pass) inherited nullable persistence and transaction contracts (sqlite) > SQL and persistence metadata preserve inherited nullable contracts [0.54ms]
+(pass) inherited nullable persistence and transaction contracts (sqlite) > explicit none survives HTTP creation, actual storage and a later read [4.46ms]
+(pass) inherited nullable persistence and transaction contracts (sqlite) > a nullable field is still mandatory and required fields cannot become null [0.52ms]
+(pass) inherited nullable persistence and transaction contracts (sqlite) > patch omission preserves a nullable value while supplied none clears it [6.02ms]
+(pass) inherited nullable persistence and transaction contracts (sqlite) > patch lowering uses the local binding at its lexical use, not a shadowed parameter [2.75ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_8177ee3f-9da2-4f80-856e-dd9cb185937d","traceId":null,"semanticOperationId":"route:POST:/batch","sourceRevision":"src_d9c6644df8b75268","attributes":{}}
+(pass) inherited nullable persistence and transaction contracts (sqlite) > ambiguous required mutation rolls back without clearing either nullable field [4.67ms]
+(pass) inherited nullable persistence and transaction contracts (sqlite) > propagated nested failure rolls back both entries including a nullable insert [1.86ms]
+(pass) inherited nullable persistence and transaction contracts (sqlite) > handled nested failure rolls back only its nullable insert and change record [1.48ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_6bdb53b2-d703-4088-a019-571efb81bf68","traceId":null,"semanticOperationId":"route:POST:/find","sourceRevision":"src_d9c6644df8b75268","attributes":{}}
+(pass) inherited nullable persistence and transaction contracts (sqlite) > corrupt persisted semantic values are contained before entering trusted code [2.15ms]
+(pass) inherited nullable persistence and transaction contracts (sqlite) > parameterized text cannot change SQL shape [1.37ms]
+
+ 10 pass
+ 0 fail
+ 65 expect() calls
+Ran 10 tests across 1 file. [314.00ms]

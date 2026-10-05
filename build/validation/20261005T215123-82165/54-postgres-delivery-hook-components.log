@@ -1,0 +1,58 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/delivery-hook-components.test.ts:
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"f3b0c94b-5370-4248-964c-0214707aaf34","credentialId":"b864ea24-3f3a-451a-bf91-82b8ff1fd533","occurredAt":1791233716870}
+(pass) checked worker admission authority component (postgres) > actual generated authentication crypto and declared storage mint an empty opaque proof, not an ordinary policy grant [19.58ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"0f2d3429-6309-4b90-87ec-120822ab7c42","credentialId":"17f398df-5e7c-4d6e-b1b1-7acd00e8655d","occurredAt":1791233716887}
+(pass) checked worker admission authority component (postgres) > service-shaped, copied, serialized and foreign-storage native proofs cannot establish authority [10.71ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"41320cdd-924d-4703-97be-78df1ead38b6","credentialId":"13924845-ee81-4c8b-a5f9-067db6ef1ae3","occurredAt":1791233716898}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.exchanged","strategy":"api_bearer","serviceId":"41320cdd-924d-4703-97be-78df1ead38b6","credentialId":"13924845-ee81-4c8b-a5f9-067db6ef1ae3","occurredAt":1791233716898}
+(pass) checked worker admission authority component (postgres) > invalid key and signed service exchange cannot substitute for the selected direct api-key validator [5.27ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"fb516a1a-97dc-4e7e-9c97-45b352dace7c","credentialId":"86939f8a-511c-4da1-8265-a14eb0830268","occurredAt":1791233716903}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"251de6d3-9252-4039-9d60-9dfe4f87b003","credentialId":"4629903b-b11d-487b-8b55-19c17d839023","occurredAt":1791233716908}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"7c61987f-dfbd-4f26-b192-c1fb43792418","credentialId":"f783b092-5586-44b0-aacb-a386fe15a0d0","occurredAt":1791233716913}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"7330c19d-2079-41a3-83dc-3e038fffc34f","credentialId":"f7abec9b-da81-47ca-9246-0062323f0b6f","occurredAt":1791233716916}
+(pass) checked worker admission authority component (postgres) > live revoked/status/expired credential states invalidate previously verified proof using database time [18.29ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"933db9b7-a8b9-4a11-ada0-34409e803553","credentialId":"be83e81f-c281-42b0-baf8-f4b8e4bc4f4e","occurredAt":1791233716922}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"340bf23e-0839-44d2-ad61-47d14082f227","credentialId":"bb3009af-309c-4d2c-a84d-ecad91914319","occurredAt":1791233716925}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"fe0f8682-77fa-42d7-b37f-a91e3981ec03","credentialId":"209f6be1-2f81-48da-87a9-e6563731881f","occurredAt":1791233716928}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"b7078d36-508a-4ad9-b6b3-b201898d19d3","credentialId":"79b36965-950a-41e4-ad4f-0ca1acc2f9b1","occurredAt":1791233716932}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"773e38d5-77a6-454a-9682-b468a596ea57","credentialId":"9bb2d1e8-1688-4d36-b004-e40a5eae67f0","occurredAt":1791233716935}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"68a9d022-ed52-458a-a0c6-c399f33e5fbc","credentialId":"874ce54c-4b9e-4e2c-836b-9dcabc18b259","occurredAt":1791233716940}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"1179cff1-0979-4205-9d08-422da823935c","credentialId":"0f217973-e056-4f6b-a58d-2dfd642c6c11","occurredAt":1791233716944}
+(pass) checked worker admission authority component (postgres) > live service disable, rename, credential reassignment, membership deletion and duplicate membership refuse admission [25.88ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"92719c03-07e0-4afc-9a46-2654197c6503","credentialId":"51de86f2-f16b-4789-a466-9b627db42040","occurredAt":1791233716947}
+(pass) checked worker admission authority component (postgres) > caught native authority SQL failure rolls back its savepoint, not surrounding successful source work [12.59ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"b8b149dd-1f05-4a60-9266-2f9ba6ed8787","credentialId":"f4498d5f-9548-4a08-bee9-506e374b2c2d","occurredAt":1791233716960}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"12b20421-5ebb-4830-a152-05800a10024c","credentialId":"c240ebc5-6c18-4687-a027-666306bc78bd","occurredAt":1791233716963}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"5b6fcc4b-9621-4c43-9aba-b5cefca0f96f","credentialId":"328fb823-1b51-47ff-a330-616a8890cff1","occurredAt":1791233716967}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"9cd5545d-d323-451e-a8c9-1a093c074749","credentialId":"6efe1baa-b18d-43a4-92f4-bd633340e6d1","occurredAt":1791233716970}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"667425e4-0afd-4674-aa76-23510fb35707","credentialId":"fa8e7008-b85b-426d-8ae4-508e5a4b027a","occurredAt":1791233716975}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"c1156cf8-bde8-497e-ab7a-6217915d8135","credentialId":"0f2af440-b0a1-42aa-af80-99e8ad710b5f","occurredAt":1791233716979}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"2cf96758-b3bd-4829-99b7-ca10d0b62073","credentialId":"7fbd10c0-a111-4c61-a61e-96e0cf8e3b32","occurredAt":1791233716984}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"b15515d7-41e9-4f8d-aebf-2420fa176d36","credentialId":"a31fbf14-438e-405f-b52b-75fcd885cfe7","occurredAt":1791233716989}
+(pass) checked worker admission authority component (postgres) > live verifier replacement and private metadata tamper cannot reuse old crypto provenance [32.03ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"e90d52dd-1b73-44ad-b815-0f054ad779c3","credentialId":"a46577ed-d10b-49c2-9208-8d360b76666a","occurredAt":1791233716992}
+(pass) checked worker admission authority component (postgres) > configuration reinitialization invalidates pending old proofs and a fresh current host still verifies [5.64ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"3c3806db-f519-45fa-8410-a7cf5155a420","credentialId":"6b70e96f-b76c-4a90-921f-5348b44ba20b","occurredAt":1791233716998}
+(pass) checked worker admission authority component (postgres) > credential expiry during a PostgreSQL row-lock wait is checked after admission locks [1007.44ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"30e3cb34-d952-4fc0-bab7-39f280e36162","credentialId":"68e05864-a2e6-48ea-8009-ddcdb9abb056","occurredAt":1791233718006}
+(pass) checked worker admission authority component (postgres) > PostgreSQL live authority row locks survive savepoint release until the owning transaction commits [9.73ms]
+(pass) opaque-binding generated schedule hook component (postgres) > public ordinary target encodes owning-reference Instant patch input with its actual destination representation [8.01ms]
+(pass) opaque-binding generated schedule hook component (postgres) > complete checked binding remains nonexecuting and unrelated entities have no schedule hook [2.66ms]
+(pass) opaque-binding generated schedule hook component (postgres) > successful actual generated create establishes revision1 atomically and duplicate creation cannot reset it [8.82ms]
+(pass) opaque-binding generated schedule hook component (postgres) > supplied due, equal-value due and explicit clear all advance and atomically clear sent [13.11ms]
+(pass) opaque-binding generated schedule hook component (postgres) > omitted due and disjoint generated status writes preserve schedule and sent [7.60ms]
+(pass) opaque-binding generated schedule hook component (postgres) > failed encoding, missing rows and source rollback neither advance nor clear sent [11.22ms]
+(pass) opaque-binding generated schedule hook component (postgres) > unchanged ordinary owner policy refuses another principal without creating or advancing private state [6.30ms]
+(pass) opaque-binding generated schedule hook component (postgres) > A-to-B-to-A retains distinct business revisions even when the value returns [7.68ms]
+(pass) opaque-binding generated schedule hook component (postgres) > caught hook exhaustion rolls back the source patch and sent reset, not surrounding source work [6.87ms]
+(pass) opaque-binding generated schedule hook component (postgres) > caught schedule identity collision rolls back successful INSERT inside its create savepoint [3.94ms]
+(pass) opaque-binding generated schedule hook component (postgres) > actual generated patches serialize concurrent revisions and survive fresh process restart [54.36ms]
+
+ 21 pass
+ 0 fail
+ 106 expect() calls
+Ran 21 tests across 1 file. [1.91s]

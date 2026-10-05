@@ -1,0 +1,12 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/validation-artifact-nullability.test.ts:
+(pass) OpenAPI preserves direct, chained and named nullable contracts [0.29ms]
+(pass) nullable elements do not make the whole collection nullable
+(pass) required shape stays independent of inherited absence [0.02ms]
+(pass) validator plans agree with resolved field nullability [0.09ms]
+
+ 4 pass
+ 0 fail
+ 17 expect() calls
+Ran 4 tests across 1 file. [300.00ms]

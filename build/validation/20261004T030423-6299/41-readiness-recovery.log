@@ -1,0 +1,10 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/readiness-recovery.test.ts:
+(pass) generated runtime readiness > keeps the process live, gates traffic, and recovers when the required database returns [388.97ms]
+(pass) generated runtime readiness > recovers first-party authentication after its required database returns [403.98ms]
+
+ 2 pass
+ 0 fail
+ 41 expect() calls
+Ran 2 tests across 1 file. [977.00ms]

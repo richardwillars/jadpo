@@ -1,0 +1,12 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/service-fakes.test.ts:
+(pass) authored service fakes preserve adapter semantics and never open a provider connection [6.33ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"service-fake-validation-test","attempt":1,"elapsedMs":0,"outcome":"outcome_unknown","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"service-fake-validation-test","attempt":1,"elapsedMs":0,"outcome":"outcome_unknown","retryScheduled":false,"retryDelayMs":null}
+(pass) adapter validation precedes fake consumption and malformed or exhausted fakes become unknown [0.23ms]
+
+ 2 pass
+ 0 fail
+ 18 expect() calls
+Ran 2 tests across 1 file. [387.00ms]

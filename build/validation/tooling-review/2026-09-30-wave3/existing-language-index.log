@@ -1,0 +1,9 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running unittests src/lib.rs (jadpo/target/debug/deps/jadpo_core-db7474db0f833d53)
+
+running 2 tests
+test language_service::tests::exposes_inferred_types_at_child_properties ... ok
+test language_service::tests::indexes_global_and_local_symbols_with_semantic_references ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 56 filtered out; finished in 0.01s
+

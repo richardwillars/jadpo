@@ -1,0 +1,12 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/outcome-sequencing.test.ts:
+(pass) generated exhaustive outcome sequencing > continues with the successful value [2.39ms]
+(pass) generated exhaustive outcome sequencing > recovers locally with a compatible successful value [0.32ms]
+(pass) generated exhaustive outcome sequencing > maps a matched failure to the declared replacement [0.32ms]
+(pass) generated exhaustive outcome sequencing > propagates the exact matched failure [0.20ms]
+
+ 4 pass
+ 0 fail
+ 8 expect() calls
+Ran 4 tests across 1 file. [243.00ms]

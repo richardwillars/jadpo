@@ -1,0 +1,17 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/temporal.test.ts:
+(pass) compiler-owned temporal runtime > canonicalises explicit offsets and rejects non-canonical instants [0.56ms]
+(pass) compiler-owned temporal runtime > resolves London overlap and gap policies explicitly [3.51ms]
+(pass) compiler-owned temporal runtime > resolves non-European daylight-saving transitions [1.49ms]
+(pass) compiler-owned temporal runtime > local-day bounds retain 23, 24 and 25 hour days [0.82ms]
+(pass) compiler-owned temporal runtime > calendar and elapsed arithmetic remain distinct [0.27ms]
+(pass) compiler-owned temporal runtime > friendly formatting uses its explicit reference instant [1.04ms]
+(pass) compiler-owned temporal runtime > rejects invalid ambiguity and formatting policy values at runtime [0.31ms]
+(pass) compiler-owned temporal runtime > calendar extraction is independent of method binding [0.15ms]
+(pass) compiler-owned temporal runtime > reports the generated temporal data provenance [0.04ms]
+
+ 9 pass
+ 0 fail
+ 40 expect() calls
+Ran 9 tests across 1 file. [265.00ms]

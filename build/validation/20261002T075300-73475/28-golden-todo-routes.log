@@ -1,0 +1,12 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/golden-todo-routes.test.ts:
+(pass) create, read and patch preserve the declared owner and public projection [21.47ms]
+(pass) foreign and missing reads are indistinguishable and perform no write [9.20ms]
+(pass) patch distinguishes omitted due date, explicit null, supplied due date and empty input [9.26ms]
+(pass) invalid create and patch dates are rejected without writes [9.15ms]
+
+ 4 pass
+ 0 fail
+ 28 expect() calls
+Ran 4 tests across 1 file. [632.00ms]

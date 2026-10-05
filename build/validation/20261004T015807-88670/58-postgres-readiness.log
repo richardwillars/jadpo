@@ -1,0 +1,12 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/readiness-recovery.test.ts:
+(pass) generated runtime readiness > keeps the process live, gates traffic, and recovers when the required database returns [361.98ms]
+(pass) generated runtime readiness > runs the readiness ping against the disposable PostgreSQL adapter [119.54ms]
+
+ 2 pass
+ 0 fail
+ 17 expect() calls
+Ran 2 tests across 1 file. [668.00ms]

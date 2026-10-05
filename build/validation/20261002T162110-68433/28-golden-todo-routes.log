@@ -1,0 +1,14 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/golden-todo-routes.test.ts:
+(pass) create, read and patch preserve the declared owner and public projection [10.91ms]
+(pass) list pages use stable owner-scoped keysets and exclude deleted or foreign rows [10.79ms]
+(pass) list filters compose, defaults are bounded, and generated SQL has an indexed one-query keyset plan [5.64ms]
+(pass) foreign and missing reads are indistinguishable and perform no write [4.91ms]
+(pass) patch distinguishes omitted due date, explicit null, supplied due date and empty input [7.22ms]
+(pass) invalid create and patch dates are rejected without writes [3.44ms]
+
+ 6 pass
+ 0 fail
+ 52 expect() calls
+Ran 6 tests across 1 file. [519.00ms]

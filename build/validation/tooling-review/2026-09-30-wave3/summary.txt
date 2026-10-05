@@ -1,0 +1,12 @@
+Wave 3 independent tooling validation
+
+New core contracts: 3 passed.
+New black-box LSP protocol: 4 passed.
+Bounded deterministic malformed corpus: 1 passed (384 generated fragments plus 4 mutations per significant token in a representative source).
+Existing LSP unit tests: 18 passed.
+Existing LanguageIndex unit tests: 2 passed.
+
+Pre-fix rename repro failed its intended assertion: renaming input to other returned edits despite an existing same-scope local other. After fix same-scope/nested collisions reject and disjoint function/branch controls succeed.
+
+The broad language_service::tests command initially compiled another worker's unfinished integration fixture and failed Rust parsing. This was a concurrent setup failure, not a product finding or counted test outcome. The focused --lib rerun passed.
+No overall mutation score, exhaustive fuzz, full diagnostic-trigger coverage or release readiness is claimed.

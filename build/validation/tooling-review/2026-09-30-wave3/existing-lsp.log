@@ -1,0 +1,50 @@
+   Compiling jadpo-cli v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.83s
+     Running unittests src/main.rs (jadpo/target/debug/deps/jadpo-2416aa7ffcb2b7ee)
+
+running 18 tests
+test lsp::tests::converts_utf8_bytes_and_lsp_utf16_positions ... ok
+test lsp::tests::preserves_multi_file_repairs_as_one_workspace_preview ... ok
+test lsp::tests::completion_is_contextual_for_enums_and_typed_parameters ... ok
+test lsp::tests::navigates_imported_symbols_across_files ... ok
+test lsp::tests::presents_the_route_contract_for_an_inline_action ... ok
+test lsp::tests::round_trips_file_uris_with_spaces ... ok
+test lsp::tests::exposes_the_canonical_seed_over_the_protocol ... ok
+test lsp::tests::orders_the_recommended_guided_choice_before_bounded_alternatives ... ok
+test lsp::tests::publishes_live_diagnostics_for_unsaved_document_text ... ok
+test lsp::tests::provides_callable_signature_help ... ok
+test lsp::tests::every_catalogue_code_has_a_complete_ide_hover_projection ... ok
+test lsp::tests::publishes_related_locations_from_the_shared_diagnostic_object ... ok
+test lsp::tests::invalid_auth_value_is_one_precise_ide_problem_with_two_unpreferred_choices ... ok
+test lsp::tests::presents_complete_callable_outcomes_on_declarations_references_and_signatures ... ok
+test lsp::tests::presents_handled_mapped_and_propagated_outcomes_at_call_sites ... ok
+test lsp::tests::serves_guided_diagnostic_hover_repairs_and_rejects_stale_edits ... ok
+test lsp::tests::temporal_tooling_is_contextual_and_standard_symbols_are_not_renameable ... ok
+test lsp::tests::serves_symbols_definition_hover_completion_rename_and_semantic_tokens ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.08s
+
+     Running tests/configuration_cli.rs (jadpo/target/debug/deps/configuration_cli-8978ca7eef4f6437)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/validation_test_command.rs (jadpo/target/debug/deps/validation_test_command-b6b7b132a646d19a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/validation_tooling_protocol.rs (jadpo/target/debug/deps/validation_tooling_protocol-e2f2dd7cb8339366)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/watch_protocol.rs (jadpo/target/debug/deps/watch_protocol-b0234da1cc7d91c2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+

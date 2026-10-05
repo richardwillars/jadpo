@@ -1,0 +1,170 @@
+[
+  {
+    "name": "missing-families-baseline",
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--manifest-path",
+      "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/jadpo/Cargo.toml",
+      "-p",
+      "jadpo-diagnostics",
+      "--test",
+      "validation_catalogue_discovery",
+      "discovery_ignores_comments_and_test_only_codes_but_includes_new_families",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "cwd": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j",
+    "environment": {
+      "CARGO_TARGET_DIR": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/cargo-target"
+    },
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "intended_outcome": true,
+    "seconds": 6.957,
+    "build_source_sha256": "40b41559eb997773ae0c752d38a3fa4ec047d1d1ee682f2995d2c6310d3b7ded",
+    "log": "/Users/richardwillars/Documents/Codex/LLM-coding/build/validation/diagnostic-mutation-review/3hl8he7j/missing-families-baseline.log"
+  },
+  {
+    "name": "missing-families-mutated",
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--manifest-path",
+      "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/jadpo/Cargo.toml",
+      "-p",
+      "jadpo-diagnostics",
+      "--test",
+      "validation_catalogue_discovery",
+      "discovery_ignores_comments_and_test_only_codes_but_includes_new_families",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "cwd": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j",
+    "environment": {
+      "CARGO_TARGET_DIR": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/cargo-target"
+    },
+    "exit_code": 101,
+    "expected_exit_code": 101,
+    "intended_outcome": true,
+    "seconds": 3.278,
+    "build_source_sha256": "62db80ec631f4f77d766e7c471ee7da288f6a176141cf572fe3253c431ee1c67",
+    "log": "/Users/richardwillars/Documents/Codex/LLM-coding/build/validation/diagnostic-mutation-review/3hl8he7j/missing-families-mutated.log"
+  },
+  {
+    "name": "missing-families-restored",
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--manifest-path",
+      "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/jadpo/Cargo.toml",
+      "-p",
+      "jadpo-diagnostics",
+      "--test",
+      "validation_catalogue_discovery",
+      "discovery_ignores_comments_and_test_only_codes_but_includes_new_families",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "cwd": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j",
+    "environment": {
+      "CARGO_TARGET_DIR": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/cargo-target"
+    },
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "intended_outcome": true,
+    "seconds": 3.276,
+    "build_source_sha256": "40b41559eb997773ae0c752d38a3fa4ec047d1d1ee682f2995d2c6310d3b7ded",
+    "log": "/Users/richardwillars/Documents/Codex/LLM-coding/build/validation/diagnostic-mutation-review/3hl8he7j/missing-families-restored.log"
+  },
+  {
+    "name": "nested-helper-leakage-baseline",
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--manifest-path",
+      "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/jadpo/Cargo.toml",
+      "-p",
+      "jadpo-diagnostics",
+      "--test",
+      "validation_catalogue_discovery",
+      "references_are_bounded_to_real_test_bodies_and_string_literals",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "cwd": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j",
+    "environment": {
+      "CARGO_TARGET_DIR": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/cargo-target"
+    },
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "intended_outcome": true,
+    "seconds": 3.061,
+    "build_source_sha256": "40b41559eb997773ae0c752d38a3fa4ec047d1d1ee682f2995d2c6310d3b7ded",
+    "log": "/Users/richardwillars/Documents/Codex/LLM-coding/build/validation/diagnostic-mutation-review/3hl8he7j/nested-helper-leakage-baseline.log"
+  },
+  {
+    "name": "nested-helper-leakage-mutated",
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--manifest-path",
+      "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/jadpo/Cargo.toml",
+      "-p",
+      "jadpo-diagnostics",
+      "--test",
+      "validation_catalogue_discovery",
+      "references_are_bounded_to_real_test_bodies_and_string_literals",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "cwd": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j",
+    "environment": {
+      "CARGO_TARGET_DIR": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/cargo-target"
+    },
+    "exit_code": 101,
+    "expected_exit_code": 101,
+    "intended_outcome": true,
+    "seconds": 3.087,
+    "build_source_sha256": "4cd8253b615e76ae67b20f5b31784975fbe625234a7c476e425d76dbddbf0202",
+    "log": "/Users/richardwillars/Documents/Codex/LLM-coding/build/validation/diagnostic-mutation-review/3hl8he7j/nested-helper-leakage-mutated.log"
+  },
+  {
+    "name": "nested-helper-leakage-restored",
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--manifest-path",
+      "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/jadpo/Cargo.toml",
+      "-p",
+      "jadpo-diagnostics",
+      "--test",
+      "validation_catalogue_discovery",
+      "references_are_bounded_to_real_test_bodies_and_string_literals",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "cwd": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j",
+    "environment": {
+      "CARGO_TARGET_DIR": "/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/cargo-target"
+    },
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "intended_outcome": true,
+    "seconds": 3.084,
+    "build_source_sha256": "40b41559eb997773ae0c752d38a3fa4ec047d1d1ee682f2995d2c6310d3b7ded",
+    "log": "/Users/richardwillars/Documents/Codex/LLM-coding/build/validation/diagnostic-mutation-review/3hl8he7j/nested-helper-leakage-restored.log"
+  }
+]

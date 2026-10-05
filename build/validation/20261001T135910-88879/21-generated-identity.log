@@ -1,0 +1,9 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/generated-identity.test.ts:
+(pass) compiler-generated entity identities > creates distinct UUID identities without accepting an ID from input [3.31ms]
+
+ 1 pass
+ 0 fail
+ 9 expect() calls
+Ran 1 test across 1 file. [214.00ms]

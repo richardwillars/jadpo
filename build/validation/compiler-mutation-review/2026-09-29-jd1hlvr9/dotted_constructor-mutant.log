@@ -1,0 +1,83 @@
+   Compiling jadpo-diagnostics v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/diagnostics)
+   Compiling jadpo-syntax v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/syntax)
+   Compiling jadpo-semantic v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/semantic)
+warning: unused variable: `is_type_constructor`
+    --> crates/semantic/src/typecheck.rs:2849:13
+     |
+2849 |         let is_type_constructor = self
+     |             ^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_is_type_constructor`
+     |
+     = note: `#[warn(unused_variables)]` on by default
+
+   Compiling jadpo-core v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/core)
+warning: `jadpo-semantic` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.28s
+     Running tests/validation_types_contract.rs (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/target/debug/deps/validation_types_contract-48c2fa5e8faf5e60)
+
+running 1 test
+thread 'explicit_construction_narrows_to_field_contract' panicked at crates/core/tests/validation_types_contract.rs:25:5:
+expected accepted source:
+
+type Label = Text { min_length: 2 max_length: 8 }
+type Alias = Label {}
+type OtherLabel = Text { min_length: 2 max_length: 8 }
+type Customer = Object { label: Label }
+type Supplier = Object { label: Label }
+type Envelope = Object { value: Customer.label }
+
+function make_label() -> Customer.label { return Customer.label("valid") }
+[
+    CompilerDiagnostic {
+        code: "TYPE_UNKNOWN_VALUE",
+        rule_id: "type.unknown_value",
+        severity: Error,
+        message: "`Customer` isn't defined in this scope",
+        reason: "Jadpo could not find a parameter or local value with this name.",
+        recommended_next_step: RepairStep {
+            kind: GuidedChoice,
+            title: "Define `Customer` before using it",
+            reason: "Jadpo could not find a parameter or local value with this name.",
+            decision_owner: Agent,
+            preferred: false,
+            edits: [],
+            behavioral_effect: "No behavioural change is applied until the proposed edit is validated.",
+            public_contract_effect: "Review generated contract impact before applying the edit.",
+        },
+        alternatives: [],
+        decision_owner: Agent,
+        help_id: "diagnostics/type.unknown_value",
+        source_revision: "unversioned",
+        context: [
+            (
+                "name",
+                "Customer",
+            ),
+        ],
+        impact: DiagnosticImpact {
+            behavioral: "Compilation is blocked until this problem is fixed.",
+            public_contract: "No public-contract change has been applied.",
+            affected: [],
+            query_id: None,
+        },
+        primary: Some(
+            SourceSpan {
+                source: "types-contract.jadpo",
+                start: 307,
+                end: 315,
+            },
+        ),
+        related: [],
+        notes: [],
+    },
+]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test explicit_construction_narrows_to_field_contract ... FAILED
+
+failures:
+
+failures:
+    explicit_construction_narrows_to_field_contract
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 40 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p jadpo-core --test validation_types_contract`

@@ -1,0 +1,19 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/entity-lifecycle.test.ts:
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"e27626ee-b78b-4200-9520-8eff636ab158","operation":"User.create_user","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":2,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"41874633-1440-4a7e-a654-018b5c48744d","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":2,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) entity lifecycle transition lowering > creates lifecycle-owned initial values through generated routes [13.55ms]
+(pass) entity lifecycle transition lowering > atomically disables one visible identity and conceals it afterward [3.20ms]
+(pass) entity lifecycle transition lowering > serializes a transition against an ordinary update [2.13ms]
+(pass) entity lifecycle transition lowering > keeps the logical delete effect while racing an ordinary Todo update [5.84ms]
+(pass) entity lifecycle transition lowering > retains visible child Todos when their User is disabled [3.53ms]
+(pass) entity lifecycle transition lowering > filters disabled owners before the bounded joined page and required child read [6.73ms]
+(pass) entity lifecycle transition lowering > filters deleted Todos before the bounded visible page [7.01ms]
+(pass) entity lifecycle transition lowering > purges only expired post-transition rows in audited batches of 500 [48.87ms]
+(pass) entity lifecycle transition lowering > serializes competing retention-eligibility changes with purge [3.22ms]
+
+ 9 pass
+ 0 fail
+ 89 expect() calls
+Ran 9 tests across 1 file. [374.00ms]

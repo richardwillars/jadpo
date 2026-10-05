@@ -1,0 +1,54 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/service-authentication.test.ts:
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"0c58ca4c-c663-4b2e-866d-bc7ed7dee4b2","occurredAt":1791000778340}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"7b146ad6-ff71-4772-b417-2994ed0e5bc1","occurredAt":1791000778340}
+(pass) service issuance reveals a random secret once and persists only an identified verifier [9.19ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"e0b9c0ec-f7e0-42f6-b21b-46e26983f9ed","occurredAt":1791000778353}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.exchanged","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"e0b9c0ec-f7e0-42f6-b21b-46e26983f9ed","occurredAt":1791000778353}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.refreshed","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"e0b9c0ec-f7e0-42f6-b21b-46e26983f9ed","occurredAt":1791000778354}
+(pass) direct and exchanged services share the existing policy boundary without acquiring user identity [6.88ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"cf413310-62dc-4d9e-878a-2991a682543f","occurredAt":1791000778363}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"d53e49b8-efbe-48ee-bcdf-5569472ae6a7","occurredAt":1791000778363}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.exchanged","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"cf413310-62dc-4d9e-878a-2991a682543f","occurredAt":1791000778363}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.revoked","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"cf413310-62dc-4d9e-878a-2991a682543f","occurredAt":1791000778363}
+(pass) service credentials overlap for rotation and individual revocation does not revoke the replacement [3.79ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"8749d07b-9a47-4b8d-90f2-568cb1fee9b9","occurredAt":1791000778371}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.exchanged","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"8749d07b-9a47-4b8d-90f2-568cb1fee9b9","occurredAt":1791000778371}
+(pass) service disable reaches the declared inactive failure on direct, exchange, refresh and fresh paths [2.57ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"97013811-8350-4832-b389-3749b59d35ff","occurredAt":1791000778377}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.exchanged","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"97013811-8350-4832-b389-3749b59d35ff","occurredAt":1791000778377}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"260c858b-bb0c-4722-8bf4-91597ae3ea1c","occurredAt":1791000778377}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.exchanged","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"260c858b-bb0c-4722-8bf4-91597ae3ea1c","occurredAt":1791000778377}
+(pass) bounded service expiry is exclusive and cannot outlive the originating credential [2.69ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"791c7d2b-5514-46bd-ae4d-603ee4112c7f","occurredAt":1791000778383}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.exchanged","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"791c7d2b-5514-46bd-ae4d-603ee4112c7f","occurredAt":1791000778383}
+(pass) ordinary bounded tokens require neither credential nor principal storage while fresh tokens fail closed [4.64ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"20238942-9ea6-4ec2-bec8-d6e8bc68e566","occurredAt":1791000778391}
+(pass) exactly-one selection rejects mixed valid and invalid credentials before service lookup [2.56ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"f69627bf-3a46-4ee9-89f5-be0f10038f1f","occurredAt":1791000778397}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.exchanged","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"f69627bf-3a46-4ee9-89f5-be0f10038f1f","occurredAt":1791000778397}
+(pass) service keys reject tampering, unknown records, invalid encoding and user/service format confusion [3.32ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"3952cd0b-1dbc-42f6-962f-4d170921982d","occurredAt":1791000778404}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.exchanged","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"3952cd0b-1dbc-42f6-962f-4d170921982d","occurredAt":1791000778404}
+(pass) correctly signed service envelopes still enforce audience, kind, lifetime and closed claims [2.25ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"6ec65e53-c51e-46eb-9ba2-327c64dc8d91","occurredAt":1791000778409}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.exchanged","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"6ec65e53-c51e-46eb-9ba2-327c64dc8d91","occurredAt":1791000778409}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"21c96273-bf78-4213-bd5d-7d1fb10db8f4","occurredAt":1791000778409}
+(pass) service signing-key overlap permits old credentials until the old key is retired [3.52ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"ec077f4a-c01c-4eb7-988c-f7e8ec135cdc","occurredAt":1791000778416}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.exchanged","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"ec077f4a-c01c-4eb7-988c-f7e8ec135cdc","occurredAt":1791000778416}
+(pass) subject reuse cannot transfer a service credential to a different identity [2.32ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"b1cc960d-5a9a-453f-be14-77e2dd2d2417","occurredAt":1791000778422}
+(pass) service credential state survives a fresh runtime process without revealing secrets [113.03ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"1109db8e-5f6c-4aed-be04-3b69b8488de8","occurredAt":1791000778539}
+(pass) an equal UUID in the user namespace cannot acquire a service-owned resource role [3.14ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"6ea9350c-9d67-4c31-a1f3-2bce809f77a2","occurredAt":1791000778545}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"00000000-0000-4000-8000-000000000002","credentialId":"62012639-ed2f-43dd-beab-4d5ced09fcfa","occurredAt":1791000778545}
+(pass) malformed stored verifier material fails closed without public record disclosure [2.47ms]
+(pass) service lifecycle audit emits only closed non-secret identity facts [2.45ms]
+
+ 15 pass
+ 0 fail
+ 213 expect() calls
+Ran 15 tests across 1 file. [628.00ms]

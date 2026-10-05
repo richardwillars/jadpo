@@ -1,0 +1,9 @@
+warning: A query field could benefit from an index
+  reason: Static query analysis found a predicate or ordering field without a matching persistence index; this is advice and does not change source automatically.
+  next: Inspect the recommendation and explicitly accept it if the storage trade-off is appropriate (guided_choice, owner: agent)
+  behavioral impact: The project can still build; this recommendation is advisory.
+  public contract impact: No public-contract change has been applied.
+  rule: index.recommendation_available
+  help: https://jadpo.dev/docs/diagnostics/index.recommendation_available
+  note: run `jadpo schema index-recommend examples/persistence-seed` for evidence
+built 20 derived and target file(s) beneath examples/persistence-seed/build

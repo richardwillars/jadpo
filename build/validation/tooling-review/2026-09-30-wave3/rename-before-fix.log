@@ -1,0 +1,22 @@
+   Compiling jadpo-diagnostics v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/diagnostics)
+   Compiling jadpo-syntax v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/syntax)
+   Compiling jadpo-semantic v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/semantic)
+   Compiling jadpo-core v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/core)
+   Compiling jadpo-cli v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.18s
+     Running tests/validation_tooling_protocol.rs (jadpo/target/debug/deps/validation_tooling_protocol-302226231a789240)
+
+running 1 test
+thread 'rename_cannot_capture_an_existing_local_binding' panicked at crates/cli/tests/validation_tooling_protocol.rs:160:5:
+semantic rename must reject capturing the existing `other` local: {"id":2,"jsonrpc":"2.0","result":{"changes":{"file:///var/folders/c3/bd2p8dtn3vs2wk9ld2fmk4k00000gn/T/jadpo-tooling-protocol-93746-0/app.jadpo":[{"newText":"other","range":{"end":{"character":21,"line":1},"start":{"character":16,"line":1}}},{"newText":"other","range":{"end":{"character":80,"line":1},"start":{"character":75,"line":1}}}]}}}
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test rename_cannot_capture_an_existing_local_binding ... FAILED
+
+failures:
+
+failures:
+    rename_cannot_capture_an_existing_local_binding
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.33s
+
+error: test failed, to rerun pass `-p jadpo-cli --test validation_tooling_protocol`

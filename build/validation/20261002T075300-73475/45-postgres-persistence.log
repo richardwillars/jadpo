@@ -1,0 +1,35 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/persistence-postgres.test.ts:
+(pass) generated PostgreSQL persistence path > loads multiple bounded collections without Cartesian multiplication [27.95ms]
+(pass) generated PostgreSQL persistence path > automatically rolls back every mutation in a failed action [37.89ms]
+(pass) generated PostgreSQL persistence path > updates several fields atomically in one fixed-shape mutation [12.34ms]
+(pass) generated PostgreSQL persistence path > enforces and indexes the generated User-to-Todo relationship [3.66ms]
+(pass) generated PostgreSQL persistence path > loads a validated parent and deterministically ordered inverse collection [2.04ms]
+(pass) generated PostgreSQL persistence path > returns an empty inverse collection and a typed missing-parent failure [3.57ms]
+(pass) generated PostgreSQL persistence path > paginates parents before joining independently bounded children [1.69ms]
+(pass) generated PostgreSQL persistence path > rejects invalid input without writing a row [0.40ms]
+(pass) generated PostgreSQL persistence path > creates, decodes, and returns a validated entity [1.52ms]
+(pass) generated PostgreSQL persistence path > returns null when an optional query has no row [0.68ms]
+(pass) generated PostgreSQL persistence path > returns a validated entity when an optional query has one row [1.19ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_8cb8429a-86a5-4da0-90aa-0a806f0c00af","traceId":null,"semanticOperationId":"route:POST:/customers/find","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated PostgreSQL persistence path > contains an optional-query cardinality violation [2.84ms]
+(pass) generated PostgreSQL persistence path > maps a missing required query to its declared not-found failure [1.34ms]
+(pass) generated PostgreSQL persistence path > returns a validated entity from a required query [3.35ms]
+(pass) generated PostgreSQL persistence path > maps a missing required update to not-found [1.64ms]
+(pass) generated PostgreSQL persistence path > updates and returns exactly one validated entity [2.14ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_30df56e8-e75c-410d-882e-af85d99aecc8","traceId":null,"semanticOperationId":"route:POST:/customers/update","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated PostgreSQL persistence path > rolls back an update whose predicate matches multiple rows [0.94ms]
+(pass) generated PostgreSQL persistence path > maps create and update constraint violations to their declared conflict [5.06ms]
+(pass) generated PostgreSQL persistence path > maps a missing required delete to not-found [1.72ms]
+(pass) generated PostgreSQL persistence path > deletes and returns exactly one validated entity [3.45ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_UNHANDLED_FAULT","requestId":"req_9d2a77b9-db25-48d2-9083-e037428d64b2","traceId":null,"semanticOperationId":"route:POST:/customers/delete","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated PostgreSQL persistence path > rolls back a delete whose predicate matches multiple rows [1.12ms]
+(pass) generated PostgreSQL persistence path > normalises raw PostgreSQL driver errors at the adapter boundary [1.22ms]
+
+ 22 pass
+ 0 fail
+ 88 expect() calls
+Ran 22 tests across 1 file. [356.00ms]

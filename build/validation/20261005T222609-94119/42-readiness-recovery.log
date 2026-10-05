@@ -1,0 +1,23 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/readiness-recovery.test.ts:
+(pass) compiler-private bounded readiness response > the generated persistence includes the exact controller and stages recovery publication [2.09ms]
+(pass) compiler-private bounded readiness response > stalled probe and initialization share one finite response and retain one native observer [1.59ms]
+(pass) compiler-private bounded readiness response > publication rejects exact or late deadlines even when the timer has not fired
+(pass) compiler-private bounded readiness response > a newer availability failure cannot be erased by an older successful probe
+(pass) compiler-private bounded readiness response > backoff is once per failure, capped, and only a fresh fenced success resets it [0.70ms]
+(pass) compiler-private bounded readiness response > throwing cancellation, late rejection and genuine fatal initialization stay contained [0.35ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated runtime readiness > retry-cutoff requests can observe mixed readiness while eligible requests share one initialization [20.11ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_5e6ea6971d22ccbf","attributes":{}}
+(pass) generated runtime readiness > initial and recovery-time SQLite schema locks stay recoverable after contention clears [38.40ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"dependency.unavailable","classification":"RUNTIME_DEPENDENCY_UNAVAILABLE","requestId":"readiness","traceId":null,"semanticOperationId":"health:ready","sourceRevision":"src_879d724f81edd863","attributes":{}}
+(pass) generated runtime readiness > recovers required storage and authenticated reads through generated handlers without binding a listener [368.18ms]
+(pass) generated runtime readiness > keeps the process live, gates traffic, and recovers when the required database returns [807.05ms]
+(pass) generated runtime readiness > recovers first-party authentication after its required database returns [393.23ms]
+
+ 11 pass
+ 0 fail
+ 764 expect() calls
+Ran 11 tests across 1 file. [1.84s]

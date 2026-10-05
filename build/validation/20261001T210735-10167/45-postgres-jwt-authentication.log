@@ -1,0 +1,25 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/jwt-integration.test.ts:
+(pass) real RS256 JWT resolves an authoritative principal on protected and fresh HTTP routes [10.15ms]
+(pass) missing authentication precedes malformed protected input [1.70ms]
+(pass) wrong issuer, audience, unknown subject and expired JWT cannot enter the route [4.40ms]
+(pass) signature corruption is rejected by real verification [1.28ms]
+(pass) disabled authority is checked on ordinary and fresh external JWT requests [2.94ms]
+(pass) JWT, opaque bearer and browser cookie preserve dispatch without validator fallback [5.84ms]
+(pass) mixed, duplicate and invalid-beside-valid credential slots reject before provider work [1.23ms]
+(pass) public liveness ignores malformed and conflicting credentials [0.17ms]
+(pass) JWT profile, identity and permission claims cannot replace local identity or policy [4.13ms]
+(pass) concurrent verified subjects retain their own authoritative local identities [8.13ms]
+(pass) provider failure is a safe operational response rather than a principal or provider disclosure [1.34ms]
+(skip) ordinary and fresh JWT each execute exactly one native SQLite authority query
+(pass) invalid JWT configuration fails initialization and leaves authentication unavailable [2.59ms]
+(pass) invalid JWT configuration exits generated production startup before a listener is opened [81.29ms]
+
+ 13 pass
+ 1 skip
+ 0 fail
+ 172 expect() calls
+Ran 14 tests across 1 file. [515.00ms]

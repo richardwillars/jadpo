@@ -1,0 +1,56 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/delivery-hook-components.test.ts:
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"2b837cb1-5a2e-4c19-aeb5-3b4006626073","credentialId":"58486b5c-14c1-4a28-8a2f-d4e281965784","occurredAt":1791233647416}
+(pass) checked worker admission authority component (sqlite) > actual generated authentication crypto and declared storage mint an empty opaque proof, not an ordinary policy grant [15.53ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"9174a537-3ba8-44c9-a49e-e6c857af106e","credentialId":"a18cb451-8d80-492d-a855-867532e1a4bf","occurredAt":1791233647428}
+(pass) checked worker admission authority component (sqlite) > service-shaped, copied, serialized and foreign-storage native proofs cannot establish authority [4.46ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"8b8eabab-31c0-4974-8b75-515a2521e098","credentialId":"fc393849-3a03-4d17-848b-acc729dc7047","occurredAt":1791233647432}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.exchanged","strategy":"api_bearer","serviceId":"8b8eabab-31c0-4974-8b75-515a2521e098","credentialId":"fc393849-3a03-4d17-848b-acc729dc7047","occurredAt":1791233647432}
+(pass) checked worker admission authority component (sqlite) > invalid key and signed service exchange cannot substitute for the selected direct api-key validator [5.87ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"2619b54f-6db6-44a8-884e-0f2924098006","credentialId":"f04d1113-f576-47dc-b7ff-28e0dfeb4230","occurredAt":1791233647438}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"35d939e8-9796-420a-819c-847511525ba8","credentialId":"29512086-66f4-49eb-b358-365e0f1f5246","occurredAt":1791233647441}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"71f14a21-969c-4e3a-bc1b-174d8c488f3c","credentialId":"b6805d1d-654a-40bb-a1a9-f4c4ffe8298b","occurredAt":1791233647444}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"98b6da61-5695-4ce1-9dc7-641711d13912","credentialId":"57db362d-f954-4ef9-affb-a6e6e95af47a","occurredAt":1791233647448}
+(pass) checked worker admission authority component (sqlite) > live revoked/status/expired credential states invalidate previously verified proof using database time [16.71ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"a6d53f09-2512-480e-91e4-a8dcc1d6f6ba","credentialId":"c3a37950-928e-4ced-b4aa-577b72546c02","occurredAt":1791233647455}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"115a985f-b114-432c-9be2-e38f62f94ff4","credentialId":"6eb8b752-fcbd-492f-8ca3-e5182ea41733","occurredAt":1791233647459}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"1416ee3e-db52-4139-a8ee-9c737d4562c6","credentialId":"25205f3a-192f-4789-acc2-62d8ecc0fc97","occurredAt":1791233647463}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"647a879f-e4b3-4a72-aaf4-3e2307f877be","credentialId":"96e26632-d005-49f7-9bc8-6fda748a326a","occurredAt":1791233647467}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"b1dcd60c-6f9d-4f99-9546-9338bbbc7c12","credentialId":"b7b86547-338f-40f8-ac8b-17d885fcb8f4","occurredAt":1791233647470}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"70a46330-c70a-48ba-90b2-7bc09a977052","credentialId":"ab02b271-4212-495a-8fb4-946076c6f88d","occurredAt":1791233647473}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"fcc7f57d-747f-43e1-b32c-0fbee5c8b450","credentialId":"c1c75115-85db-488a-a8a8-f98bdaefef1c","occurredAt":1791233647477}
+(pass) checked worker admission authority component (sqlite) > live service disable, rename, credential reassignment, membership deletion and duplicate membership refuse admission [25.21ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"7f421a60-62f3-4d43-894b-cf717e30fe57","credentialId":"c809f2fd-314a-43d8-92db-f19bcd47e89d","occurredAt":1791233647480}
+(pass) checked worker admission authority component (sqlite) > caught native authority SQL failure rolls back its savepoint, not surrounding successful source work [15.31ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"601f3ff4-1961-4558-8cf9-96f15520b06d","credentialId":"9577aac6-9947-4ce2-b72c-c8d48db0e0a9","occurredAt":1791233647496}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"374f2680-c654-47a8-8165-2023810b31a1","credentialId":"7de34044-d338-4111-b459-ddc2f4725412","occurredAt":1791233647524}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"2ec6cc10-78e5-4676-a69e-f61c1a8810a5","credentialId":"eed3dc82-40c6-4fe3-8ab8-bb4d2fa55859","occurredAt":1791233647526}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"506c3be4-69ff-4985-911b-3ea5e6422ba8","credentialId":"2dd03fe0-8473-480f-b3ec-e1c68c360e8b","occurredAt":1791233647530}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"ba54bd34-f174-46cc-9fcb-070059a1a350","credentialId":"d7c77656-fabb-47c8-9b22-46166729b63e","occurredAt":1791233647533}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"bfecf2e8-fb0f-486d-90c8-ecf25922ed70","credentialId":"2a505cac-85b1-4e11-9af7-65329f2c5eee","occurredAt":1791233647535}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"4d12e933-fe14-4c08-af1f-a3922cd8cbcd","credentialId":"be4096d4-2d76-4474-aaf7-6e15e0637039","occurredAt":1791233647538}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"eb912ec4-9a00-489b-9b52-cfeadb9498cd","credentialId":"0bf8bd62-a701-432b-8d3a-33d277db119f","occurredAt":1791233647544}
+(pass) checked worker admission authority component (sqlite) > live verifier replacement and private metadata tamper cannot reuse old crypto provenance [51.21ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"97db15f5-bd01-4fbc-b5f1-61823914bccc","credentialId":"0fa5e2a7-001c-4acc-b4e7-69166c644132","occurredAt":1791233647546}
+(pass) checked worker admission authority component (sqlite) > configuration reinitialization invalidates pending old proofs and a fresh current host still verifies [19.74ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"daee0e4e-8eda-48d8-9e33-2bee119b1011","credentialId":"a845d086-cb36-4710-b380-01199bd42043","occurredAt":1791233647566}
+(pass) checked worker admission authority component (sqlite) > credential expiry during a SQLite query delay is checked after the authority read [263.47ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"17d29edf-b145-43fb-bc7c-a60c31f01443","credentialId":"31d596fb-9cb3-45f9-82db-6acb2497e235","occurredAt":1791233647830}
+(pass) checked worker admission authority component (sqlite) > SQLite test-owned mutation in the owning transaction is observed and rollback restores authority [6.67ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > public ordinary target encodes owning-reference Instant patch input with its actual destination representation [3.97ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > complete checked binding remains nonexecuting and unrelated entities have no schedule hook [0.51ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > successful actual generated create establishes revision1 atomically and duplicate creation cannot reset it [2.96ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > supplied due, equal-value due and explicit clear all advance and atomically clear sent [6.10ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > omitted due and disjoint generated status writes preserve schedule and sent [3.86ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > failed encoding, missing rows and source rollback neither advance nor clear sent [2.96ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > unchanged ordinary owner policy refuses another principal without creating or advancing private state [3.07ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > A-to-B-to-A retains distinct business revisions even when the value returns [3.59ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > caught hook exhaustion rolls back the source patch and sent reset, not surrounding source work [3.57ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > caught schedule identity collision rolls back successful INSERT inside its create savepoint [2.52ms]
+(pass) opaque-binding generated schedule hook component (sqlite) > actual generated patches serialize concurrent revisions and survive fresh process restart [52.76ms]
+
+ 21 pass
+ 0 fail
+ 106 expect() calls
+Ran 21 tests across 1 file. [15.98s]

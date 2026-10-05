@@ -1,0 +1,11 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/golden-auth-http-jwt.test.ts:
+(pass) actual HTTP protected todo creation binds the signed user's identity and rejects absent or invalid credentials [8.55ms]
+(pass) the selected golden JWT validator resolves a typed primary user and authorizes real HTTP creation [9.20ms]
+(pass) a corrupted signature cannot pass the selected golden JWT validator or mutate over HTTP [1.79ms]
+
+ 3 pass
+ 0 fail
+ 27 expect() calls
+Ran 3 tests across 1 file. [556.00ms]

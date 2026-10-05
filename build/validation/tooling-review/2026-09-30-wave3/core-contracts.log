@@ -1,0 +1,11 @@
+   Compiling jadpo-core v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.33s
+     Running tests/validation_tooling_contract.rs (jadpo/target/debug/deps/validation_tooling_contract-a178fb7b5a0f04b5)
+
+running 3 tests
+test authentication_choices_remain_human_owned_and_their_edits_have_distinct_security_effects ... ok
+test formatting_preserves_literal_comments_and_token_semantics_across_line_endings ... ok
+test applying_multiple_constraint_repairs_after_unicode_preserves_values_and_rechecks_cleanly ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

@@ -1,0 +1,19 @@
+CARGO_TARGET_DIR=/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/cargo-target cargo test --offline --manifest-path /private/tmp/jadpo-diagnostic-mutations-3hl8he7j/jadpo/Cargo.toml -p jadpo-diagnostics --test validation_catalogue_discovery discovery_ignores_comments_and_test_only_codes_but_includes_new_families -- --exact --nocapture
+   Compiling proc-macro2 v1.0.107
+   Compiling zmij v1.0.23
+   Compiling unicode-ident v1.0.26
+   Compiling serde_core v1.0.229
+   Compiling quote v1.0.47
+   Compiling serde_json v1.0.151
+   Compiling itoa v1.0.18
+   Compiling memchr v2.8.3
+   Compiling syn v2.0.119
+   Compiling jadpo-diagnostics v0.0.1 (/private/tmp/jadpo-diagnostic-mutations-3hl8he7j/jadpo/crates/diagnostics)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.67s
+     Running tests/validation_catalogue_discovery.rs (cargo-target/debug/deps/validation_catalogue_discovery-1f8ee28266e69039)
+
+running 1 test
+test discovery_ignores_comments_and_test_only_codes_but_includes_new_families ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+

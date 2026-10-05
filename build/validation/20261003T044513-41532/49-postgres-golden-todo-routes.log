@@ -1,0 +1,11 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/golden-todo-postgres.test.ts:
+(pass) PostgreSQL keyset pages preserve scope and use the composite index [87.62ms]
+
+ 1 pass
+ 0 fail
+ 29 expect() calls
+Ran 1 test across 1 file. [742.00ms]

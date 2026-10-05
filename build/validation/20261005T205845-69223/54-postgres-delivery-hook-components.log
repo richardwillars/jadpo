@@ -1,0 +1,21 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/delivery-hook-components.test.ts:
+(pass) opaque-binding generated schedule hook component (postgres) > public ordinary target encodes owning-reference Instant patch input with its actual destination representation [8.36ms]
+(pass) opaque-binding generated schedule hook component (postgres) > complete checked binding remains nonexecuting and unrelated entities have no schedule hook [3.59ms]
+(pass) opaque-binding generated schedule hook component (postgres) > successful actual generated create establishes revision1 atomically and duplicate creation cannot reset it [12.87ms]
+(pass) opaque-binding generated schedule hook component (postgres) > supplied due, equal-value due and explicit clear all advance and atomically clear sent [14.10ms]
+(pass) opaque-binding generated schedule hook component (postgres) > omitted due and disjoint generated status writes preserve schedule and sent [6.19ms]
+(pass) opaque-binding generated schedule hook component (postgres) > failed encoding, missing rows and source rollback neither advance nor clear sent [6.64ms]
+(pass) opaque-binding generated schedule hook component (postgres) > unchanged ordinary owner policy refuses another principal without creating or advancing private state [4.73ms]
+(pass) opaque-binding generated schedule hook component (postgres) > A-to-B-to-A retains distinct business revisions even when the value returns [8.81ms]
+(pass) opaque-binding generated schedule hook component (postgres) > caught hook exhaustion rolls back the source patch and sent reset, not surrounding source work [5.29ms]
+(pass) opaque-binding generated schedule hook component (postgres) > caught schedule identity collision rolls back successful INSERT inside its create savepoint [3.65ms]
+(pass) opaque-binding generated schedule hook component (postgres) > actual generated patches serialize concurrent revisions and survive fresh process restart [47.98ms]
+
+ 11 pass
+ 0 fail
+ 54 expect() calls
+Ran 11 tests across 1 file. [608.00ms]

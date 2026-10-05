@@ -1,0 +1,10 @@
+    Blocking waiting for file lock on build directory
+   Compiling jadpo-core v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/core)
+error: expected one of `!` or `::`, found `(`
+  --> crates/core/tests/validation_diagnostic_policy.rs:43:56
+   |
+43 | fn_role_binding_requires_an_immutable_field_placeholder() {}
+   |                                                        ^ expected one of `!` or `::`
+
+error: could not compile `jadpo-core` (test "validation_diagnostic_policy") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

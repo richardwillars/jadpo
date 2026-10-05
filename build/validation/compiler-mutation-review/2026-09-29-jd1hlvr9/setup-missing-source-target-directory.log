@@ -1,0 +1,85 @@
+   Compiling jadpo-diagnostics v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/diagnostics)
+   Compiling jadpo-syntax v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/syntax)
+   Compiling jadpo-semantic v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/semantic)
+   Compiling jadpo-core v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/core)
+error[E0583]: file not found for module `first_party`
+  --> crates/core/src/target.rs:14:1
+   |
+14 | mod first_party;
+   | ^^^^^^^^^^^^^^^^
+   |
+   = help: to create the module `first_party`, create file "crates/core/src/target/first_party.rs" or "crates/core/src/target/first_party/mod.rs"
+   = note: if there is a `mod first_party` elsewhere in the crate already, import it with `use crate::...` instead
+
+error[E0599]: no method named `first_party_supported` found for struct `TargetGenerator` in the current scope
+   --> crates/core/src/target.rs:21:42
+    |
+21  |         .is_ok_and(|generator| generator.first_party_supported())
+    |                                          ^^^^^^^^^^^^^^^^^^^^^ method not found in `TargetGenerator<'_>`
+...
+150 | struct TargetGenerator<'project> {
+    | -------------------------------- method `first_party_supported` not found for this struct
+
+error[E0599]: no method named `first_party_supported` found for struct `TargetGenerator` in the current scope
+   --> crates/core/src/target.rs:45:18
+    |
+45  |     if generator.first_party_supported() {
+    |                  ^^^^^^^^^^^^^^^^^^^^^ method not found in `TargetGenerator<'_>`
+...
+150 | struct TargetGenerator<'project> {
+    | -------------------------------- method `first_party_supported` not found for this struct
+
+error[E0599]: no method named `first_party_supported` found for struct `TargetGenerator` in the current scope
+   --> crates/core/src/target.rs:276:52
+    |
+150 | struct TargetGenerator<'project> {
+    | -------------------------------- method `first_party_supported` not found for this struct
+...
+276 |                     if !route.public && !generator.first_party_supported() {
+    |                                                    ^^^^^^^^^^^^^^^^^^^^^ method not found in `TargetGenerator<'_>`
+
+error[E0599]: no method named `first_party_supported` found for reference `&TargetGenerator<'project>` in the current scope
+   --> crates/core/src/target.rs:682:21
+    |
+682 |             if self.first_party_supported() {
+    |                     ^^^^^^^^^^^^^^^^^^^^^ method not found in `&TargetGenerator<'project>`
+
+error[E0599]: no method named `first_party_application` found for reference `&TargetGenerator<'project>` in the current scope
+   --> crates/core/src/target.rs:699:14
+    |
+699 |         self.first_party_application(&mut output);
+    |              ^^^^^^^^^^^^^^^^^^^^^^^ method not found in `&TargetGenerator<'project>`
+
+error[E0599]: no method named `first_party_supported` found for reference `&TargetGenerator<'project>` in the current scope
+    --> crates/core/src/target.rs:1313:17
+     |
+1313 |         if self.first_party_supported() {
+     |                 ^^^^^^^^^^^^^^^^^^^^^ method not found in `&TargetGenerator<'project>`
+
+error[E0599]: no method named `first_party_supported` found for reference `&TargetGenerator<'project>` in the current scope
+    --> crates/core/src/target.rs:2934:17
+     |
+2934 |         if self.first_party_supported() {
+     |                 ^^^^^^^^^^^^^^^^^^^^^ method not found in `&TargetGenerator<'project>`
+
+error[E0599]: no method named `first_party_storage` found for reference `&TargetGenerator<'project>` in the current scope
+    --> crates/core/src/target.rs:3000:14
+     |
+3000 |         self.first_party_storage(&mut output);
+     |              ^^^^^^^^^^^^^^^^^^^ method not found in `&TargetGenerator<'project>`
+
+error[E0599]: no method named `first_party_supported` found for reference `&TargetGenerator<'project>` in the current scope
+    --> crates/core/src/target.rs:6463:17
+     |
+6463 |         if self.first_party_supported() {
+     |                 ^^^^^^^^^^^^^^^^^^^^^ method not found in `&TargetGenerator<'project>`
+
+error[E0599]: no method named `first_party_supported` found for reference `&TargetGenerator<'project>` in the current scope
+    --> crates/core/src/target.rs:6526:17
+     |
+6526 |         if self.first_party_supported() {
+     |                 ^^^^^^^^^^^^^^^^^^^^^ method not found in `&TargetGenerator<'project>`
+
+Some errors have detailed explanations: E0583, E0599.
+For more information about an error, try `rustc --explain E0583`.
+error: could not compile `jadpo-core` (lib) due to 11 previous errors

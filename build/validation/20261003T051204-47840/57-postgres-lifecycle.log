@@ -1,0 +1,21 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/entity-lifecycle.test.ts:
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"03f52c79-e85b-4dc6-920b-5107acb7d252","operation":"User.create_user","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":7,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"588b2753-74a3-42f3-a857-7f38031fa08b","operation":"Todo.create_todo","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":3,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) entity lifecycle transition lowering > creates lifecycle-owned initial values through generated routes [19.84ms]
+(pass) entity lifecycle transition lowering > atomically disables one visible identity and conceals it afterward [17.42ms]
+(pass) entity lifecycle transition lowering > serializes a transition against an ordinary update [13.68ms]
+(pass) entity lifecycle transition lowering > keeps the logical delete effect while racing an ordinary Todo update [12.37ms]
+(pass) entity lifecycle transition lowering > retains visible child Todos when their User is disabled [5.47ms]
+(pass) entity lifecycle transition lowering > filters disabled owners before the bounded joined page and required child read [11.69ms]
+(pass) entity lifecycle transition lowering > filters deleted Todos before the bounded visible page [5.90ms]
+(pass) entity lifecycle transition lowering > purges only expired post-transition rows in audited batches of 500 [124.01ms]
+(pass) entity lifecycle transition lowering > serializes competing retention-eligibility changes with purge [1.63ms]
+
+ 9 pass
+ 0 fail
+ 78 expect() calls
+Ran 9 tests across 1 file. [469.00ms]

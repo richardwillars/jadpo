@@ -1,0 +1,12 @@
+   Compiling jadpo-diagnostics v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/diagnostics)
+   Compiling jadpo-syntax v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/syntax)
+   Compiling jadpo-semantic v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/semantic)
+   Compiling jadpo-core v0.0.1 (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/crates/core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.54s
+     Running tests/validation_types_contract.rs (/private/tmp/jadpo-compiler-mutations-jd1hlvr9/jadpo/target/debug/deps/validation_types_contract-48c2fa5e8faf5e60)
+
+running 1 test
+test explicit_construction_narrows_to_field_contract ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 40 filtered out; finished in 0.01s
+

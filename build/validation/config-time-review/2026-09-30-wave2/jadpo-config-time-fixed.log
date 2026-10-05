@@ -1,0 +1,125 @@
+   Compiling jadpo-diagnostics v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/diagnostics)
+   Compiling jadpo-syntax v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/syntax)
+   Compiling jadpo-semantic v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/semantic)
+   Compiling jadpo-core v0.0.1 (/Users/richardwillars/Documents/Codex/LLM-coding/jadpo/crates/core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.80s
+     Running unittests src/lib.rs (jadpo/target/debug/deps/jadpo_core-8d877838e5ab5785)
+
+running 57 tests
+test configuration::tests::updates_one_binding_without_exposing_or_reordering_others ... ok
+test artifacts::tests::failed_staging_preserves_the_last_complete_build ... ok
+test configuration::tests::validates_textual_configuration_representations_strictly ... ok
+test entity_model::tests::entity_query_and_transaction_diagnostics_have_public_contracts ... ok
+test formatter::tests::formats_indentation_blank_lines_comments_and_is_idempotent ... ok
+test formatter::tests::preserves_multiline_callable_signature_structure ... ok
+test language_service::tests::exposes_inferred_types_at_child_properties ... ok
+test index_advisor::tests::recommends_query_fields_and_accepts_one_explicitly ... ok
+test language_service::tests::indexes_global_and_local_symbols_with_semantic_references ... ok
+test artifacts::tests::derives_the_complete_seed_artifact_set ... ok
+test migration_identity::tests::coalesces_compatible_sqlite_field_additions_into_one_rebuild ... ok
+test artifacts::tests::exposes_enum_variants_to_validators_and_openapi ... ok
+test artifacts::tests::exposes_nested_objects_collections_and_validated_prelude_types ... ok
+test artifacts::tests::exposes_proved_restricted_field_reads_in_policy_audit ... ok
+test artifacts::tests::exposes_tagged_sum_payloads_and_discriminator_to_openapi ... ok
+test scaffold::tests::refuses_to_overwrite_a_non_empty_directory ... ok
+test migration_identity::tests::emits_checked_sqlite_rebuild_for_one_required_field ... ok
+test scaffold::tests::identical_names_produce_identical_scaffolds ... ok
+test artifacts::tests::repeated_emission_is_byte_identical ... ok
+test migration_identity::tests::emits_reversible_sql_for_required_to_nullable_widening ... ok
+test target::tests::derives_internal_suspension_through_the_action_call_graph ... ok
+test migration_identity::tests::requires_checked_not_null_evidence_for_nullability_narrowing ... ok
+test target::tests::generates_enum_validation_and_exhaustive_match_dispatch ... ok
+test target::tests::generates_dependency_free_startup_configuration_loading ... ok
+test target::tests::generates_mutable_local_reassignment_without_reference_syntax ... ok
+test target::tests::generates_operator_precedence_with_explicit_parentheses ... ok
+test artifacts::tests::exposes_typed_route_paths_and_behavior_in_inventory_and_openapi ... ok
+test artifacts::tests::metadata_is_independent_of_relative_or_absolute_invocation ... ok
+test target::tests::generates_the_public_health_scaffold ... ok
+test target::tests::generates_tagged_sum_validation_construction_and_narrowing ... ok
+test scaffold::tests::creates_a_valid_static_base ... ok
+test target::tests::lowers_exhaustive_outcome_recovery_mapping_and_propagation ... ok
+test target::tests::keeps_pure_call_chains_synchronous_in_the_generated_target ... ok
+test target::tests::rejects_external_runtime_dependencies_and_manifests ... ok
+test target::tests::non_jwt_application_has_no_dependency_or_jose_footprint ... ok
+test target::tests::generates_the_seed_runtime_contract ... ok
+test target::tests::rejects_an_unimplemented_entity_authority_store ... ok
+test target::tests::protected_route_generation_names_and_locates_the_route ... ok
+test tests::discovers_the_jadpo_seed ... ok
+test tests::emits_a_deterministic_scaffold_manifest ... ok
+test target::tests::rejects_unimplemented_durable_workflow_execution ... ok
+test tests::never_discovers_generated_sources_beneath_build ... ok
+test tests::builds_the_seed_semantic_contract ... ok
+test tests::parses_the_jadpo_seed_without_diagnostics ... ok
+test migration_identity::tests::initializes_a_deterministic_non_overwriting_registry ... ok
+test target::tests::generates_the_strategy_independent_authentication_selector ... ok
+test tests::preserves_specific_parser_diagnostics ... ok
+test tests::rejects_a_project_with_no_declarations ... ok
+test tests::permits_an_empty_file_beside_project_declarations ... ok
+test target::tests::generates_a_structured_authored_test_runner ... ok
+test tests::discovers_all_compile_fixtures ... ok
+test target::tests::first_party_authentication_opens_only_complete_supported_routes ... ok
+test tests::failure_fixtures_emit_contracts_routes_diagnostics_and_spans ... ok
+test target::tests::generates_parameterised_persistence_contracts ... ok
+test tests::p106_fixtures_cover_failure_flow_paths_and_inline_routes ... ok
+test tests::type_fixtures_emit_their_contract_diagnostics_and_spans ... ok
+test tests::indexes_each_syntax_valid_fixture_without_name_errors ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+
+     Running tests/validation_config_time_contract.rs (jadpo/target/debug/deps/validation_config_time_contract-fc9eb54cd7c8d491)
+
+running 11 tests
+test secret_comparisons_cannot_disclose_information_as_a_boolean ... ok
+test secret_classification_survives_local_aliases ... ok
+test secret_defaults_are_rejected_even_when_nominally_valid ... ok
+test fixture_secret_values_still_obey_nominal_constraints ... ok
+test production_actions_cannot_advance_the_test_clock ... ok
+test temporal_helpers_are_not_secret_sinks ... ok
+test secret_values_cannot_cross_record_or_callable_boundaries ... ok
+test fixture_secret_wrappers_are_required_and_cannot_mark_public_configuration ... ok
+test pure_callables_receive_time_instead_of_reading_the_clock ... ok
+test explicit_construction_cannot_remove_secret_classification ... ok
+test temporal_literal_calendar_precision_and_offset_boundaries_are_checked ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running unittests src/lib.rs (jadpo/target/debug/deps/jadpo_semantic-b47f68d8bf0249a9)
+
+running 34 tests
+test tests::indexes_an_explicit_owning_relationship_name ... ok
+test failurecheck::tests::rejects_undeclared_direct_failures ... ok
+test tests::indexes_authentication_strategies_slots_and_validation_modes ... ok
+test tests::manifest_json_escapes_source_paths ... ok
+test failurecheck::tests::derives_route_status_from_failure_kind ... ok
+test failurecheck::tests::requires_create_conflicts_to_use_the_conflict_failure_kind ... ok
+test tests::builds_deterministic_field_and_refinement_nodes ... ok
+test tests::indexes_the_application_and_closed_principal_contract ... ok
+test failurecheck::tests::preferred_stale_fails_repair_preserves_the_public_failure_contract ... ok
+test failurecheck::tests::preferred_attempt_repair_removes_only_the_named_diagnostic ... ok
+test tests::requires_optional_inverse_references_to_be_unique ... ok
+test tests::reports_duplicate_and_unknown_semantic_names ... ok
+test failurecheck::tests::stale_fails_repair_names_only_the_removed_failure_and_preserves_reachable_ones ... ok
+test tests::validates_compound_persistence_constraints ... ok
+test tests::validates_configuration_bindings_and_secret_defaults ... ok
+test tests::validates_entity_persistence_modifiers ... ok
+test tests::validates_relationship_targets_lifecycle_and_cycles ... ok
+test typecheck::tests::accepts_textual_prelude_configuration_defaults ... ok
+test tests::validates_inverse_relationships_against_owning_references ... ok
+test typecheck::tests::permits_only_explicit_mutable_local_reassignment ... ok
+test tests::reports_each_invalid_relationship_name_and_target_shape ... ok
+test typecheck::tests::rejects_parameter_and_immutable_local_reassignment ... ok
+test typecheck::tests::rejects_unbounded_or_negative_relationship_pagination ... ok
+test typecheck::tests::rejects_secret_configuration_at_an_ordinary_return_boundary ... ok
+test typecheck::tests::types_a_paginated_many_parent_include_as_a_list_of_output_shapes ... ok
+test typecheck::tests::types_an_included_inverse_as_its_named_output_shape ... ok
+test typecheck::tests::types_configuration_access_and_rejects_bad_defaults ... ok
+test typecheck::tests::validates_constant_constructors ... ok
+test typecheck::tests::widens_fields_but_rejects_siblings ... ok
+test typecheck::tests::types_multiple_inverses_as_one_exact_output_shape ... ok
+test tests::reports_each_invalid_module_relationship ... ok
+test typecheck::tests::reports_each_invalid_relationship_include_contract ... ok
+test tests::enforces_selective_module_imports_visibility_and_cycles ... ok
+test typecheck::tests::reports_specific_assignment_construction_match_and_query_failures ... ok
+
+test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
