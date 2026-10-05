@@ -14,13 +14,17 @@ rather than generated framework code.
 Start with the [documentation index](docs/README.md). It explains the reading
 order, the authority of each document, and how decisions are recorded.
 The canonical public home for the project is [jadpo.dev](https://jadpo.dev/).
+Source and pull requests are hosted at
+[richardwillars/jadpo](https://github.com/richardwillars/jadpo).
+See [Contributing](CONTRIBUTING.md) for setup, branches, worktrees and review.
+Licensing remains undecided.
 
 Implementation progress is tracked in the
 [Jadpo implementation roadmap](docs/implementation-roadmap.md). The first implementation
 contract is the [core grammar](docs/grammar-v0.1.md) exercised by the
 [Jadpo seed application](examples/jadpo-seed/app.jadpo).
 
-The project remains a design and falsification exercise. A dependency-free Rust
+The project remains a design and falsification exercise. A Rust
 compiler workspace now implements the first complete semantic pipeline:
 recovering syntax, deterministic identities, nominal typing, validated
 construction, closed failure/effect checking, deterministic derived artifacts,

@@ -69,6 +69,8 @@ IDs through history. Compile-only evidence never satisfies runtime acceptance.
 Revalidate saved plans against current source and preserve concurrent changes.
 Prefer one writer per checkout; authorised parallel implementation needs isolated
 ownership/workspaces and integration checks. Plans are not locks.
+The [contribution workflow](../CONTRIBUTING.md#branches-and-worktrees) defines
+the shared `main` baseline, task branches, pull requests and integration ownership.
 
 For compiler/runtime changes, use the
 [supported validation gate](../tests/validation/README.md):
