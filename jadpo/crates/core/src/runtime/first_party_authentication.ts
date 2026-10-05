@@ -1,5 +1,5 @@
 // Compiler-owned first-party credential boundary. No authored login endpoints.
-import { authenticateRequest, AuthenticationFault, type AuthPrincipal, type ResolutionResult, type ValidationResult } from "./authentication.ts";
+import { authenticateRequest, AuthenticationFault, firstPartyAuthenticationStrength, type AuthPrincipal, type ResolutionResult, type ValidationResult } from "./authentication.ts";
 
 type Settings = Readonly<{ name: string; principal?: "user" | "service"; mode: "signed" | "opaque" | "api_key"; cookie: string | null; audience: string; origin: string | null; secret: string; previousSecret?: string; maximumDelayMs: number }>;
 type Session = Readonly<{ id: string; strategy: string; subject: string; userId: string; expires: number; verifier: string; keyId: string; revoked: boolean }>;
@@ -9,13 +9,29 @@ export type AuthenticationStorage = Readonly<{
   put(session: Session): Promise<void>;
   revoke(id: string): Promise<void>;
   getServiceCredential(id: string): Promise<ServiceCredential | null>;
-  putServiceCredential(credential: ServiceCredential): Promise<void>;
-  revokeServiceCredential(id: string): Promise<void>;
+  putServiceCredential(credential: ServiceCredential, now: number): Promise<void>;
+  revokeServiceCredential(id: string, now: number): Promise<void>;
 }>;
 type Key = Readonly<{ id: string; key: CryptoKey }>;
 type Configured = Settings & { keys: readonly Key[] };
 type UserPrincipal = Extract<AuthPrincipal, { kind: "user" }>;
-type Verified = { principal: AuthPrincipal; sessionId: string; credential: string; key: Key; strategy: Configured };
+type Verified = { principal: AuthPrincipal; sessionId: string; credential: string; key: Key; strategy: Configured; serviceCredential?: ServiceCredential };
+// Native compiler-worker handoff only. Neither an authored principal nor a
+// serialized object is credential provenance. No raw key is retained here.
+type DeliveryCredentialFacts = Readonly<{ id: string; strategy: string; subject: string; serviceId: string; verifier: string; keyId: string }>;
+type DeliveryIssuer = { storage: AuthenticationStorage; owner: { active: boolean } };
+const deliveryCredentialHosts = new WeakMap<object, DeliveryIssuer>();
+const deliveryCredentialProofs = new WeakMap<object, DeliveryIssuer & { facts: DeliveryCredentialFacts }>();
+// The generated application supplies its private currently published host.
+// A structurally identical host, or another real factory on the same storage,
+// cannot substitute for that exact native issuer. There is no issuer setter.
+export function readDeliveryCredentialProof(proof: unknown, storage: AuthenticationStorage, selectedHost: unknown): DeliveryCredentialFacts {
+  const record = typeof proof === "object" && proof !== null ? deliveryCredentialProofs.get(proof) : undefined;
+  const issuer = typeof selectedHost === "object" && selectedHost !== null ? deliveryCredentialHosts.get(selectedHost) : undefined;
+  if (record === undefined || issuer === undefined || record.storage !== storage || issuer.storage !== storage
+      || record.owner !== issuer.owner || !record.owner.active) return invalid();
+  return record.facts;
+}
 export type ServiceCredentialAudit = Readonly<{ schemaVersion: 1; kind: "authentication_audit"; eventName: "service_credential.issued" | "service_credential.exchanged" | "service_credential.refreshed" | "service_credential.revoked"; strategy: string; serviceId: string; credentialId: string; occurredAt: number }>;
 const encoder = new TextEncoder();
 const identifier = /^[A-Za-z0-9_-]{1,128}$/u;
@@ -60,10 +76,10 @@ function sessionRecord(value: Session | null): Session | null {
   return value;
 }
 function identity(subject: string, userId: string, strength: string): UserPrincipal {
-  return Object.freeze({ kind: "user", subject, authenticationStrength: strength, values: Object.freeze({ user_id: userId }) }) as UserPrincipal;
+  return Object.freeze({ kind: "user", subject, authenticationStrength: firstPartyAuthenticationStrength("user", strength), values: Object.freeze({ user_id: userId }) }) as UserPrincipal;
 }
 function serviceIdentity(subject: string, serviceId: string, strength: string): AuthPrincipal {
-  return Object.freeze({ kind: "service", subject, authenticationStrength: strength, values: Object.freeze({ service_id: serviceId }) }) as AuthPrincipal;
+  return Object.freeze({ kind: "service", subject, authenticationStrength: firstPartyAuthenticationStrength("service", strength), values: Object.freeze({ service_id: serviceId }) }) as AuthPrincipal;
 }
 function serviceCredentialRecord(value: ServiceCredential | null): ServiceCredential | null {
   if (value === null) return null;
@@ -92,6 +108,7 @@ export async function createFirstPartyAuthentication(
   external?: Readonly<{ validate(strategy: string, credential: string, operationNow: number): Promise<ValidationResult> }>,
   audit: (event: ServiceCredentialAudit) => void = event => console.error(JSON.stringify(event)),
 ) {
+  const deliveryProofOwner = { active: true };
   function serviceAudit(eventName: ServiceCredentialAudit["eventName"], record: ServiceCredential, now: number) {
     // Only compiler-created, closed identity facts enter this sink. Never pass
     // the credential record, subject, verifier, token, provider data or errors.
@@ -185,7 +202,7 @@ export async function createFirstPartyAuthentication(
       if (record === null || record.id !== parts[1] || record.revoked || record.expires <= now || record.strategy !== strategy.name) return invalid();
       const key = strategy.keys.find(key => key.id === record.keyId);
       if (!key || !(await verifies(key, `service:${strategy.audience}:${credential}`, record.verifier))) return invalid();
-      return { principal: serviceIdentity(record.subject, record.serviceId, "api_key"), sessionId: record.id, credential, key, strategy };
+      return { principal: serviceIdentity(record.subject, record.serviceId, "api_key"), sessionId: record.id, credential, key, strategy, serviceCredential: record };
     }
     if (strategy.mode !== "signed" || parts.length !== 4 || parts[0] !== "jdx1") return invalid();
     const key = strategy.keys.find(key => key.id === parts[1]);
@@ -233,7 +250,7 @@ export async function createFirstPartyAuthentication(
     const setCookie = strategy.cookie === null ? null : `${strategy.cookie}=${credential}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.max(0, Math.floor((expires - now) / 1000))}`;
     return { credential, csrfToken, setCookie, expires };
   }
-  return Object.freeze({
+  const host = Object.freeze({
     // Internal host integration only: caller must already have authenticated the
     // human. No Jadpo action, HTTP route, password or account provisioning API.
     async issue(strategyName: string, subject: string, expires: number, operationNow: number) {
@@ -263,19 +280,45 @@ export async function createFirstPartyAuthentication(
       const credential = `jdk1.${id}.${encode(crypto.getRandomValues(new Uint8Array(32)))}`;
       const record: ServiceCredential = { id, strategy: strategy.name, subject, serviceId: principal.values.service_id, expires, revoked: false,
         keyId: strategy.keys[0].id, verifier: await sign(strategy.keys[0], `service:${strategy.audience}:${credential}`) };
-      await storageCall(() => storage.putServiceCredential(record));
+      await storageCall(() => storage.putServiceCredential(record, now));
       serviceAudit("service_credential.issued", record, now);
       return { credential, credentialId: id, serviceId: record.serviceId, expires };
     },
+    // Verify the exact selected direct api-key strategy through the ordinary
+    // crypto/storage boundary BEFORE entering the worker source transaction.
+    // Admission must still re-read live declared authority in that transaction;
+    // this opaque proof never supplies an entity, role or dispatch grant.
+    async prepareDeliveryCredential(strategyName: string, credential: string, operationNow: number): Promise<object> {
+      if (!deliveryProofOwner.active) return invalid();
+      const now = milliseconds(operationNow);
+      const strategy = config(strategyName, "service", "api_key");
+      const verified = await verify(strategy, credential, now);
+      const record = verified.serviceCredential;
+      if (record === undefined) return invalid();
+      await authority(strategy, record.subject, record.serviceId);
+      if (!deliveryProofOwner.active) return invalid();
+      const proof = Object.freeze(Object.create(null));
+      const facts = Object.freeze({ id: record.id, strategy: record.strategy, subject: record.subject,
+        serviceId: record.serviceId, verifier: record.verifier, keyId: record.keyId });
+      deliveryCredentialProofs.set(proof, { storage, owner: deliveryProofOwner, facts });
+      return proof;
+    },
+    // Configuration reinitialization invalidates old host proofs, including
+    // ones awaiting an authority transaction. This only withdraws authority.
+    invalidateDeliveryCredentialProofs(): void { deliveryProofOwner.active = false; },
     async exchangeServiceCredential(strategyName: string, credential: string, operationNow: number) {
       const now = milliseconds(operationNow);
       const direct = config(strategyName, "service", "api_key");
       const signed = config(strategyName, "service", "signed");
       const verified = await verify(direct, credential, now);
-      const record = await liveServiceCredential(verified, now);
+      // verifyService already loaded and checked the declared credential. Reuse
+      // that exact private record rather than issuing a second credential lookup.
+      const record = verified.serviceCredential;
+      if (record === undefined) throw new AuthenticationFault("authority_invariant", 500);
       await authority(direct, record.subject, record.serviceId);
+      const bearer = await serviceBearer(signed, record, now);
       serviceAudit("service_credential.exchanged", record, now);
-      return serviceBearer(signed, record, now);
+      return bearer;
     },
     async revokeServiceCredential(strategyName: string, credentialId: string, operationNow: number) {
       milliseconds(operationNow);
@@ -283,7 +326,7 @@ export async function createFirstPartyAuthentication(
       if (typeof credentialId !== "string" || !identifier.test(credentialId)) return invalid();
       const record = serviceCredentialRecord(await storageCall(() => storage.getServiceCredential(credentialId)));
       if (record === null || record.strategy !== strategy.name) return invalid();
-      await storageCall(() => storage.revokeServiceCredential(credentialId));
+      await storageCall(() => storage.revokeServiceCredential(credentialId, operationNow));
       serviceAudit("service_credential.revoked", record, operationNow);
       return { credentialId: record.id, serviceId: record.serviceId };
     },
@@ -347,13 +390,16 @@ export async function createFirstPartyAuthentication(
       return credentialFor(strategy, session, now);
     },
     async revoke(strategyName: string, credential: string, operationNow: number) {
-      const verified = await verify(credentialConfig(strategyName, credential), credential, milliseconds(operationNow));
+      const now = milliseconds(operationNow);
+      const verified = await verify(credentialConfig(strategyName, credential), credential, now);
       if (verified.principal.kind === "service") {
-        const record = await liveServiceCredential(verified, milliseconds(operationNow));
-        await storageCall(() => storage.revokeServiceCredential(verified.sessionId));
+        const record = await liveServiceCredential(verified, now);
+        await storageCall(() => storage.revokeServiceCredential(verified.sessionId, now));
         serviceAudit("service_credential.revoked", record, operationNow);
       }
       else await storageCall(() => storage.revoke(verified.sessionId));
     },
   });
+  deliveryCredentialHosts.set(host, { storage, owner: deliveryProofOwner });
+  return host;
 }

@@ -1,17 +1,26 @@
 use jadpo_diagnostics::{Diagnostic, DiagnosticFact, SourceSpan};
 use jadpo_syntax::{
-    Block, CallableKind, Declaration, Expression, HttpMethod, ParsedSyntax, PersistenceModifier,
-    RecordKind, ReferenceDeleteAction, Statement, TextRange, TypeReference,
+    Block, CallableKind, ConsistencyDisposition, Constraint, ConstraintKind, Declaration,
+    Expression, HttpMethod, Name, ParsedSyntax, PersistenceModifier, RecordKind,
+    ReferenceDeleteAction, ServiceDeclaration, Statement, TextRange, TypeReference,
 };
+use serde_json::Value as JsonValue;
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::path::{Component, Path, PathBuf};
 
 mod failurecheck;
 mod typecheck;
 
 pub use failurecheck::{
-    check_failures, CallableFailureSet, FailureCheckResult, FailureContract, RouteFailure,
+    check_failures, CallableFailureSet, FailureCheckResult, FailureContract, JobFailureSet,
+    RouteFailure,
 };
-pub use typecheck::{check_types, ClockRead, InferredExpression, TypeCheckResult};
+pub use typecheck::{
+    check_types, CheckedJobBinding, ClockRead, DeliveryTypeCandidate, InferredExpression,
+    TypeCheckResult,
+};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NodeId(pub u32);
@@ -40,10 +49,19 @@ pub enum NodeKind {
     EnumVariant,
     Entity,
     EntityReference,
+    EntityLifecycle,
+    LifecycleInitial,
+    LifecycleVisibility,
+    LifecycleTransition,
+    LifecyclePurge,
+    Policy,
+    PolicyOperation,
+    PolicyRule,
     Value,
     Input,
     Output,
     Field,
+    GeneratedField,
     Relationship,
     PersistenceConstraint,
     Failure,
@@ -53,6 +71,12 @@ pub enum NodeKind {
     Fixture,
     Test,
     Route,
+    Job,
+    ServiceOperation,
+    // Core inserts these only after ordinary resolution and atomic delivery
+    // finish. They are not authored callables, types or generic policy grants.
+    DeliverySelection,
+    DeliveryCompletion,
 }
 
 impl NodeKind {
@@ -80,10 +104,19 @@ impl NodeKind {
             Self::EnumVariant => "enum_variant",
             Self::Entity => "entity",
             Self::EntityReference => "entity_reference",
+            Self::EntityLifecycle => "entity_lifecycle",
+            Self::LifecycleInitial => "lifecycle_initial",
+            Self::LifecycleVisibility => "lifecycle_visibility",
+            Self::LifecycleTransition => "lifecycle_transition",
+            Self::LifecyclePurge => "lifecycle_purge",
+            Self::Policy => "policy",
+            Self::PolicyOperation => "policy_operation",
+            Self::PolicyRule => "policy_rule",
             Self::Value => "object",
             Self::Input => "input",
             Self::Output => "output",
             Self::Field => "field",
+            Self::GeneratedField => "generated_field",
             Self::Relationship => "relationship",
             Self::PersistenceConstraint => "persistence_constraint",
             Self::Failure => "failure",
@@ -93,6 +126,10 @@ impl NodeKind {
             Self::Fixture => "fixture",
             Self::Test => "test",
             Self::Route => "route",
+            Self::Job => "job",
+            Self::ServiceOperation => "service_operation",
+            Self::DeliverySelection => "delivery_selection",
+            Self::DeliveryCompletion => "delivery_completion",
         }
     }
 
@@ -136,10 +173,19 @@ impl NodeKind {
             Self::EnumVariant => "enum variant",
             Self::Entity => "entity",
             Self::EntityReference => "entity reference",
+            Self::EntityLifecycle => "entity lifecycle",
+            Self::LifecycleInitial => "lifecycle initial state",
+            Self::LifecycleVisibility => "lifecycle visibility predicate",
+            Self::LifecycleTransition => "lifecycle transition",
+            Self::LifecyclePurge => "lifecycle purge rule",
+            Self::Policy => "policy declaration",
+            Self::PolicyOperation => "policy operation",
+            Self::PolicyRule => "policy rule",
             Self::Value => "object type",
             Self::Input => "input",
             Self::Output => "output",
             Self::Field => "field",
+            Self::GeneratedField => "generated field",
             Self::Relationship => "relationship",
             Self::PersistenceConstraint => "persistence constraint",
             Self::Failure => "failure",
@@ -149,6 +195,10 @@ impl NodeKind {
             Self::Fixture => "test fixture",
             Self::Test => "test",
             Self::Route => "route",
+            Self::Job => "scheduled job",
+            Self::ServiceOperation => "external service operation",
+            Self::DeliverySelection => "compiler-private delivery selection",
+            Self::DeliveryCompletion => "compiler-private delivery completion",
         }
     }
 }
@@ -188,8 +238,73 @@ pub struct SemanticGraph {
     /// Named contracts that include absence, including inherited field references.
     pub nullable_types: BTreeSet<String>,
     pub calls: Vec<CallEdge>,
+    /// Compiler-checked external service operations and their closed effect contract.
+    pub external_effects: Vec<ExternalServiceEffect>,
     pub authentication_resolutions: Vec<AuthenticationResolutionEdge>,
     pub diagnostics: Vec<Diagnostic>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExternalServiceEffect {
+    pub service: String,
+    pub operation: String,
+    pub method: String,
+    pub path: String,
+    pub input: String,
+    pub output: String,
+    pub idempotency_type: String,
+    pub egress: String,
+    pub credential_slot: String,
+    pub credential_header: String,
+    pub imported_contract: String,
+    pub import_version: String,
+    pub import_sha256: String,
+    pub timeout_ms: u32,
+    pub max_attempts: u8,
+    pub max_elapsed_ms: u32,
+    pub jitter: String,
+    pub redirects_allowed: bool,
+    pub proxy_allowed: bool,
+    pub outcomes: Vec<String>,
+    pub outcome_mappings: Vec<(String, String)>,
+    /// Exact source-to-import field parity accepted for the closed operation schema.
+    pub input_schema: Vec<ServiceFieldParity>,
+    pub output_schema: Vec<ServiceFieldParity>,
+    pub source: String,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ServiceFieldParity {
+    pub field: String,
+    pub source_type: String,
+    pub source_shape: String,
+    pub imported_shape: String,
+}
+
+impl ExternalServiceEffect {
+    pub fn schema_parity_json(&self) -> String {
+        let fields_json = |fields: &[ServiceFieldParity]| {
+            fields
+                .iter()
+                .map(|field| {
+                    format!(
+                        "{{\"field\":\"{}\",\"source_type\":\"{}\",\"source_shape\":\"{}\",\"imported_shape\":\"{}\"}}",
+                        escape_json(&field.field),
+                        escape_json(&field.source_type),
+                        escape_json(&field.source_shape),
+                        escape_json(&field.imported_shape)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        format!(
+            "{{\"input\":[{}],\"output\":[{}]}}",
+            fields_json(&self.input_schema),
+            fields_json(&self.output_schema)
+        )
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -288,9 +403,50 @@ impl SemanticManifest<'_> {
             })
             .collect::<Vec<_>>()
             .join(",");
+        let external_effects = self
+            .graph
+            .external_effects
+            .iter()
+            .map(|effect| {
+                format!(
+                    "{{\"service\":\"{}\",\"operation\":\"{}\",\"method\":\"{}\",\"path\":\"{}\",\"input\":\"{}\",\"output\":\"{}\",\"idempotency_type\":\"{}\",\"egress\":\"{}\",\"credential_slot\":\"{}\",\"credential_header\":\"{}\",\"imported_contract\":\"{}\",\"import_version\":\"{}\",\"import_sha256\":\"{}\",\"timeout_ms\":{},\"max_attempts\":{},\"max_elapsed_ms\":{},\"jitter\":\"{}\",\"redirects_allowed\":{},\"proxy_allowed\":{},\"outcomes\":[{}],\"outcome_mappings\":[{}],\"schema_parity\":{},\"source\":\"{}\",\"start\":{},\"end\":{}}}",
+                    escape_json(&effect.service),
+                    escape_json(&effect.operation),
+                    escape_json(&effect.method),
+                    escape_json(&effect.path),
+                    escape_json(&effect.input),
+                    escape_json(&effect.output),
+                    escape_json(&effect.idempotency_type),
+                    escape_json(&effect.egress),
+                    escape_json(&effect.credential_slot),
+                    escape_json(&effect.credential_header),
+                    escape_json(&effect.imported_contract),
+                    escape_json(&effect.import_version),
+                    escape_json(&effect.import_sha256),
+                    effect.timeout_ms,
+                    effect.max_attempts,
+                    effect.max_elapsed_ms,
+                    escape_json(&effect.jitter),
+                    effect.redirects_allowed,
+                    effect.proxy_allowed,
+                    json_strings(&effect.outcomes),
+                    effect
+                        .outcome_mappings
+                        .iter()
+                        .map(|(provider, failure)| format!("[\"{}\",\"{}\"]", escape_json(provider), escape_json(failure)))
+                        .collect::<Vec<_>>()
+                        .join(","),
+                    effect.schema_parity_json(),
+                    escape_json(&effect.source),
+                    effect.range.start,
+                    effect.range.end
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
 
         format!(
-            "{{\"schema_version\":1,\"phase\":\"semantic\",\"modules\":[{modules}],\"nodes\":[{nodes}],\"refinements\":[{refinements}],\"calls\":[{calls}],\"authentication_resolutions\":[{authentication_resolutions}]}}"
+            "{{\"schema_version\":1,\"phase\":\"semantic\",\"modules\":[{modules}],\"nodes\":[{nodes}],\"refinements\":[{refinements}],\"calls\":[{calls}],\"external_effects\":[{external_effects}],\"authentication_resolutions\":[{authentication_resolutions}]}}"
         )
     }
 }
@@ -300,11 +456,11 @@ pub fn checked_manifest_json(
     typing: &TypeCheckResult,
     failures: &FailureCheckResult,
 ) -> String {
-    let mut manifest =
-        graph
-            .manifest()
-            .to_json()
-            .replacen("\"phase\":\"semantic\"", "\"phase\":\"checked\"", 1);
+    let mut manifest = graph
+        .manifest()
+        .to_json()
+        .replacen("\"phase\":\"semantic\"", "\"phase\":\"checked\"", 1)
+        .replacen("\"schema_version\":1", "\"schema_version\":2", 1);
     manifest.pop();
 
     let mut expressions = typing.expressions.clone();
@@ -358,7 +514,7 @@ pub fn checked_manifest_json(
                 "{{\"name\":\"{}\",\"kind\":\"{}\",\"http_status\":{},\"code\":\"{}\",\"message\":{},\"public_fields\":{},\"internal_fields\":{}}}",
                 escape_json(&contract.name),
                 escape_json(&contract.kind),
-                contract.http_status,
+                contract.http_status.map_or_else(|| "null".to_owned(), |status| status.to_string()),
                 escape_json(&contract.code),
                 contract
                     .message
@@ -380,7 +536,7 @@ pub fn checked_manifest_json(
                 escape_json(&route.route),
                 escape_json(&route.failure),
                 escape_json(&route.kind),
-                route.http_status,
+                route.http_status.map_or_else(|| "null".to_owned(), |status| status.to_string()),
                 route.derived
             )
         })
@@ -442,6 +598,7 @@ enum ReferenceKind {
     Principal,
     PrincipalVariant,
     AuthenticationField,
+    ConfigurationField,
     Failure,
     StandardFailure,
     Fixture,
@@ -454,6 +611,7 @@ impl ReferenceKind {
             Self::Principal => "principal declaration",
             Self::PrincipalVariant => "principal variant",
             Self::AuthenticationField => "authentication authority or principal field",
+            Self::ConfigurationField => "configuration field",
             Self::Failure => "declared failure",
             Self::StandardFailure => "predefined category",
             Self::Fixture => "test fixture",
@@ -469,6 +627,7 @@ impl ReferenceKind {
             | Self::Principal
             | Self::PrincipalVariant
             | Self::AuthenticationField
+            | Self::ConfigurationField
             | Self::Failure => None,
             Self::Fixture => None,
         }
@@ -480,6 +639,7 @@ impl ReferenceKind {
             Self::Principal => matches!(kind, NodeKind::Principal),
             Self::PrincipalVariant => matches!(kind, NodeKind::PrincipalVariant),
             Self::AuthenticationField => matches!(kind, NodeKind::Field),
+            Self::ConfigurationField => matches!(kind, NodeKind::ConfigurationField),
             Self::Failure => matches!(kind, NodeKind::Failure | NodeKind::StandardFailure),
             Self::StandardFailure => matches!(kind, NodeKind::StandardFailure),
             Self::Fixture => matches!(kind, NodeKind::Fixture),
@@ -506,6 +666,11 @@ enum ReferenceUsage {
     RouteOutput,
     ConfigurationField,
     TestFixture,
+    ServiceInput,
+    ServiceOutput,
+    ServiceIdentity,
+    ServiceOutcome,
+    ServiceCredentialSlot,
 }
 
 impl ReferenceUsage {
@@ -528,6 +693,11 @@ impl ReferenceUsage {
             Self::RouteOutput => "route output",
             Self::ConfigurationField => "configuration field",
             Self::TestFixture => "test fixture",
+            Self::ServiceInput => "external service input",
+            Self::ServiceOutput => "external service output",
+            Self::ServiceIdentity => "external service idempotency identity",
+            Self::ServiceOutcome => "external service outcome",
+            Self::ServiceCredentialSlot => "external service credential slot",
         }
     }
 }
@@ -564,10 +734,14 @@ pub fn build_semantic_graph(files: &[ParsedSyntax]) -> SemanticGraph {
     for file in files {
         builder.collect_file(file);
     }
+    for file in files {
+        builder.collect_services(file, files);
+    }
+    builder.validate_fixture_service_fakes(files);
     builder.resolve_nullability();
     builder.validate_storage_nullability(files);
     builder.validate_relationships(files);
-    builder.finish()
+    builder.finish(files)
 }
 
 #[derive(Default)]
@@ -580,6 +754,9 @@ struct GraphBuilder {
     nullable_references: Vec<(String, String, TextRange)>,
     calls: Vec<PendingCall>,
     authentication_resolutions: Vec<PendingAuthenticationResolution>,
+    external_effects: Vec<ExternalServiceEffect>,
+    atomic_callers: BTreeSet<String>,
+    persistence_write_callers: BTreeSet<String>,
     diagnostics: Vec<Diagnostic>,
     application: Option<String>,
     locales: bool,
@@ -756,6 +933,38 @@ impl GraphBuilder {
                                     );
                                 }
                             }
+                            if let Some(lifecycle) = &dossier.lifecycle {
+                                if let Some(initial) = &lifecycle.initial {
+                                    for field in initial {
+                                        self.require_name_case(
+                                            &field.name,
+                                            NameCase::LowerSnake,
+                                            &file.source_name,
+                                        );
+                                    }
+                                }
+                                for transition in &lifecycle.transitions {
+                                    self.require_name_case(
+                                        &transition.name,
+                                        NameCase::LowerSnake,
+                                        &file.source_name,
+                                    );
+                                    for field in &transition.set {
+                                        self.require_name_case(
+                                            &field.name,
+                                            NameCase::LowerSnake,
+                                            &file.source_name,
+                                        );
+                                    }
+                                }
+                                if let Some(purge) = &lifecycle.purge {
+                                    self.require_name_case(
+                                        &purge.from,
+                                        NameCase::LowerSnake,
+                                        &file.source_name,
+                                    );
+                                }
+                            }
                         }
                     }
                     Declaration::Failure(value) => {
@@ -819,12 +1028,47 @@ impl GraphBuilder {
                                 self.require_expression_names(&item.value, &file.source_name);
                             }
                         }
+                        for fake in &value.service_fakes {
+                            self.require_name_case(
+                                &fake.service,
+                                NameCase::UpperCamel,
+                                &file.source_name,
+                            );
+                            for outcome in &fake.outcomes {
+                                self.require_name_case(
+                                    &outcome.operation,
+                                    NameCase::LowerSnake,
+                                    &file.source_name,
+                                );
+                                match &outcome.value {
+                                    jadpo_syntax::FixtureServiceFakeValue::Accepted(value) => {
+                                        self.require_expression_names(value, &file.source_name)
+                                    }
+                                    jadpo_syntax::FixtureServiceFakeValue::Declared(value) => {
+                                        for segment in &value.path {
+                                            self.require_name_case(
+                                                segment,
+                                                NameCase::LowerSnake,
+                                                &file.source_name,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     Declaration::Test(value) => {
                         self.require_block_names(&value.body, &file.source_name);
                     }
                     Declaration::Route(value) => {
                         self.require_field_names(&value.path_fields, &file.source_name);
+                        for header in &value.headers {
+                            self.require_name_case(
+                                &header.name,
+                                NameCase::LowerSnake,
+                                &file.source_name,
+                            );
+                        }
                         if let Some(run) = &value.run {
                             self.require_expression_names(
                                 &Expression::Invocation(run.clone()),
@@ -833,6 +1077,19 @@ impl GraphBuilder {
                         }
                         if let Some(action) = &value.inline_action {
                             self.require_block_names(&action.body, &file.source_name);
+                        }
+                    }
+                    Declaration::Job(value) => {
+                        self.require_name_case(
+                            &value.name,
+                            NameCase::LowerSnake,
+                            &file.source_name,
+                        );
+                        if let Some(run) = &value.run {
+                            self.require_expression_names(
+                                &Expression::Invocation(run.clone()),
+                                &file.source_name,
+                            );
                         }
                     }
                     Declaration::Locales(_) => {}
@@ -960,6 +1217,13 @@ impl GraphBuilder {
             }
             Expression::Query(value) => {
                 self.require_expression_names(&value.value, source);
+                if let Some(page) = &value.page {
+                    for predicate in &page.predicates {
+                        self.require_expression_names(&predicate.value, source);
+                    }
+                    self.require_expression_names(&page.after, source);
+                    self.require_expression_names(&page.limit, source);
+                }
                 if let Some(pagination) = &value.pagination {
                     self.require_expression_names(&pagination.limit, source);
                     self.require_expression_names(&pagination.offset, source);
@@ -1616,6 +1880,35 @@ impl GraphBuilder {
                             ));
                         }
 
+                        if let Some(binding) = &validator.credentials {
+                            for (role, reference) in [
+                                ("identity", &binding.identity),
+                                ("principal", &binding.principal),
+                                ("verifier", &binding.verifier),
+                                ("expires", &binding.expires),
+                                ("revoked", &binding.revoked),
+                            ] {
+                                let target = name_expression(&reference.path);
+                                self.add_authored_node(
+                                    NodeKind::CredentialValidation,
+                                    &format!(
+                                        "{strategy_name}.validator.{}.credentials.{role}.{target}",
+                                        validator.name.text
+                                    ),
+                                    &file.source_name,
+                                    reference.range,
+                                );
+                                self.references.push(PendingReference {
+                                    refined: None,
+                                    target,
+                                    expected: ReferenceKind::AuthenticationField,
+                                    usage: ReferenceUsage::AuthenticationAuthority,
+                                    source: file.source_name.clone(),
+                                    range: reference.range,
+                                });
+                            }
+                        }
+
                         if matches!(validator.principal.text.as_str(), "user" | "service") {
                             self.authentication_principals.push((
                                 validator.principal.text.clone(),
@@ -2030,6 +2323,13 @@ impl GraphBuilder {
                         &file.source_name,
                         declaration.name.range,
                     );
+                    if let Some(policy) = &declaration.policy {
+                        self.add_policy_nodes(
+                            &format!("{}.policy", declaration.name.text),
+                            policy,
+                            &file.source_name,
+                        );
+                    }
                     if declaration.kind == RecordKind::Entity {
                         self.add_authored_node(
                             NodeKind::EntityReference,
@@ -2037,6 +2337,53 @@ impl GraphBuilder {
                             &file.source_name,
                             declaration.name.range,
                         );
+                        if let Some(lifecycle) = declaration
+                            .dossier
+                            .as_ref()
+                            .and_then(|dossier| dossier.lifecycle.as_ref())
+                        {
+                            self.add_authored_node(
+                                NodeKind::EntityLifecycle,
+                                &format!("{}.lifecycle", declaration.name.text),
+                                &file.source_name,
+                                lifecycle.range,
+                            );
+                            if let Some(initial) = &lifecycle.initial {
+                                self.add_authored_node(
+                                    NodeKind::LifecycleInitial,
+                                    &format!("{}.lifecycle.initial", declaration.name.text),
+                                    &file.source_name,
+                                    initial.first().map_or(lifecycle.range, |field| field.range),
+                                );
+                            }
+                            if let Some(visible) = &lifecycle.visible {
+                                self.add_authored_node(
+                                    NodeKind::LifecycleVisibility,
+                                    &format!("{}.lifecycle.visibility", declaration.name.text),
+                                    &file.source_name,
+                                    visible.range(),
+                                );
+                            }
+                            for transition in &lifecycle.transitions {
+                                self.add_authored_node(
+                                    NodeKind::LifecycleTransition,
+                                    &format!(
+                                        "{}.lifecycle.transition.{}",
+                                        declaration.name.text, transition.name.text
+                                    ),
+                                    &file.source_name,
+                                    transition.range,
+                                );
+                            }
+                            if let Some(purge) = &lifecycle.purge {
+                                self.add_authored_node(
+                                    NodeKind::LifecyclePurge,
+                                    &format!("{}.lifecycle.purge", declaration.name.text),
+                                    &file.source_name,
+                                    purge.range,
+                                );
+                            }
+                        }
                     }
                     let mut identity_field = None;
                     for field in &declaration.fields {
@@ -2069,6 +2416,21 @@ impl GraphBuilder {
                             &file.source_name,
                             field.name.range,
                         );
+                        if field.generated.is_some() {
+                            self.add_authored_node(
+                                NodeKind::GeneratedField,
+                                &format!("{field_name}.generated"),
+                                &file.source_name,
+                                field.name.range,
+                            );
+                        }
+                        if let Some(policy) = &field.policy {
+                            self.add_policy_nodes(
+                                &format!("{field_name}.policy"),
+                                policy,
+                                &file.source_name,
+                            );
+                        }
                         self.add_type_reference(
                             Some(field_name),
                             &field.field_type,
@@ -2214,6 +2576,11 @@ impl GraphBuilder {
                         CallableKind::Query => NodeKind::Query,
                     };
                     let callable_name = declaration.name.text.clone();
+                    if declaration.kind == CallableKind::Action
+                        && declaration.consistency == Some(ConsistencyDisposition::Atomic)
+                    {
+                        self.atomic_callers.insert(callable_name.clone());
+                    }
                     self.add_authored_node(
                         kind,
                         &callable_name,
@@ -2269,6 +2636,19 @@ impl GraphBuilder {
                             );
                         }
                     }
+                    for fake in &declaration.service_fakes {
+                        for outcome in &fake.outcomes {
+                            if let jadpo_syntax::FixtureServiceFakeValue::Accepted(value) =
+                                &outcome.value
+                            {
+                                self.collect_expression_calls(
+                                    &format!("fixture:{}", declaration.name.text),
+                                    value,
+                                    &file.source_name,
+                                );
+                            }
+                        }
+                    }
                 }
                 Declaration::Test(declaration) => {
                     let name = format!("test:{}", declaration.name.text);
@@ -2290,6 +2670,21 @@ impl GraphBuilder {
                     }
                     self.collect_block_calls(&name, &declaration.body, &file.source_name);
                 }
+                Declaration::Job(declaration) => {
+                    self.add_authored_node(
+                        NodeKind::Job,
+                        &declaration.name.text,
+                        &file.source_name,
+                        declaration.name.range,
+                    );
+                    if let Some(run) = &declaration.run {
+                        self.collect_expression_calls(
+                            &declaration.name.text,
+                            &Expression::Invocation(run.clone()),
+                            &file.source_name,
+                        );
+                    }
+                }
                 Declaration::Route(declaration) => {
                     let route_name = format!(
                         "{} {}",
@@ -2306,6 +2701,22 @@ impl GraphBuilder {
                         self.add_type_reference(
                             None,
                             input,
+                            &file.source_name,
+                            ReferenceUsage::RouteInput,
+                        );
+                    }
+                    if let Some(query) = &declaration.query {
+                        self.add_type_reference(
+                            None,
+                            query,
+                            &file.source_name,
+                            ReferenceUsage::RouteInput,
+                        );
+                    }
+                    for header in &declaration.headers {
+                        self.add_type_reference(
+                            None,
+                            &header.field_type,
                             &file.source_name,
                             ReferenceUsage::RouteInput,
                         );
@@ -2328,6 +2739,164 @@ impl GraphBuilder {
                     }
                     if let Some(action) = &declaration.inline_action {
                         self.collect_block_calls(&route_name, &action.body, &file.source_name);
+                    }
+                }
+            }
+        }
+    }
+
+    fn collect_services(&mut self, file: &ParsedSyntax, files: &[ParsedSyntax]) {
+        for service in &file.file.services {
+            let configuration = self.configuration.clone();
+            match checked_service_effect(
+                service,
+                &file.source_name,
+                files,
+                configuration.as_deref(),
+            ) {
+                Ok(effect) => {
+                    self.add_node(PendingNode {
+                        kind: NodeKind::ServiceOperation,
+                        name: format!("{}.{}", effect.service, effect.operation),
+                        source: file.source_name.clone(),
+                        range: service.range,
+                    });
+                    for type_name in [
+                        effect.idempotency_type.as_str(),
+                        effect.input.as_str(),
+                        effect.output.as_str(),
+                    ] {
+                        self.add_type_reference(
+                            None,
+                            &service_type_reference(type_name, service.range),
+                            &file.source_name,
+                            if type_name == effect.idempotency_type {
+                                ReferenceUsage::ServiceIdentity
+                            } else if type_name == effect.input {
+                                ReferenceUsage::ServiceInput
+                            } else {
+                                ReferenceUsage::ServiceOutput
+                            },
+                        );
+                    }
+                    for outcome in &effect.outcomes {
+                        self.references.push(PendingReference {
+                            refined: None,
+                            target: outcome.clone(),
+                            expected: ReferenceKind::Failure,
+                            usage: ReferenceUsage::ServiceOutcome,
+                            source: file.source_name.clone(),
+                            range: service.range,
+                        });
+                    }
+                    if let Some(configuration) = &self.configuration {
+                        self.references.push(PendingReference {
+                            refined: None,
+                            target: format!("{configuration}.mail_api_key"),
+                            expected: ReferenceKind::ConfigurationField,
+                            usage: ReferenceUsage::ServiceCredentialSlot,
+                            source: file.source_name.clone(),
+                            range: service.range,
+                        });
+                    } else {
+                        self.diagnostics.push(with_span(
+                            Diagnostic::error("SEM_SERVICE_CONFIGURATION_MISSING")
+                                .with_fact(DiagnosticFact::Name(service.name.text.clone())),
+                            &file.source_name,
+                            service.range,
+                        ));
+                    }
+                    self.external_effects.push(effect);
+                }
+                Err(code) => {
+                    self.diagnostics.push(with_span(
+                        Diagnostic::error(code)
+                            .with_fact(DiagnosticFact::Name(service.name.text.clone())),
+                        &file.source_name,
+                        service.range,
+                    ));
+                }
+            }
+        }
+    }
+
+    fn validate_fixture_service_fakes(&mut self, files: &[ParsedSyntax]) {
+        for file in files {
+            for declaration in &file.file.declarations {
+                let Declaration::Fixture(fixture) = declaration else {
+                    continue;
+                };
+                let mut seen_services = BTreeSet::new();
+                for fake in &fixture.service_fakes {
+                    if !seen_services.insert(fake.service.text.clone()) {
+                        self.diagnostics.push(with_span(
+                            Diagnostic::error("SEM_SERVICE_CONTRACT_INVALID")
+                                .with_fact(DiagnosticFact::Name(fake.service.text.clone())),
+                            &file.source_name,
+                            fake.service.range,
+                        ));
+                        continue;
+                    }
+                    let Some(effect) = self
+                        .external_effects
+                        .iter()
+                        .find(|effect| effect.service == fake.service.text)
+                    else {
+                        self.diagnostics.push(with_span(
+                            Diagnostic::error("SEM_UNKNOWN_NAME")
+                                .with_fact(DiagnosticFact::Name(fake.service.text.clone()))
+                                .with_fact(DiagnosticFact::Expected(
+                                    "declared external service".to_owned(),
+                                ))
+                                .with_fact(DiagnosticFact::Usage("test fixture fake".to_owned())),
+                            &file.source_name,
+                            fake.service.range,
+                        ));
+                        continue;
+                    };
+                    for outcome in &fake.outcomes {
+                        if outcome.operation.text != effect.operation {
+                            self.diagnostics.push(with_span(
+                                Diagnostic::error("SEM_UNKNOWN_NAME")
+                                    .with_fact(DiagnosticFact::Name(format!(
+                                        "{}.{}",
+                                        fake.service.text, outcome.operation.text
+                                    )))
+                                    .with_fact(DiagnosticFact::Expected(
+                                        "operation declared by this external service".to_owned(),
+                                    ))
+                                    .with_fact(DiagnosticFact::Usage(
+                                        "test fixture fake".to_owned(),
+                                    )),
+                                &file.source_name,
+                                outcome.operation.range,
+                            ));
+                            continue;
+                        }
+                        if let jadpo_syntax::FixtureServiceFakeValue::Declared(name) =
+                            &outcome.value
+                        {
+                            let declared = name_expression(&name.path);
+                            if !effect
+                                .outcome_mappings
+                                .iter()
+                                .any(|(name, _)| name == &declared)
+                            {
+                                self.diagnostics.push(with_span(
+                                    Diagnostic::error("SEM_UNKNOWN_NAME")
+                                        .with_fact(DiagnosticFact::Name(declared))
+                                        .with_fact(DiagnosticFact::Expected(
+                                            "outcome declared by the pinned service contract"
+                                                .to_owned(),
+                                        ))
+                                        .with_fact(DiagnosticFact::Usage(
+                                            "test fixture fake".to_owned(),
+                                        )),
+                                    &file.source_name,
+                                    name.range,
+                                ));
+                            }
+                        }
                     }
                 }
             }
@@ -2567,6 +3136,40 @@ impl GraphBuilder {
         });
     }
 
+    fn add_policy_nodes(
+        &mut self,
+        prefix: &str,
+        policy: &jadpo_syntax::PolicyDeclaration,
+        source: &str,
+    ) {
+        self.add_authored_node(NodeKind::Policy, prefix, source, policy.range);
+        for (index, rule) in policy.rules.iter().enumerate() {
+            self.add_authored_node(
+                NodeKind::PolicyRule,
+                &format!("{prefix}.rule.{index}"),
+                source,
+                rule.range,
+            );
+        }
+        for operation in &policy.operations {
+            let operation_prefix = format!("{prefix}.operation.{}", operation.name.text);
+            self.add_authored_node(
+                NodeKind::PolicyOperation,
+                &operation_prefix,
+                source,
+                operation.range,
+            );
+            for (index, rule) in operation.rules.iter().enumerate() {
+                self.add_authored_node(
+                    NodeKind::PolicyRule,
+                    &format!("{operation_prefix}.rule.{index}"),
+                    source,
+                    rule.range,
+                );
+            }
+        }
+    }
+
     fn add_type_reference(
         &mut self,
         refined: Option<String>,
@@ -2687,6 +3290,7 @@ impl GraphBuilder {
                 }
             }
             Expression::Create(create) => {
+                self.persistence_write_callers.insert(caller.to_owned());
                 for field in &create.fields {
                     self.collect_expression_calls(caller, &field.value, source);
                 }
@@ -2698,6 +3302,13 @@ impl GraphBuilder {
             }
             Expression::Query(query) => {
                 self.collect_expression_calls(caller, &query.value, source);
+                if let Some(page) = &query.page {
+                    for predicate in &page.predicates {
+                        self.collect_expression_calls(caller, &predicate.value, source);
+                    }
+                    self.collect_expression_calls(caller, &page.after, source);
+                    self.collect_expression_calls(caller, &page.limit, source);
+                }
                 if let Some(pagination) = &query.pagination {
                     self.collect_expression_calls(caller, &pagination.limit, source);
                     self.collect_expression_calls(caller, &pagination.offset, source);
@@ -2713,6 +3324,7 @@ impl GraphBuilder {
                 }
             }
             Expression::Update(update) => {
+                self.persistence_write_callers.insert(caller.to_owned());
                 self.collect_expression_calls(caller, &update.value, source);
                 for change in &update.changes {
                     self.collect_expression_calls(caller, &change.value, source);
@@ -2732,6 +3344,7 @@ impl GraphBuilder {
                 }
             }
             Expression::Delete(delete) => {
+                self.persistence_write_callers.insert(caller.to_owned());
                 self.collect_expression_calls(caller, &delete.value, source);
                 for binding in std::iter::once(&delete.missing)
                     .chain(delete.conflicts.iter().map(|conflict| &conflict.rejection))
@@ -2851,7 +3464,7 @@ impl GraphBuilder {
         }
     }
 
-    fn finish(mut self) -> SemanticGraph {
+    fn finish(mut self, files: &[ParsedSyntax]) -> SemanticGraph {
         if let Some(principal) = &self.principal {
             for (variant, source, range) in &self.authentication_principals {
                 self.references.push(PendingReference {
@@ -2931,6 +3544,7 @@ impl GraphBuilder {
                     matches!(target_kind, NodeKind::PrincipalVariant)
                 }
                 ReferenceKind::AuthenticationField => matches!(target_kind, NodeKind::Field),
+                ReferenceKind::ConfigurationField => target_kind == NodeKind::ConfigurationField,
                 ReferenceKind::Failure => {
                     matches!(target_kind, NodeKind::Failure | NodeKind::StandardFailure)
                 }
@@ -2968,28 +3582,64 @@ impl GraphBuilder {
             }
         }
 
+        // Propagate persistence-write effects through action calls before
+        // deciding whether an external operation can share their transaction.
+        // Also carry an atomic/write context down to nested actions that may
+        // contain the actual service call.
+        let mut write_effect_callers = self.persistence_write_callers.clone();
+        let mut unsafe_effect_contexts = self.atomic_callers.clone();
+        unsafe_effect_contexts.extend(write_effect_callers.iter().cloned());
+        loop {
+            let mut changed = false;
+            for call in &self.calls {
+                // Authored tests invoke each callable as a separate operation.
+                // A write performed by one test call does not make the next
+                // service call part of that write's transaction.
+                if kinds.get(&call.caller) == Some(&NodeKind::Test) {
+                    continue;
+                }
+                let Some(callee_name) = resolve_callable_name(&call.callee, &nodes, &ids) else {
+                    continue;
+                };
+                if write_effect_callers.contains(&callee_name)
+                    && write_effect_callers.insert(call.caller.clone())
+                {
+                    changed = true;
+                }
+            }
+            let previous_context_count = unsafe_effect_contexts.len();
+            unsafe_effect_contexts.extend(write_effect_callers.iter().cloned());
+            for call in &self.calls {
+                if !unsafe_effect_contexts.contains(&call.caller) {
+                    continue;
+                }
+                let Some(callee_name) = resolve_callable_name(&call.callee, &nodes, &ids) else {
+                    continue;
+                };
+                if kinds.get(&callee_name) == Some(&NodeKind::Action)
+                    && unsafe_effect_contexts.insert(callee_name)
+                {
+                    changed = true;
+                }
+            }
+            changed |= unsafe_effect_contexts.len() != previous_context_count;
+            if !changed {
+                break;
+            }
+        }
+
         let mut calls = Vec::new();
         for call in self.calls {
             let Some(caller) = ids.get(&call.caller).copied() else {
                 continue;
             };
-            let resolved_callee = if ids.contains_key(&call.callee) {
+            // Scheduled entries resolve an exact static name. A misspelled
+            // owner must never bind via ordinary receiver/suffix fallback.
+            let resolved_callee = if kinds.get(&call.caller) == Some(&NodeKind::Job) {
                 call.callee.clone()
             } else {
-                let operation = call.callee.rsplit('.').next().unwrap_or(&call.callee);
-                let mut candidates = nodes
-                    .iter()
-                    .filter(|node| {
-                        matches!(
-                            node.kind,
-                            NodeKind::Function | NodeKind::Action | NodeKind::Query
-                        ) && node.name.ends_with(&format!(".{operation}"))
-                    })
-                    .map(|node| node.name.clone());
-                match (candidates.next(), candidates.next()) {
-                    (Some(candidate), None) => candidate,
-                    _ => call.callee.clone(),
-                }
+                resolve_callable_name(&call.callee, &nodes, &ids)
+                    .unwrap_or_else(|| call.callee.clone())
             };
             let Some(callee) = ids.get(&resolved_callee).copied() else {
                 if let Some(namespace) = standard_operation_namespace(
@@ -3020,6 +3670,7 @@ impl GraphBuilder {
                                     | NodeKind::Action
                                     | NodeKind::Query
                                     | NodeKind::StandardFunction
+                                    | NodeKind::ServiceOperation
                             )
                         })
                         .map(|node| node.name.as_str()),
@@ -3045,6 +3696,23 @@ impl GraphBuilder {
                 | NodeKind::Action
                 | NodeKind::Query
                 | NodeKind::StandardFunction => calls.push(CallEdge { caller, callee }),
+                NodeKind::ServiceOperation => {
+                    if kinds.get(&call.caller) != Some(&NodeKind::Action) {
+                        let diagnostic = Diagnostic::error("SEM_SERVICE_CALL_CONTEXT")
+                            .with_fact(DiagnosticFact::Name(call.callee.clone()))
+                            .with_fact(DiagnosticFact::Callable(call.caller.clone()));
+                        self.diagnostics
+                            .push(with_span(diagnostic, &call.source, call.range));
+                    } else if unsafe_effect_contexts.contains(&call.caller) {
+                        let diagnostic = Diagnostic::error("SEM_SERVICE_ATOMIC_EFFECT")
+                            .with_fact(DiagnosticFact::Name(call.callee.clone()))
+                            .with_fact(DiagnosticFact::Callable(call.caller.clone()));
+                        self.diagnostics
+                            .push(with_span(diagnostic, &call.source, call.range));
+                    } else {
+                        calls.push(CallEdge { caller, callee });
+                    }
+                }
                 kind if kind.is_type() => {}
                 actual => {
                     let diagnostic = Diagnostic::error("SEM_NOT_CALLABLE")
@@ -3061,6 +3729,13 @@ impl GraphBuilder {
         refinements.dedup();
         calls.sort_by_key(|edge| (edge.caller, edge.callee));
         calls.dedup();
+        Self::validate_test_service_fakes(
+            files,
+            &nodes,
+            &calls,
+            &self.external_effects,
+            &mut self.diagnostics,
+        );
         let mut authentication_resolutions = self
             .authentication_resolutions
             .into_iter()
@@ -3073,6 +3748,9 @@ impl GraphBuilder {
             .collect::<Vec<_>>();
         authentication_resolutions.sort_by_key(|edge| (edge.resolution, edge.authority));
         authentication_resolutions.dedup();
+        self.external_effects.sort_by(|left, right| {
+            (&left.service, &left.operation).cmp(&(&right.service, &right.operation))
+        });
 
         SemanticGraph {
             modules: self.modules,
@@ -3080,9 +3758,840 @@ impl GraphBuilder {
             refinements,
             nullable_types: self.nullable_types,
             calls,
+            external_effects: self.external_effects,
             authentication_resolutions,
             diagnostics: self.diagnostics,
         }
+    }
+
+    fn validate_test_service_fakes(
+        files: &[ParsedSyntax],
+        nodes: &[SemanticNode],
+        calls: &[CallEdge],
+        external_effects: &[ExternalServiceEffect],
+        diagnostics: &mut Vec<Diagnostic>,
+    ) {
+        let ids = nodes
+            .iter()
+            .map(|node| (node.name.as_str(), node.id))
+            .collect::<BTreeMap<_, _>>();
+        let fixtures = files
+            .iter()
+            .flat_map(|file| file.file.declarations.iter())
+            .filter_map(|declaration| match declaration {
+                Declaration::Fixture(fixture) => Some((fixture.name.text.as_str(), fixture)),
+                _ => None,
+            })
+            .collect::<BTreeMap<_, _>>();
+        for file in files {
+            for declaration in &file.file.declarations {
+                let Declaration::Test(test) = declaration else {
+                    continue;
+                };
+                let Some(test_id) = ids.get(format!("test:{}", test.name.text).as_str()) else {
+                    continue;
+                };
+                let fake_services = test
+                    .fixture
+                    .as_ref()
+                    .and_then(|name| fixtures.get(name.text.as_str()).copied())
+                    .map(|fixture| {
+                        fixture
+                            .service_fakes
+                            .iter()
+                            .map(|fake| fake.service.text.as_str())
+                            .collect::<BTreeSet<_>>()
+                    })
+                    .unwrap_or_default();
+                let mut visited = BTreeSet::new();
+                let mut pending = vec![*test_id];
+                let mut missing = BTreeSet::new();
+                while let Some(caller) = pending.pop() {
+                    if !visited.insert(caller.0) {
+                        continue;
+                    }
+                    for edge in calls.iter().filter(|edge| edge.caller == caller) {
+                        let callee = &nodes[edge.callee.0 as usize];
+                        if callee.kind == NodeKind::ServiceOperation {
+                            if let Some(effect) = external_effects.iter().find(|effect| {
+                                format!("{}.{}", effect.service, effect.operation) == callee.name
+                            }) {
+                                if !fake_services.contains(effect.service.as_str())
+                                    && missing.insert(effect.service.clone())
+                                {
+                                    diagnostics.push(with_span(
+                                        Diagnostic::error("SEM_TEST_SERVICE_FAKE_REQUIRED")
+                                            .with_fact(DiagnosticFact::Name(
+                                                effect.service.clone(),
+                                            )),
+                                        &file.source_name,
+                                        test.range,
+                                    ));
+                                }
+                            }
+                        } else {
+                            pending.push(edge.callee);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn service_type_reference(name: &str, range: TextRange) -> TypeReference {
+    TypeReference {
+        path: vec![Name {
+            text: name.to_owned(),
+            range,
+        }],
+        arguments: Vec::new(),
+        nullable: false,
+        range,
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WireShape {
+    value_type: String,
+    format: Option<String>,
+    nullable: bool,
+    min_length: Option<u64>,
+    max_length: Option<u64>,
+}
+
+impl WireShape {
+    fn display(&self) -> String {
+        let mut parts = vec![self.value_type.clone()];
+        if let Some(format) = &self.format {
+            parts.push(format!("format={format}"));
+        }
+        if self.nullable {
+            parts.push("nullable".to_owned());
+        }
+        if let Some(minimum) = self.min_length {
+            parts.push(format!("minLength={minimum}"));
+        }
+        if let Some(maximum) = self.max_length {
+            parts.push(format!("maxLength={maximum}"));
+        }
+        parts.join(",")
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ImportedMailSchemas {
+    input: BTreeMap<String, WireShape>,
+    output: BTreeMap<String, WireShape>,
+}
+
+fn parse_supported_mail_snapshot(bytes: &[u8]) -> Option<ImportedMailSchemas> {
+    let document: JsonValue = serde_json::from_slice(bytes).ok()?;
+    if document.get("openapi")?.as_str()? != "3.1.0"
+        || document.get("info")?.get("version")?.as_str()? != "0.1.0"
+    {
+        return None;
+    }
+    let servers = document.get("servers")?.as_array()?;
+    if servers.len() != 1 || servers[0].get("url")?.as_str()? != "https://mail.example.invalid" {
+        return None;
+    }
+    let paths = document.get("paths")?.as_object()?;
+    if paths.len() != 1 {
+        return None;
+    }
+    let path = paths.get("/v1/messages")?.as_object()?;
+    if path.len() != 1 {
+        return None;
+    }
+    let operation = path.get("post")?;
+    if operation.get("operationId")?.as_str()? != "send_overdue_reminder" {
+        return None;
+    }
+    let parameters = operation.get("parameters")?.as_array()?;
+    if parameters.len() != 1
+        || parameters[0].get("name")?.as_str()? != "Idempotency-Key"
+        || parameters[0].get("in")?.as_str()? != "header"
+        || parameters[0].get("required")?.as_bool()? != true
+        || parse_wire_shape(parameters[0].get("schema")?)?
+            != (WireShape {
+                value_type: "string".to_owned(),
+                format: Some("uuid".to_owned()),
+                nullable: false,
+                min_length: None,
+                max_length: None,
+            })
+    {
+        return None;
+    }
+    let security = operation.get("security")?.as_array()?;
+    if security.len() != 1
+        || security[0].as_object()?.len() != 1
+        || !security[0]
+            .get("providerCredential")?
+            .as_array()?
+            .is_empty()
+    {
+        return None;
+    }
+    let scheme = document
+        .get("components")?
+        .get("securitySchemes")?
+        .get("providerCredential")?;
+    if scheme.get("type")?.as_str()? != "http" || scheme.get("scheme")?.as_str()? != "bearer" {
+        return None;
+    }
+
+    let request = operation.get("requestBody")?;
+    if request.get("required")?.as_bool()? != true
+        || request.get("content")?.as_object()?.len() != 1
+    {
+        return None;
+    }
+    let input = parse_object_schema(
+        request
+            .get("content")?
+            .get("application/json")?
+            .get("schema")?,
+    )?;
+
+    let responses = operation.get("responses")?.as_object()?;
+    let expected_statuses = ["202", "400", "401", "409", "429"]
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    if responses
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>()
+        != expected_statuses
+    {
+        return None;
+    }
+    let accepted = responses.get("202")?;
+    let response_key = accepted.get("headers")?.get("Idempotency-Key")?;
+    if response_key.get("required")?.as_bool()? != true
+        || parse_wire_shape(response_key.get("schema")?)?
+            != (WireShape {
+                value_type: "string".to_owned(),
+                format: Some("uuid".to_owned()),
+                nullable: false,
+                min_length: None,
+                max_length: None,
+            })
+        || accepted.get("content")?.as_object()?.len() != 1
+    {
+        return None;
+    }
+    let output = parse_object_schema(
+        accepted
+            .get("content")?
+            .get("application/json")?
+            .get("schema")?,
+    )?;
+
+    let expected_errors = [
+        ("400", "InvalidRecipient"),
+        ("401", "Authentication"),
+        ("409", "IdempotencyConflict"),
+        ("429", "RateLimited"),
+    ];
+    let component_responses = document.get("components")?.get("responses")?.as_object()?;
+    let component_schemas = document.get("components")?.get("schemas")?.as_object()?;
+    for (status, name) in expected_errors {
+        let reference = format!("#/components/responses/{name}");
+        if responses.get(status)?.get("$ref")?.as_str()? != reference {
+            return None;
+        }
+        let response = component_responses.get(name)?;
+        let schema_reference = format!("#/components/schemas/{name}");
+        if response
+            .get("content")?
+            .get("application/json")?
+            .get("schema")?
+            .get("$ref")?
+            .as_str()?
+            != schema_reference
+        {
+            return None;
+        }
+        let schema = component_schemas.get(name)?;
+        if schema.get("type")?.as_str()? != "object"
+            || schema.get("additionalProperties")?.as_bool()? != false
+            || schema.get("required")?.as_array()?.len() != 1
+            || schema.get("required")?.as_array()?[0].as_str()? != "code"
+            || schema
+                .get("properties")?
+                .get("code")?
+                .get("const")?
+                .as_str()?
+                != match name {
+                    "InvalidRecipient" => "invalid_recipient",
+                    "Authentication" => "authentication",
+                    "IdempotencyConflict" => "idempotency_conflict",
+                    "RateLimited" => "rate_limited",
+                    _ => return None,
+                }
+        {
+            return None;
+        }
+    }
+    Some(ImportedMailSchemas { input, output })
+}
+
+fn parse_object_schema(schema: &JsonValue) -> Option<BTreeMap<String, WireShape>> {
+    let object = schema.as_object()?;
+    if object.len() != 4
+        || schema.get("type")?.as_str()? != "object"
+        || schema.get("additionalProperties")?.as_bool()? != false
+    {
+        return None;
+    }
+    let properties = schema.get("properties")?.as_object()?;
+    let required = schema
+        .get("required")?
+        .as_array()?
+        .iter()
+        .map(JsonValue::as_str)
+        .collect::<Option<BTreeSet<_>>>()?;
+    if required.len() != schema.get("required")?.as_array()?.len()
+        || required != properties.keys().map(String::as_str).collect()
+    {
+        return None;
+    }
+    properties
+        .iter()
+        .map(|(name, shape)| Some((name.clone(), parse_wire_shape(shape)?)))
+        .collect()
+}
+
+fn parse_wire_shape(schema: &JsonValue) -> Option<WireShape> {
+    let object = schema.as_object()?;
+    if object
+        .keys()
+        .any(|key| !matches!(key.as_str(), "type" | "format" | "minLength" | "maxLength"))
+    {
+        return None;
+    }
+    let (value_type, nullable) = match schema.get("type")? {
+        JsonValue::String(value_type) => (value_type.clone(), false),
+        JsonValue::Array(values) if values.len() == 2 => {
+            let types = values
+                .iter()
+                .map(JsonValue::as_str)
+                .collect::<Option<Vec<_>>>()?;
+            if types.contains(&"null") {
+                (
+                    types.iter().find(|value| **value != "null")?.to_string(),
+                    true,
+                )
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+    let min_length = match schema.get("minLength") {
+        Some(value) => Some(value.as_u64()?),
+        None => None,
+    };
+    let max_length = match schema.get("maxLength") {
+        Some(value) => Some(value.as_u64()?),
+        None => None,
+    };
+    if (min_length.is_some() || max_length.is_some()) && value_type != "string" {
+        return None;
+    }
+    Some(WireShape {
+        value_type,
+        format: match schema.get("format") {
+            Some(value) => Some(value.as_str()?.to_owned()),
+            None => None,
+        },
+        nullable,
+        min_length,
+        max_length,
+    })
+}
+
+fn source_record_parity(
+    files: &[ParsedSyntax],
+    type_name: &str,
+    imported: &BTreeMap<String, WireShape>,
+) -> Option<Vec<ServiceFieldParity>> {
+    let record = files
+        .iter()
+        .flat_map(|file| &file.file.declarations)
+        .find_map(|declaration| match declaration {
+            Declaration::Record(record)
+                if record.name.text == type_name && record.kind == RecordKind::Value =>
+            {
+                Some(record)
+            }
+            _ => None,
+        })?;
+    if record.fields.len() != imported.len() {
+        return None;
+    }
+    let mut source_fields = BTreeMap::new();
+    for field in &record.fields {
+        if source_fields
+            .insert(field.name.text.as_str(), field)
+            .is_some()
+        {
+            return None;
+        }
+    }
+    if source_fields.keys().copied().collect::<BTreeSet<_>>()
+        != imported.keys().map(String::as_str).collect()
+    {
+        return None;
+    }
+    imported
+        .iter()
+        .map(|(name, imported_shape)| {
+            let field = source_fields.get(name.as_str())?;
+            if field.optional {
+                return None;
+            }
+            let mut visiting = BTreeSet::new();
+            let mut source_shape = resolve_wire_type(&field.field_type, files, &mut visiting, 0)?;
+            apply_wire_constraints(&mut source_shape, &field.constraints)?;
+            if &source_shape != imported_shape {
+                return None;
+            }
+            Some(ServiceFieldParity {
+                field: name.clone(),
+                source_type: display_type_reference(&field.field_type),
+                source_shape: source_shape.display(),
+                imported_shape: imported_shape.display(),
+            })
+        })
+        .collect()
+}
+
+fn source_record_field_has_exact_type(
+    files: &[ParsedSyntax],
+    record_name: &str,
+    field_name: &str,
+    type_name: &str,
+) -> bool {
+    let field = files
+        .iter()
+        .flat_map(|file| &file.file.declarations)
+        .find_map(|declaration| match declaration {
+            Declaration::Record(record)
+                if record.name.text == record_name && record.kind == RecordKind::Value =>
+            {
+                record
+                    .fields
+                    .iter()
+                    .find(|field| field.name.text == field_name)
+            }
+            _ => None,
+        });
+    field.is_some_and(|field| {
+        !field.optional
+            && !field.field_type.nullable
+            && field.field_type.arguments.is_empty()
+            && field.field_type.path.len() == 1
+            && field.field_type.path[0].text == type_name
+    })
+}
+
+fn display_type_reference(reference: &TypeReference) -> String {
+    let mut name = reference
+        .path
+        .iter()
+        .map(|segment| segment.text.as_str())
+        .collect::<Vec<_>>()
+        .join(".");
+    if !reference.arguments.is_empty() {
+        name.push('<');
+        name.push_str(
+            &reference
+                .arguments
+                .iter()
+                .map(display_type_reference)
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+        name.push('>');
+    }
+    if reference.nullable {
+        name.push('?');
+    }
+    name
+}
+
+fn resolve_wire_type(
+    reference: &TypeReference,
+    files: &[ParsedSyntax],
+    visiting: &mut BTreeSet<String>,
+    depth: usize,
+) -> Option<WireShape> {
+    if depth > 16 || !reference.arguments.is_empty() || reference.path.is_empty() {
+        return None;
+    }
+    let mut shape = if reference.path.len() == 1 {
+        resolve_named_wire_type(&reference.path[0].text, files, visiting, depth + 1)?
+    } else if reference.path.len() == 2 {
+        let entity = &reference.path[0].text;
+        let field_name = &reference.path[1].text;
+        let field = files
+            .iter()
+            .flat_map(|file| &file.file.declarations)
+            .find_map(|declaration| match declaration {
+                Declaration::Record(record) if record.name.text == *entity => record
+                    .fields
+                    .iter()
+                    .find(|field| field.name.text == *field_name),
+                _ => None,
+            })?;
+        let mut field_shape = resolve_wire_type(&field.field_type, files, visiting, depth + 1)?;
+        apply_wire_constraints(&mut field_shape, &field.constraints)?;
+        field_shape
+    } else {
+        return None;
+    };
+    shape.nullable |= reference.nullable;
+    Some(shape)
+}
+
+fn resolve_named_wire_type(
+    name: &str,
+    files: &[ParsedSyntax],
+    visiting: &mut BTreeSet<String>,
+    depth: usize,
+) -> Option<WireShape> {
+    let builtin = match name {
+        "Text" => Some(("string", None)),
+        "Email" => Some(("string", Some("email"))),
+        "Uuid" => Some(("string", Some("uuid"))),
+        "Instant" => Some(("string", Some("date-time"))),
+        "Int" => Some(("integer", None)),
+        "Bool" => Some(("boolean", None)),
+        _ => None,
+    };
+    if let Some((value_type, format)) = builtin {
+        return Some(WireShape {
+            value_type: value_type.to_owned(),
+            format: format.map(str::to_owned),
+            nullable: false,
+            min_length: None,
+            max_length: None,
+        });
+    }
+    if !visiting.insert(name.to_owned()) {
+        return None;
+    }
+    let alias = files
+        .iter()
+        .flat_map(|file| &file.file.declarations)
+        .find_map(|declaration| match declaration {
+            Declaration::Type(alias) if alias.name.text == name => Some(alias),
+            _ => None,
+        });
+    let result = alias.and_then(|alias| {
+        let mut shape = resolve_wire_type(&alias.parent, files, visiting, depth + 1)?;
+        apply_wire_constraints(&mut shape, &alias.constraints)?;
+        Some(shape)
+    });
+    visiting.remove(name);
+    result
+}
+
+fn apply_wire_constraints(shape: &mut WireShape, constraints: &[Constraint]) -> Option<()> {
+    for constraint in constraints {
+        let value = unquote_string(&constraint.value.text);
+        match constraint.kind {
+            ConstraintKind::MinLength => shape.min_length = Some(value.parse().ok()?),
+            ConstraintKind::MaxLength => shape.max_length = Some(value.parse().ok()?),
+            ConstraintKind::Format => shape.format = Some(value),
+            ConstraintKind::Min | ConstraintKind::Max | ConstraintKind::Pattern => return None,
+        }
+    }
+    Some(())
+}
+
+fn validate_secret_service_configuration(
+    files: &[ParsedSyntax],
+    configuration_name: Option<&str>,
+) -> Result<(), &'static str> {
+    let configuration_name = configuration_name.ok_or("SEM_SERVICE_CONFIGURATION_MISSING")?;
+    let configuration = files
+        .iter()
+        .flat_map(|file| &file.file.declarations)
+        .find_map(|declaration| match declaration {
+            Declaration::Config(configuration) if configuration.name.text == configuration_name => {
+                Some(configuration)
+            }
+            _ => None,
+        })
+        .ok_or("SEM_SERVICE_CONFIGURATION_MISSING")?;
+    let field = configuration
+        .fields
+        .iter()
+        .find(|field| field.name.text == "mail_api_key")
+        .ok_or("SEM_SERVICE_CONFIGURATION_MISSING")?;
+    if !field.secret {
+        return Err("SEM_SERVICE_SECRET_SINK_INVALID");
+    }
+    let mut visiting = BTreeSet::new();
+    let shape = resolve_wire_type(&field.field_type, files, &mut visiting, 0)
+        .ok_or("SEM_SERVICE_SECRET_SINK_INVALID")?;
+    if shape.value_type != "string" || shape.nullable {
+        return Err("SEM_SERVICE_SECRET_SINK_INVALID");
+    }
+    Ok(())
+}
+
+fn locate_service_import(files: &[ParsedSyntax], source: &str, imported: &str) -> Option<PathBuf> {
+    let import = Path::new(imported);
+    if import.is_absolute()
+        || import
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return None;
+    }
+    let source_path = absolute_source_path(source)?;
+    let source_directory = fs::canonicalize(source_path.parent()?).ok()?;
+    let root = source_directory
+        .ancestors()
+        .find(|ancestor| ancestor.join(".git").exists())
+        .map(Path::to_path_buf)
+        .or_else(|| common_source_directory(files, &source_directory))?;
+    let canonical_root = fs::canonicalize(root).ok()?;
+    let candidate = fs::canonicalize(canonical_root.join(import)).ok()?;
+    if !candidate.starts_with(&canonical_root) || !candidate.is_file() {
+        return None;
+    }
+    Some(candidate)
+}
+
+fn absolute_source_path(source: &str) -> Option<PathBuf> {
+    let path = Path::new(source);
+    if path.is_absolute() {
+        Some(path.to_path_buf())
+    } else {
+        Some(std::env::current_dir().ok()?.join(path))
+    }
+}
+
+fn common_source_directory(files: &[ParsedSyntax], initial: &Path) -> Option<PathBuf> {
+    let directories = files
+        .iter()
+        .filter_map(|file| absolute_source_path(&file.source_name))
+        .filter_map(|path| path.parent().map(Path::to_path_buf))
+        .map(|path| fs::canonicalize(path).ok())
+        .collect::<Option<Vec<_>>>()?;
+    let mut common = initial.to_path_buf();
+    while !directories
+        .iter()
+        .all(|directory| directory.starts_with(&common))
+    {
+        common = common.parent()?.to_path_buf();
+    }
+    Some(common)
+}
+
+fn checked_service_effect(
+    service: &ServiceDeclaration,
+    source: &str,
+    files: &[ParsedSyntax],
+    configuration_name: Option<&str>,
+) -> Result<ExternalServiceEffect, &'static str> {
+    const IMPORT: &str = "tests/assurance/service-reference-mail-v0.1.json";
+    const VERSION: &str = "0.1.0";
+    const SHA256: &str = "c6a8b26a4b7ec82414df2e6608cb5eb6ca65f1767f7047bfbfedfc8f9441f83d";
+    const EXPECTED: &[&str] = &[
+        "import.file: \"tests/assurance/service-reference-mail-v0.1.json\"",
+        "import.version: \"0.1.0\"",
+        "import.sha256: \"c6a8b26a4b7ec82414df2e6608cb5eb6ca65f1767f7047bfbfedfc8f9441f83d\"",
+        "credential.scheme: bearer",
+        "credential.header: \"Authorization\"",
+        "credential.secret: config.mail_api_key",
+        "base_url: \"https://mail.example.invalid\"",
+        "egress: mail.example.invalid:443",
+        "proxy: prohibited",
+        "redirects: prohibited",
+        "timeout: 5s",
+        "retry: exponential(max_attempts: 3, max_elapsed: 30s, jitter: full)",
+        "operation: send_overdue_reminder",
+        "POST: /v1/messages",
+        "idempotency_key: ReminderIntentId",
+        "input: ReminderMessage",
+        "output: ReminderReceipt",
+        "request_key: input.idempotency_key equals header \"Idempotency-Key\"",
+        "receipt_key: response header \"Idempotency-Key\" equals request_key",
+        "maps: provider.invalid_recipient -> ReminderRecipientRejected",
+        "maps: provider.rate_limited -> ReminderTemporarilyUnavailable",
+        "maps: provider.authentication -> fault Misconfigured",
+        "maps: provider.idempotency_conflict -> fault Misconfigured",
+        "maps: transport.pre_dispatch_refusal -> fault Unavailable",
+        "maps: transport.pre_dispatch_timeout -> fault Unavailable",
+        "maps: transport.possible_dispatch_timeout -> fault OutcomeUnknown",
+        "maps: transport.possible_dispatch_loss -> fault OutcomeUnknown",
+        "maps: transport.invalid_acknowledgement -> fault OutcomeUnknown",
+        "maps: transport.unexpected_response -> fault OutcomeUnknown",
+    ];
+
+    let lines = service
+        .items
+        .iter()
+        .map(|item| {
+            let prefix = if item.path.is_empty() {
+                String::new()
+            } else {
+                format!("{}.", item.path.join("."))
+            };
+            format!("{prefix}{}: {}", item.key, item.value)
+        })
+        .collect::<Vec<_>>();
+    let contains = |expected: &str| lines.iter().any(|line| line == expected);
+    if service.name.text != "ReminderMail"
+        || !lines
+            .iter()
+            .map(String::as_str)
+            .eq(EXPECTED.iter().copied())
+    {
+        let code = if EXPECTED[..3].iter().any(|line| !contains(line)) {
+            "SEM_SERVICE_IMPORT_PIN_INVALID"
+        } else if lines
+            .iter()
+            .any(|line| line.starts_with("base_url:") || line.starts_with("egress:"))
+            && (!contains(EXPECTED[6]) || !contains(EXPECTED[7]))
+        {
+            "SEM_SERVICE_EGRESS_INVALID"
+        } else if EXPECTED[3..6].iter().any(|line| !contains(line)) {
+            "SEM_SERVICE_SECRET_SINK_INVALID"
+        } else if !contains(EXPECTED[14]) {
+            "SEM_SERVICE_IDEMPOTENCY_INVALID"
+        } else {
+            "SEM_SERVICE_CONTRACT_INVALID"
+        };
+        return Err(code);
+    }
+
+    let imported_path =
+        locate_service_import(files, source, IMPORT).ok_or("SEM_SERVICE_IMPORT_NOT_FOUND")?;
+    let bytes = fs::read(imported_path).map_err(|_| "SEM_SERVICE_IMPORT_NOT_FOUND")?;
+    let actual = format!("{:x}", Sha256::digest(&bytes));
+    if actual != SHA256 {
+        return Err("SEM_SERVICE_IMPORT_DIGEST_MISMATCH");
+    }
+    validate_secret_service_configuration(files, configuration_name)?;
+    let imported = parse_supported_mail_snapshot(&bytes).ok_or("SEM_SERVICE_CONTRACT_INVALID")?;
+    if !source_record_field_has_exact_type(
+        files,
+        "ReminderMessage",
+        "idempotency_key",
+        "ReminderIntentId",
+    ) {
+        return Err("SEM_SERVICE_CONTRACT_INVALID");
+    }
+    let input_schema = source_record_parity(files, "ReminderMessage", &imported.input)
+        .ok_or("SEM_SERVICE_CONTRACT_INVALID")?;
+    let output_schema = source_record_parity(files, "ReminderReceipt", &imported.output)
+        .ok_or("SEM_SERVICE_CONTRACT_INVALID")?;
+
+    Ok(ExternalServiceEffect {
+        service: service.name.text.clone(),
+        operation: "send_overdue_reminder".to_owned(),
+        method: "POST".to_owned(),
+        path: "/v1/messages".to_owned(),
+        input: "ReminderMessage".to_owned(),
+        output: "ReminderReceipt".to_owned(),
+        idempotency_type: "ReminderIntentId".to_owned(),
+        egress: "mail.example.invalid:443".to_owned(),
+        credential_slot: "config.mail_api_key".to_owned(),
+        credential_header: "Authorization".to_owned(),
+        imported_contract: IMPORT.to_owned(),
+        import_version: VERSION.to_owned(),
+        import_sha256: SHA256.to_owned(),
+        timeout_ms: 5_000,
+        max_attempts: 3,
+        max_elapsed_ms: 30_000,
+        jitter: "full".to_owned(),
+        redirects_allowed: false,
+        proxy_allowed: false,
+        outcomes: vec![
+            "ReminderRecipientRejected".to_owned(),
+            "ReminderTemporarilyUnavailable".to_owned(),
+            "Misconfigured".to_owned(),
+            "Unavailable".to_owned(),
+            "OutcomeUnknown".to_owned(),
+        ],
+        input_schema,
+        output_schema,
+        outcome_mappings: vec![
+            (
+                "provider.invalid_recipient".to_owned(),
+                "ReminderRecipientRejected".to_owned(),
+            ),
+            (
+                "provider.rate_limited".to_owned(),
+                "ReminderTemporarilyUnavailable".to_owned(),
+            ),
+            (
+                "provider.authentication".to_owned(),
+                "Misconfigured".to_owned(),
+            ),
+            (
+                "provider.idempotency_conflict".to_owned(),
+                "Misconfigured".to_owned(),
+            ),
+            (
+                "transport.pre_dispatch_refusal".to_owned(),
+                "Unavailable".to_owned(),
+            ),
+            (
+                "transport.pre_dispatch_timeout".to_owned(),
+                "Unavailable".to_owned(),
+            ),
+            (
+                "transport.possible_dispatch_timeout".to_owned(),
+                "OutcomeUnknown".to_owned(),
+            ),
+            (
+                "transport.possible_dispatch_loss".to_owned(),
+                "OutcomeUnknown".to_owned(),
+            ),
+            (
+                "transport.invalid_acknowledgement".to_owned(),
+                "OutcomeUnknown".to_owned(),
+            ),
+            (
+                "transport.unexpected_response".to_owned(),
+                "OutcomeUnknown".to_owned(),
+            ),
+        ],
+        source: source.to_owned(),
+        range: service.range,
+    })
+}
+
+fn resolve_callable_name(
+    callee: &str,
+    nodes: &[SemanticNode],
+    ids: &BTreeMap<String, NodeId>,
+) -> Option<String> {
+    if ids.contains_key(callee) {
+        return Some(callee.to_owned());
+    }
+    let operation = callee.rsplit('.').next()?;
+    let mut candidates = nodes
+        .iter()
+        .filter(|node| {
+            matches!(
+                node.kind,
+                NodeKind::Function | NodeKind::Action | NodeKind::Query
+            ) && node.name.ends_with(&format!(".{operation}"))
+        })
+        .map(|node| node.name.clone());
+    match (candidates.next(), candidates.next()) {
+        (Some(candidate), None) => Some(candidate),
+        _ => None,
     }
 }
 
@@ -3247,6 +4756,7 @@ fn declaration_name(declaration: &Declaration) -> Option<&jadpo_syntax::Name> {
         Declaration::Fixture(declaration) => Some(&declaration.name),
         Declaration::Test(_) => None,
         Declaration::Route(_) => None,
+        Declaration::Job(declaration) => Some(&declaration.name),
     }
 }
 
@@ -3376,9 +4886,82 @@ fn json_strings(values: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_semantic_graph, NodeKind, ScaffoldManifest};
+    use super::{
+        build_semantic_graph, check_failures, check_types, parse_supported_mail_snapshot, NameCase,
+        NodeKind, ScaffoldManifest,
+    };
     use jadpo_syntax::parse;
+    use serde_json::Value as JsonValue;
+    use std::fs;
     use std::path::Path;
+
+    fn repository_root() -> &'static Path {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("semantic crate should be inside the repository")
+    }
+
+    fn service_source(replacement: Option<(&str, &str)>) -> (String, String) {
+        let candidate_path = repository_root().join("tests/assurance/service-successor-v0.1.jadpo");
+        let candidate = fs::read_to_string(&candidate_path)
+            .expect("successor service candidate should be readable");
+        let parsed_candidate = parse(&candidate_path, &candidate);
+        let candidate_service = parsed_candidate
+            .file
+            .services
+            .first()
+            .expect("successor should declare a service");
+        let mut service =
+            candidate[candidate_service.range.start..candidate_service.range.end].to_owned();
+        if let Some((from, to)) = replacement {
+            service = service.replace(from, to);
+        }
+        let source = format!(
+            r#"config TestConfiguration {{
+    mail_api_key: Text {{ binding: "MAIL_API_KEY" secret: true }}
+}}
+
+type ReminderIntentId = Uuid
+type TodoTitle = Text {{
+    min_length: 1
+    max_length: 200
+}}
+value ReminderMessage {{
+    idempotency_key: ReminderIntentId
+    from: Email
+    to: Email
+    todo_title: TodoTitle
+    due_at: Instant?
+}}
+value ReminderReceipt {{
+    accepted_at: Instant
+}}
+
+failure ReminderRecipientRejected {{
+    kind: Rejected
+    code: "recipient_rejected"
+    message: "Recipient rejected."
+}}
+
+failure ReminderTemporarilyUnavailable {{
+    kind: Unavailable
+    code: "temporarily_unavailable"
+    message: "Temporarily unavailable."
+}}
+
+{service}
+
+action deliver(mail: ReminderMessage)
+    fails ReminderRecipientRejected, ReminderTemporarilyUnavailable, Misconfigured, Unavailable, OutcomeUnknown
+    -> ReminderReceipt
+{{
+    return attempt ReminderMail.send_overdue_reminder(mail)
+}}
+"#
+        );
+        (source, candidate_path.to_string_lossy().into_owned())
+    }
 
     #[test]
     fn manifest_json_escapes_source_paths() {
@@ -3399,7 +4982,7 @@ mod tests {
 entity Customer { email: Email }
 "#;
         let parsed = parse(Path::new("app.jadpo"), source);
-        let graph = build_semantic_graph(&[parsed]);
+        let graph = build_semantic_graph(std::slice::from_ref(&parsed));
 
         assert!(graph.diagnostics.is_empty(), "{:#?}", graph.diagnostics);
         assert_eq!(graph.node("Email").unwrap().kind, NodeKind::Type);
@@ -3416,6 +4999,614 @@ entity Customer { email: Email }
             .collect::<Vec<_>>();
         assert!(edges.contains(&("Email", "Text")));
         assert!(edges.contains(&("Customer.email", "Email")));
+    }
+
+    #[test]
+    fn adds_checked_service_operation_to_effect_graph() {
+        let (source, name) = service_source(None);
+        let parsed = parse(Path::new(&name), &source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+
+        let graph = build_semantic_graph(std::slice::from_ref(&parsed));
+        assert!(graph.diagnostics.is_empty(), "{:#?}", graph.diagnostics);
+        assert_eq!(graph.external_effects.len(), 1);
+        let effect = &graph.external_effects[0];
+        assert_eq!(effect.service, "ReminderMail");
+        assert_eq!(effect.operation, "send_overdue_reminder");
+        assert_eq!(effect.method, "POST");
+        assert_eq!(effect.path, "/v1/messages");
+        assert_eq!(effect.egress, "mail.example.invalid:443");
+        assert_eq!(effect.credential_slot, "config.mail_api_key");
+        assert_eq!(effect.outcomes.len(), 5);
+        assert_eq!(effect.input_schema.len(), 5);
+        assert_eq!(effect.output_schema.len(), 1);
+        let title = effect
+            .input_schema
+            .iter()
+            .find(|field| field.field == "todo_title")
+            .expect("title field should be in the pinned request schema");
+        assert_eq!(title.source_type, "TodoTitle");
+        assert_eq!(title.source_shape, "string,minLength=1,maxLength=200");
+        assert_eq!(title.imported_shape, title.source_shape);
+        assert!(effect.schema_parity_json().contains("\"todo_title\""));
+        assert!(graph.calls.iter().any(|edge| {
+            graph.nodes[edge.caller.0 as usize].name == "deliver"
+                && graph.nodes[edge.callee.0 as usize].name == "ReminderMail.send_overdue_reminder"
+        }));
+        let typing = check_types(std::slice::from_ref(&parsed), &graph);
+        assert!(typing.diagnostics.is_empty(), "{:#?}", typing.diagnostics);
+        let failures = check_failures(std::slice::from_ref(&parsed), &graph);
+        assert!(
+            failures.diagnostics.is_empty(),
+            "{:#?}",
+            failures.diagnostics
+        );
+    }
+
+    #[test]
+    fn checks_authored_service_fake_operation_outcome_and_response_contracts() {
+        fn diagnostics(fake: &str) -> Vec<String> {
+            let (mut source, name) = service_source(None);
+            source.push_str(fake);
+            let parsed = parse(Path::new(&name), &source);
+            assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+            let files = [parsed];
+            let graph = build_semantic_graph(&files);
+            let mut codes = graph
+                .diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.code.to_owned())
+                .collect::<Vec<_>>();
+            codes.extend(
+                check_types(&files, &graph)
+                    .diagnostics
+                    .iter()
+                    .map(|diagnostic| diagnostic.code.to_owned()),
+            );
+            codes
+        }
+
+        let valid = diagnostics(
+            r#"
+fixture accepted {
+    config { mail_api_key: secret("fixture-key") }
+    service ReminderMail: fake {
+        send_overdue_reminder => accept ReminderReceipt {
+            accepted_at: Instant("2026-01-15T12:00:00Z")
+        }
+    }
+}
+"#,
+        );
+        assert!(valid.is_empty(), "{valid:?}");
+
+        let unknown_operation = diagnostics(
+            r#"
+fixture bad_operation {
+    service ReminderMail: fake { send_message => transport.pre_dispatch_refusal }
+}
+"#,
+        );
+        assert!(unknown_operation.contains(&"SEM_UNKNOWN_NAME".to_owned()));
+
+        let undeclared_outcome = diagnostics(
+            r#"
+fixture bad_outcome {
+    service ReminderMail: fake { send_overdue_reminder => provider.unlisted }
+}
+"#,
+        );
+        assert!(undeclared_outcome.contains(&"SEM_UNKNOWN_NAME".to_owned()));
+
+        let wrong_response = diagnostics(
+            r#"
+fixture bad_response {
+    service ReminderMail: fake { send_overdue_reminder => accept ReminderMessage {} }
+}
+"#,
+        );
+        assert!(wrong_response.contains(&"TYPE_MISMATCH".to_owned()));
+
+        let secret_response = diagnostics(
+            r#"
+fixture secret_response {
+    config { mail_api_key: secret("fixture-key") }
+    service ReminderMail: fake {
+        send_overdue_reminder => accept ReminderReceipt { accepted_at: config.mail_api_key }
+    }
+}
+"#,
+        );
+        assert!(
+            secret_response.contains(&"SEM_UNKNOWN_NAME".to_owned())
+                || secret_response.contains(&"TYPE_MISMATCH".to_owned())
+                || secret_response.contains(&"TYPE_UNKNOWN_VALUE".to_owned()),
+            "{secret_response:?}"
+        );
+    }
+
+    #[test]
+    fn requires_service_fake_for_service_operation_reachable_from_authored_test() {
+        let (mut source, name) = service_source(None);
+        source.push_str(
+            r#"
+test "service calls require a fake" {
+    var result = call deliver(none)
+}
+"#,
+        );
+        let parsed = parse(Path::new(&name), &source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        let graph = build_semantic_graph(&[parsed]);
+        assert!(
+            graph
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "SEM_TEST_SERVICE_FAKE_REQUIRED" }),
+            "{:#?}",
+            graph.diagnostics
+        );
+    }
+
+    #[test]
+    fn rejects_dynamic_service_egress_with_a_stable_diagnostic() {
+        let (source, name) = service_source(Some((
+            "egress: mail.example.invalid:443",
+            "egress: runtime.mail_host",
+        )));
+        let parsed = parse(Path::new(&name), &source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+
+        let graph = build_semantic_graph(&[parsed]);
+        assert!(graph
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "SEM_SERVICE_EGRESS_INVALID"));
+        assert!(graph.external_effects.is_empty());
+    }
+
+    #[test]
+    fn rejects_service_contract_mutations_by_security_invariant() {
+        for (from, to, expected) in [
+            (
+                "sha256: \"c6a8b26a4b7ec82414df2e6608cb5eb6ca65f1767f7047bfbfedfc8f9441f83d\"",
+                "sha256: \"unreviewed\"",
+                "SEM_SERVICE_IMPORT_PIN_INVALID",
+            ),
+            (
+                "secret: config.mail_api_key",
+                "secret: config.untrusted_value",
+                "SEM_SERVICE_SECRET_SINK_INVALID",
+            ),
+            (
+                "idempotency_key: ReminderIntentId",
+                "idempotency_key: Uuid",
+                "SEM_SERVICE_IDEMPOTENCY_INVALID",
+            ),
+            (
+                "POST /v1/messages",
+                "POST /v1/other",
+                "SEM_SERVICE_CONTRACT_INVALID",
+            ),
+        ] {
+            let (source, name) = service_source(Some((from, to)));
+            let parsed = parse(Path::new(&name), &source);
+            assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+            let graph = build_semantic_graph(&[parsed]);
+            assert!(
+                graph
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == expected),
+                "{expected}: {:#?}",
+                graph.diagnostics
+            );
+            assert!(graph.external_effects.is_empty());
+        }
+    }
+
+    #[test]
+    fn rejects_source_request_and_receipt_schema_drift() {
+        for (from, to) in [
+            ("todo_title: TodoTitle", "todo_title: Text"),
+            ("    due_at: Instant?\n", ""),
+            ("accepted_at: Instant", "accepted_at: Text"),
+        ] {
+            let (source, name) = service_source(None);
+            let source = source.replace(from, to);
+            let parsed = parse(Path::new(&name), &source);
+            assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+            let graph = build_semantic_graph(&[parsed]);
+            assert!(
+                graph
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| { diagnostic.code == "SEM_SERVICE_CONTRACT_INVALID" }),
+                "{:#?}",
+                graph.diagnostics
+            );
+            assert!(graph.external_effects.is_empty());
+        }
+    }
+
+    #[test]
+    fn rejects_wire_compatible_but_non_nominal_idempotency_identity() {
+        let (source, name) = service_source(None);
+        let source = source.replacen(
+            "idempotency_key: ReminderIntentId",
+            "idempotency_key: Uuid",
+            1,
+        );
+        let parsed = parse(Path::new(&name), &source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        let graph = build_semantic_graph(&[parsed]);
+        assert!(
+            graph
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "SEM_SERVICE_CONTRACT_INVALID"),
+            "{:#?}",
+            graph.diagnostics
+        );
+        assert!(graph.external_effects.is_empty());
+    }
+
+    #[test]
+    fn rejects_a_non_secret_mail_credential_configuration_field() {
+        let (source, name) = service_source(None);
+        let source = source.replace("secret: true", "secret: false");
+        let parsed = parse(Path::new(&name), &source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        let graph = build_semantic_graph(&[parsed]);
+        assert!(
+            graph
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "SEM_SERVICE_SECRET_SINK_INVALID" }),
+            "{:#?}",
+            graph.diagnostics
+        );
+        assert!(graph.external_effects.is_empty());
+    }
+
+    #[test]
+    fn parses_the_pinned_mail_snapshot_and_rejects_unsupported_schema_keywords() {
+        let path = repository_root().join("tests/assurance/service-reference-mail-v0.1.json");
+        let bytes = fs::read(path).expect("pinned mail snapshot should be readable");
+        assert!(parse_supported_mail_snapshot(&bytes).is_some());
+
+        let mut document: JsonValue = serde_json::from_slice(&bytes).unwrap();
+        document["paths"]["/v1/messages"]["post"]["requestBody"]["content"]["application/json"]
+            ["schema"]["properties"]["todo_title"]["pattern"] = JsonValue::String(".*".to_owned());
+        let changed = serde_json::to_vec(&document).unwrap();
+        assert!(parse_supported_mail_snapshot(&changed).is_none());
+    }
+
+    #[test]
+    fn rejects_changed_imported_snapshot_bytes() {
+        let (source, _) = service_source(None);
+        let root = std::env::temp_dir().join(format!(
+            "jadpo-service-import-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be positive")
+                .as_nanos()
+        ));
+        let import = root.join("tests/assurance/service-reference-mail-v0.1.json");
+        fs::create_dir_all(import.parent().expect("import should have a parent"))
+            .expect("temporary service tree should be created");
+        fs::write(&import, b"changed contract bytes").expect("changed snapshot should be written");
+        let source_path = root.join("app.jadpo");
+        let parsed = parse(&source_path, &source);
+        let graph = build_semantic_graph(&[parsed]);
+        assert!(graph
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "SEM_SERVICE_IMPORT_DIGEST_MISMATCH" }));
+        assert!(graph.external_effects.is_empty());
+        fs::remove_dir_all(root).expect("temporary service tree should be removed");
+    }
+
+    #[test]
+    fn reports_missing_service_snapshot_without_falling_back_to_the_compiler_checkout() {
+        let (source, _) = service_source(None);
+        let root = std::env::temp_dir().join(format!(
+            "jadpo-service-missing-import-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be positive")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).expect("temporary service project should be created");
+        let parsed = parse(&root.join("app.jadpo"), &source);
+        let graph = build_semantic_graph(&[parsed]);
+        assert!(graph
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "SEM_SERVICE_IMPORT_NOT_FOUND" }));
+        assert!(graph.external_effects.is_empty());
+        fs::remove_dir_all(root).expect("temporary service project should be removed");
+    }
+
+    #[test]
+    fn does_not_resolve_service_imports_above_the_project_root() {
+        let (source, _) = service_source(None);
+        let root = std::env::temp_dir().join(format!(
+            "jadpo-service-import-boundary-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be positive")
+                .as_nanos()
+        ));
+        let project = root.join("project");
+        let outside_import = root.join("tests/assurance/service-reference-mail-v0.1.json");
+        fs::create_dir_all(project.join(".git")).expect("project marker should be created");
+        fs::create_dir_all(outside_import.parent().unwrap())
+            .expect("outside import directory should be created");
+        let repository_snapshot =
+            repository_root().join("tests/assurance/service-reference-mail-v0.1.json");
+        fs::copy(repository_snapshot, &outside_import).expect("pinned snapshot should be copied");
+
+        let parsed = parse(&project.join("app.jadpo"), &source);
+        let graph = build_semantic_graph(&[parsed]);
+        assert!(
+            graph
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "SEM_SERVICE_IMPORT_NOT_FOUND" }),
+            "{:#?}",
+            graph.diagnostics
+        );
+        assert!(graph.external_effects.is_empty());
+        fs::remove_dir_all(root).expect("temporary project tree should be removed");
+    }
+
+    #[test]
+    fn reports_a_missing_configuration_for_a_checked_service_credential() {
+        let (source, name) = service_source(None);
+        let source = source.replace(
+            "config TestConfiguration {\n    mail_api_key: Text { binding: \"MAIL_API_KEY\" secret: true }\n}\n\n",
+            "",
+        );
+        let parsed = parse(Path::new(&name), &source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        let graph = build_semantic_graph(&[parsed]);
+        assert!(graph
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "SEM_SERVICE_CONFIGURATION_MISSING" }));
+    }
+
+    #[test]
+    fn rejects_service_call_from_a_pure_function() {
+        let (source, name) = service_source(None);
+        let source = source
+            .replace("action deliver(mail: ReminderMessage)", "function deliver(mail: ReminderMessage)")
+            .replace(
+                "    fails ReminderRecipientRejected, ReminderTemporarilyUnavailable, Misconfigured, Unavailable, OutcomeUnknown\n",
+                "",
+            );
+        let parsed = parse(Path::new(&name), &source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+
+        let graph = build_semantic_graph(&[parsed]);
+        assert!(graph
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "SEM_SERVICE_CALL_CONTEXT"));
+        assert!(!graph.calls.iter().any(|edge| {
+            graph.nodes[edge.callee.0 as usize].kind == NodeKind::ServiceOperation
+        }));
+    }
+
+    #[test]
+    fn rejects_service_call_from_an_atomic_action() {
+        let (source, name) = service_source(None);
+        let source = source.replace(
+            "action deliver(mail: ReminderMessage)\n",
+            "action deliver(mail: ReminderMessage)\n    consistency: atomic\n",
+        );
+        let parsed = parse(Path::new(&name), &source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+
+        let graph = build_semantic_graph(&[parsed]);
+        assert!(graph
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "SEM_SERVICE_ATOMIC_EFFECT"));
+        assert!(!graph.calls.iter().any(|edge| {
+            graph.nodes[edge.callee.0 as usize].kind == NodeKind::ServiceOperation
+        }));
+    }
+
+    #[test]
+    fn rejects_service_dispatch_sharing_an_action_with_persistence_writes() {
+        let (source, name) = service_source(None);
+        let source = source
+            .replace(
+                "type ReminderIntentId = Uuid",
+                "entity Payment { amount: Int }\n\ntype ReminderIntentId = Uuid",
+            )
+            .replace(
+                "    return attempt ReminderMail.send_overdue_reminder(mail)",
+                "    var receipt = attempt ReminderMail.send_overdue_reminder(mail)\n    var payment = attempt create Payment { amount: 1 }\n    return receipt",
+            );
+        let parsed = parse(Path::new(&name), &source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+
+        let graph = build_semantic_graph(&[parsed]);
+        assert!(graph
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "SEM_SERVICE_ATOMIC_EFFECT"));
+        assert!(!graph.calls.iter().any(|edge| {
+            graph.nodes[edge.callee.0 as usize].kind == NodeKind::ServiceOperation
+        }));
+    }
+
+    #[test]
+    fn rejects_service_effects_reached_through_atomic_or_writing_actions() {
+        let (base, name) = service_source(None);
+        let delegated = base.replace(
+            "    return attempt ReminderMail.send_overdue_reminder(mail)",
+            "    return attempt send_mail(mail)",
+        );
+        let with_service_helper = delegated.replace(
+            "action deliver(mail: ReminderMessage)",
+            "action send_mail(mail: ReminderMessage)\n    fails ReminderRecipientRejected, ReminderTemporarilyUnavailable, Misconfigured, Unavailable, OutcomeUnknown\n    -> ReminderReceipt\n{\n    return attempt ReminderMail.send_overdue_reminder(mail)\n}\n\naction deliver(mail: ReminderMessage)",
+        );
+        let atomic_source = with_service_helper.replace(
+            "action deliver(mail: ReminderMessage)\n",
+            "action deliver(mail: ReminderMessage)\n    consistency: atomic\n",
+        );
+        let writing_source = with_service_helper
+            .replace(
+                "type ReminderIntentId = Uuid",
+                "entity Payment { amount: Int }\n\ntype ReminderIntentId = Uuid",
+            )
+            .replace(
+                "    return attempt send_mail(mail)",
+                "    var payment = attempt create Payment { amount: 1 }\n    return attempt send_mail(mail)",
+            );
+
+        for source in [atomic_source, writing_source] {
+            let parsed = parse(Path::new(&name), &source);
+            assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+            let graph = build_semantic_graph(&[parsed]);
+            assert!(graph
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "SEM_SERVICE_ATOMIC_EFFECT"));
+            assert!(!graph.calls.iter().any(|edge| {
+                graph.nodes[edge.callee.0 as usize].kind == NodeKind::ServiceOperation
+            }));
+        }
+    }
+
+    #[test]
+    fn indexes_entity_lifecycle_contract_components() {
+        let source = r#"
+enum UserStatus { active disabled }
+enum UserRole { self }
+entity User {
+    id: Uuid identity
+    status: UserStatus
+    deleted_at: Instant?
+    updated_at: Instant generated { on: create_or_change }
+    identity: id
+    persistence { store: primary role: authority }
+    policy {
+        UserRole.self: [read]
+        operations {
+            disable_user { UserRole.self: [update] }
+        }
+    }
+    lifecycle {
+        initial: { status: User.status(UserStatus.active) deleted_at: none }
+        visible when status == UserStatus.active
+        transition disable {
+            from: status == UserStatus.active
+            set: { status: User.status(UserStatus.disabled) }
+        }
+        purge after config.soft_delete_retention from deleted_at
+    }
+}
+"#;
+        let parsed = parse(Path::new("lifecycle.jadpo"), source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        let graph = build_semantic_graph(&[parsed.clone()]);
+        assert!(graph.diagnostics.is_empty(), "{:#?}", graph.diagnostics);
+        assert_eq!(
+            graph.node("User.lifecycle").unwrap().kind,
+            NodeKind::EntityLifecycle
+        );
+        assert_eq!(
+            graph.node("User.lifecycle.initial").unwrap().kind,
+            NodeKind::LifecycleInitial
+        );
+        assert_eq!(
+            graph.node("User.lifecycle.visibility").unwrap().kind,
+            NodeKind::LifecycleVisibility
+        );
+        assert_eq!(
+            graph
+                .node("User.lifecycle.transition.disable")
+                .unwrap()
+                .kind,
+            NodeKind::LifecycleTransition
+        );
+        assert_eq!(
+            graph.node("User.lifecycle.purge").unwrap().kind,
+            NodeKind::LifecyclePurge
+        );
+        assert_eq!(graph.node("User.policy").unwrap().kind, NodeKind::Policy);
+        assert_eq!(
+            graph.node("User.policy.rule.0").unwrap().kind,
+            NodeKind::PolicyRule
+        );
+        assert_eq!(
+            graph
+                .node("User.policy.operation.disable_user")
+                .unwrap()
+                .kind,
+            NodeKind::PolicyOperation
+        );
+        assert_eq!(
+            graph
+                .node("User.policy.operation.disable_user.rule.0")
+                .unwrap()
+                .kind,
+            NodeKind::PolicyRule
+        );
+        assert_eq!(
+            graph.node("User.updated_at.generated").unwrap().kind,
+            NodeKind::GeneratedField
+        );
+        for node in [
+            "User.lifecycle.transition.disable",
+            "User.policy.operation.disable_user",
+            "User.updated_at.generated",
+        ] {
+            let node = graph.node(node).unwrap();
+            assert_eq!(node.source, "lifecycle.jadpo");
+            assert!(node.range.end > node.range.start);
+        }
+        assert_eq!(graph, build_semantic_graph(&[parsed]));
+    }
+
+    #[test]
+    fn type_name_resolution_is_case_sensitive() {
+        let source = r#"
+type UserName = Text {}
+type ExactReference = UserName {}
+type CaseMismatch = Username {}
+"#;
+        let parsed = parse(Path::new("case-sensitive.jadpo"), source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+
+        let graph = build_semantic_graph(&[parsed]);
+        assert_eq!(graph.diagnostics.len(), 1, "{:#?}", graph.diagnostics);
+        assert_eq!(graph.diagnostics[0].code, "SEM_UNKNOWN_NAME");
+    }
+
+    #[test]
+    fn semantic_name_shapes_separate_types_from_runtime_names() {
+        for name in ["User", "User2", "URL2"] {
+            assert!(NameCase::UpperCamel.accepts(name), "{name}");
+        }
+        for name in ["user", "user2", "user_name"] {
+            assert!(NameCase::LowerSnake.accepts(name), "{name}");
+        }
+
+        for name in ["user", "User_Name", "UserName_", "_User"] {
+            assert!(!NameCase::UpperCamel.accepts(name), "{name}");
+        }
+        for name in ["User", "_name", "user__name", "user_name_", "userName"] {
+            assert!(!NameCase::LowerSnake.accepts(name), "{name}");
+        }
     }
 
     #[test]

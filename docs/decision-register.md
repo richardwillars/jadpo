@@ -1,12 +1,168 @@
 # Decision register
 
 **Status:** current design authority  
-**Last consolidated:** 2026-09-27
+**Last consolidated:** 2026-10-02
 
 This register separates decisions from attractive ideas. Changing an accepted
 item should update the charter, affected specifications, and examples.
 
 ## 1. Accepted decisions
+
+### Completion projection after origin revocation — 2026-10-05
+
+The owner selected continuing narrowly scoped, compiler-controlled completion-view
+maintenance for an already committed Todo change after its original actor loses
+access. The worker must remain authorised; verified source scope/incarnation,
+lifecycle, visibility and disclosure checks still apply. This prevents revocation
+alone from leaving an otherwise eligible derived view stale.
+
+This selects the [bounded projection direction](event-model.md#first-system-reaction-protocol-completion-projection),
+not a generic system capability or concrete policy grant. Queued user requests,
+provider effects and authored projection writes gain no exception. Exact checked
+declaration/IR mapping and protected approval binding, incarnation/recovery proofs
+and existing golden/contract gates remain prerequisites. Initial view coverage is
+partial; this decision grants no bootstrap/rebuild authority or complete-view claim.
+Retaining the origin check and requiring separate recovery was considered and not
+selected for this exact maintenance. Independent candidate corrections are recorded
+in the [review evidence](../tests/validation/event-design-independent-review.json).
+
+### Naming and principal direction — 2026-10-04
+
+The owner explicitly locked in `UpperCamelCase` for named types/declarative
+contracts and `lower_snake_case` for runtime values, fields, parameters, variants
+and operations. Preserve the existing declaration family, including uppercase
+service/application names and current failure/configuration forms. Keep general
+`type Name = Base { ... }` syntax alongside specialised keyword declarations.
+Uniform lowercase and lowerCamelCase migration are not selected. This reaffirms
+the existing naming contract rather than introducing another casing scheme.
+
+The owner also selected an unnamed singleton `principal { ... }` block, with
+compiler-defined `Principal` and runtime `current_principal`, eliminating the
+redundant authored name/selector. Current authentication invariants remain;
+arbitrary construction cannot create trusted identity. This successor syntax
+is selected for RM-222/RM-223 review/migration, not implemented or evidence of
+new compiler conformance. Preserve frozen current grammar and golden sources.
+The [owning naming addendum](naming-and-qualification.md#10-naming-reaffirmation-and-principal-simplification--2026-10-04)
+records rationale, rejected alternatives and exact scope.
+
+### Delimited query operation direction — 2026-10-04
+
+The owner selected one query operation with details in its block:
+`attempt query(Todo) { cardinality: required ... }`. Keep existing
+`required`/`optional`/`many` semantics, typed failure bindings, checked predicates,
+freshness, policy and bounded includes/pagination. Named queries remain ordinary
+calls such as `attempt Todo.by_id(input.id)`. The alternative
+`query_required`/`query_optional`/`query_many` intrinsic family is not selected.
+Semicolons are not required. The
+[successor syntax inventory](syntax.md#22-successor-syntax-review--2026-10-04)
+and [candidate grammar delta](grammar-v0.1.md#18-successor-grammar-candidate--2026-10-04)
+own details. This is a selected source direction, not compiler implementation or
+an independent public-language review; RM-222/RM-223 retain those gates.
+
+### Jadpo name and canonical domain — 2026-09-25
+
+The owner adopted **Jadpo** and **jadpo.dev**, with `.jadpo` source files and the
+`jadpo` CLI. This supersedes the earlier advice to postpone naming; it does not
+establish the product thesis. The “Rename language to Jadpo” chat reports the
+repository migration and verification complete; domain ownership/DNS/hosting
+remain external evidence under RM-1005. Buying `jadpo.com` was an optional later
+possibility, never a prerequisite. See the [source reconciliation](conversation-coverage.md#4-roadmap-reconciliation--2026-10-01).
+
+### Delivery defaults and planning directions — 2026-10-01
+
+The owner selected JSON cursor transport with efficient multi-database pagination,
+entity-owned lifecycle enforcement, a simple explicit uncertain-write response,
+a local HTTP reference mail provider, and database-agnostic durable jobs without
+Cloudflare or another hosted queue dependency. Safe transient-failure retries
+default on, with bounded exponential backoff and jitter; uncertainty and
+non-repeatable effects remain excluded. The compiler/runtime owns these defaults
+so application-writing LLMs need fewer architectural decisions. See the
+[task plans and owner answers](work-plans/golden-delivery-planning.md#checkpoint)
+for scope, acceptance checks and remaining contract/implementation work. These
+are accepted directions, not claims that the runtime or formal contracts are complete.
+
+### Lifecycle and reminder service successors — 2026-10-02
+
+The owner selected clause-bound compiler retention maintenance, limited to
+already-soft-deleted, expired rows in deterministic batches of at most 500,
+without general authored deletion authority. The separate POLICY-D30-M1
+addendum preserves the historic D01–D43 approval pin. The owner also selected
+a new reminder for each changed due-date schedule, using a fresh durable intent
+UUID stable across attempts and reconciliation. The lifetime Todo key remains
+historical pressure evidence.
+
+Independent correction reviews accepted [DATA-007](lifecycle-plan.md) and
+[SERVICE-001](service-plan.md) for contract freeze. The latter includes
+revision-guarded completion, held successor dispatch while an older intent is
+unknown, a narrow policy identity amendment, matching request/receipt keys and
+compiler observation time distinct from provider evidence. RM-205 and RM-301
+are complete decision tasks; compiler, HTTP/job and full golden execution, plus
+protected P10R approval, remain separate gates. No human-owned pressure policy
+bytes or general application permissions are changed by these records.
+
+### Durable delivery contract — 2026-10-04
+
+The owner-approved database-backed durable-job directions are now frozen as
+[ASYNC-001](async-plan.md), after the
+[independent transaction/effect review](../tests/validation/rm305-independent-contract-review.json).
+The contract uses the existing SQLite/PostgreSQL authority database, atomic
+mutation plus intent, fenced claims, fixed UTC/coalesced scheduling, per-key
+FIFO, finite cumulative budgets and no blind replay after a possible effect.
+This semantic decision does not establish executable conformance: all 18 traces
+remain unexecuted until RM-306/RM-307, and RM-108 still supplies the golden limits
+and integration evidence. The existing protected policy decisions are unchanged.
+
+### Golden reminder authority and retry limits — 2026-10-04
+
+The owner accepted both recommended RM-108 choices: a dedicated, revocable
+reminder-service role, and at most **3 total scheduled invocations within 1 hour**
+of the first valid claim for known-no-effect failures. Each invocation keeps
+SERVICE-001's 3 provider attempts / 30 seconds. Unknown outcomes never auto-resend;
+schedule activations, lease recovery and restarts do not reset either budget.
+
+The role permits only currently reminder-eligible Todo reads, active owners'
+recipient details, ReminderMail dispatch, and the matching schedule revision's
+`reminder_sent_at` write. It does not grant general update/delete, impersonate
+owners or bypass policy because a caller is generated/internal. Existing checked
+service authentication and live admission-time authority checks remain required.
+See the [owning implementation plan](work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders).
+This accepts the scope, not implemented permissions or golden conformance;
+compiler/runtime and independent policy review gates remain open.
+
+### Golden self-disable field-policy repair — 2026-10-04
+
+After independent review exposed that explicit empty-field denial blocked the
+intended self-disable transition, the owner explicitly approved adding only
+`UserRole.self: [update]` to the migrated User's `status` and `disabled_at`
+field policies. The existing self-scoped `disable_user` named-operation update
+exception remains unchanged. No field read, general User update, owner
+impersonation or generated/lifecycle policy bypass is granted. Lifecycle ownership
+still forbids ordinary `set` and `patch` writes. This narrow source repair does
+not rewrite the frozen POLICY-D01–D43 matrix or approve reminder-worker authority.
+See the [owning checkpoint](work-plans/golden-delivery-planning.md#checkpoint)
+for current tests and independent correction-review status.
+
+### Keyword names and canonical formatting — 2026-10-01
+
+During the parallel roadmap planning assessment, the owner selected:
+
+- **RM-201:** reserve control-flow/declaration words; permit other language words
+  as names only in explicit safe contexts supporting both declaration and use.
+  This excludes broad keyword-as-name parsing and prevents unreadable bindings.
+  The exact matrix and compiler/diagnostic changes remain implementation work;
+  see the [naming policy direction](naming-and-qualification.md#9-reserved-word-policy-direction--2026-10-01).
+- **RM-202/RM-203:** derive canonical layout from syntax, so equivalent parsed
+  code gets identical output regardless of authored non-comment line breaks.
+  Preserve comment text, literal bytes, token semantics and comment attachment.
+  Preserving authored breaks was considered and not selected. The
+  [formatter contract](formatter-rules.md#canonical-output-rules) now records
+  the target; the existing implementation still preserves some source breaks.
+
+These answers authorise planning/contract reconciliation in this pass, not
+implementation or a claim that the associated tasks are complete. Frozen naming
+section-2 bytes and historical formatter evidence are preserved. A whitespace
+change that alters parsing (for example a line-sensitive field modifier) is not
+an equivalent-input test; canonical output must preserve the original syntax tree.
 
 ### Golden fresh-authentication query accounting — 2026-09-30
 
@@ -18,6 +174,29 @@ separate counters; combined queries count once in the principal category.
 Business queries are separate. This clarification leaves AUTH-001's signed,
 bounded, immediate and fresh-authority security guarantees unchanged. See the
 [case-by-case reconciliation](../examples/golden-todo/REVIEW.md#2026-09-30-authentication-reconciliation).
+
+### Golden self-service email projection — 2026-10-02
+
+For RM-107, keep `User.email` provisioning-only and omit it from
+`GET /users/{user_id}/todos`, including when a provider token carries an email
+claim. The human-owned policy remains unchanged; the owner-authorised acceptance
+revision changes AUTH-007 and REL-001 and keeps `UserWithTodos` limited to
+`user_id` and the bounded `TodoView` list. Its predecessor is preserved at
+[`acceptance-before-rm107-email-decision.json`](../tests/validation/golden-baseline/acceptance-before-rm107-email-decision.json),
+with hashes and scope recorded in the [review log](../examples/golden-todo/REVIEW.md#2026-10-02-owner-authorised-userwithtodos-email-revision).
+The route and child projection remain unimplemented and the cases remain
+unexecuted.
+
+### Service-key provisioning authority — 2026-10-02
+
+The owner chose to keep service-key creation at the trusted host provisioning
+boundary with one-time reveal to its authorised sink. Authored Jadpo source may
+declare the service validator and proposed exchange transport, but does not gain
+a business-callable mint operation or a source-declared administration endpoint.
+This resolves RM-104's issuance-authority question without changing AUTH-P5's
+creation, rotation, expiry and revocation requirements. The exchange syntax and
+HTTP lowering still require independent language/security review and runtime
+evidence; see the [RM-104 handoff](work-plans/golden-delivery-planning.md#rm-104-strengthened-handoff).
 
 ### Product and philosophy
 
@@ -31,7 +210,7 @@ bounded, immediate and fresh-authority security guarantees unchanged. See the
 - The optimisation target is minimum ambiguity per token, not minimum
   characters.
 - Common constructs should have one canonical form.
-- Do not name the language during the hypothesis phase.
+- The earlier naming deferral was superseded by the owner’s Jadpo decision above.
 
 ### Bindings and data
 
@@ -383,6 +562,11 @@ bounded, immediate and fresh-authority security guarantees unchanged. See the
   `sha256:66e7a8f586b62ed92c3a7220f524e25aee5808ca60b8504fb3c2d225ef2d68bd`;
   POLICY-P0–P6 may implement but may not silently change its scoped-role,
   automatic-enforcement, validation, database, output, or approval boundaries.
+- The owner's 2026-10-02 narrow retention-maintenance direction is a separate
+  [POLICY-D30-M1 contract addendum](policy-plan.md#19-retention-maintenance-addendum--policy-d30-m1),
+  outside the unchanged section-2 D01–D43 baseline. Its own row digest and
+  independent DATA-007 correction review establish contract freeze; the historic policy
+  digest does not approve the new maintenance plane.
 - Generated target code is not normal developer-facing source.
 - `build/` is compiler-owned disposable output and is excluded from authored
   `.jadpo` discovery.
@@ -497,6 +681,38 @@ bounded, immediate and fresh-authority security guarantees unchanged. See the
 
 ## 2. Provisional directions
 
+### Enforced component messaging and application graphs — 2026-10-04
+
+The owner selected planning for one compiler-enforced interaction model:
+logical components own effects, cross-component behaviour uses typed messages,
+subscribers can handle multiple events and use safe defaults, and required facts
+are tied to managed transitions rather than remembered calls. Imports cannot
+grant effect authority; private local actions across files and pure shared
+computation remain useful. Prefer stateful subscribers as the sole authored
+coordination model, reconciled with WORKFLOW-001 rather than adding another DSL.
+
+Hierarchical graphs should expose documentation, data/control dependencies,
+actual execution and safe diagnostic/performance evidence to UI and LLMs.
+Persistent logical identity and exact immutable deployed artifacts must coexist
+so production incidents remain understandable across divergent branches and
+graph-changing fixes. Existing failure disclosure channels remain authoritative.
+
+Language-wide syntax review comes first. The later
+[naming/principal decision](#naming-and-principal-direction--2026-10-04)
+settles those directions. The owner prefers existing `attempt` plus explicit
+`emit_event(...)` and specialised typed event declarations; postfix propagation
+and separate command/fact APIs are not the preferred authoring direction.
+The [single-query-operation decision](#delimited-query-operation-direction--2026-10-04)
+now selects that syntax direction. Full grammar, delivery semantics and
+compatibility still need review. See the [event candidate](event-model.md) and
+[identity/incident artifact candidate](generated-artifacts.md#semantic-identity-and-incident-artifact-candidate--2026-10-04).
+Keep concepts/defaults simple and preserve the
+active golden delivery and frozen ASYNC-001 contracts. These are planning
+directions, not accepted amendments or implementation conformance.
+See [assessed plans, context and unresolved limits](work-plans/roadmap-assessment.md#syntax-component-messaging-and-graph-intake--2026-10-04),
+RM-222/RM-309/RM-219, conditional successors RM-223/RM-310–RM-312 and
+[RM-1108's existing E11 plan](work-plans/developer-console-mcp.md#hierarchical-application-graph-plan--2026-10-04).
+
 These are recommended but must survive the golden applications:
 - braces, no required semicolons, and canonical non-semantic formatting;
 - explicit domain primitive types such as `Email`, `Money`, `Percentage`,
@@ -606,7 +822,7 @@ These are recommended but must survive the golden applications:
   can invalidate position-based iterative edits.
 - **Generated TypeScript as a debugging or review surface.** Rejected.
 - **Native compilation as the first proof.** Rejected as solving the wrong risk.
-- **A language name now.** Rejected until the hypothesis survives.
+- **Premature naming.** Originally discouraged; superseded by the explicit Jadpo naming decision above. The caution against treating a name as product validation remains.
 
 ## 4. Open language questions
 

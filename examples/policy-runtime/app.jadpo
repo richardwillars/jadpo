@@ -145,7 +145,7 @@ entity Article {
     title: Text
     billing_reference: Text? {
         policy {
-            CompanyRole.owner: [read, update]
+            CompanyRole.owner: [create, read, update]
         }
     }
 

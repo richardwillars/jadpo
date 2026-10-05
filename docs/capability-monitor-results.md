@@ -10,12 +10,15 @@ the route input, starts a fresh application guest, accepts only the fixture's
 declared `entity.read`/`entity.update` sequence, reconstructs the pinned SQL
 plan, applies current row and field policy, redacts restricted fields, and binds
 the guest completion to the row returned by SQL. It controls begin/commit/rollback.
-The application computation runs once. The existing SQLite adapter is reused.
+The application computation runs once. The existing SQLite driver and transaction
+semantics are reused; the monitor keeps a fixture-local adapter so its optional
+statement-cache probe cannot change the frozen capability-host adapter.
 
 The prototype does not let a guest send SQL or transaction commands. A hostile
 guest attempting raw SQL, commit, an unauthorized plan, a forged principal, or a
 forged final projection is rejected; writes remain unchanged and transactions are
-rolled back. Nine tests pass with 34 assertions, including the typed ABI frame.
+rolled back. Ten tests pass with 39 assertions, including the typed ABI frame and
+the cache-enabled revocation/rollback path.
 The fixture also checks
 revocation before guest entry, ownership changes during a request, fresh guest
 memory and private-field redaction.
@@ -28,6 +31,18 @@ adapter, while leaving the generator fixture-local until compiler integration
 is promoted. The monitor does not qualify instruction-fuel, memory-exhaustion
 or disconnect cancellation isolation.
 
+## Shared code and adapter boundary
+
+The generated application guest, typed status/request/operation ABI, route
+manifest, input/output validators, policy predicates, redaction rules, failure
+mapping and transaction decision protocol are shared across the monitor's native
+and WASM-facing experiment paths. The target adapters still own SQLite calls,
+transaction handles, HTTP framing, guest lifecycle and driver-error conversion.
+The monitor's trusted Rust core checks the same generated metadata, but it does
+not eliminate those adapter responsibilities or make Bun-hosted WASM equivalent
+to workerd. The prepared-statement cache probe added only a small local adapter
+variant and remains disabled by default.
+
 ## Measurements
 
 Three fresh-process repetitions used WAL, twelve clients, 128-request blocks and
@@ -38,17 +53,16 @@ are attribution probes, and their full distributions are retained in
 
 | Workload | Native | Raw WASM | Scoped WASM | Single-pass monitor |
 | --- | ---: | ---: | ---: | ---: |
-| Missing auth req/s | 31,478 | 27,946 | 29,790 | 28,150 |
-| Authorized read req/s | 10,868 | 7,427 | 1,203 | 1,235 |
-| Denied pair req/s | 6,239 | 4,875 | 1,001 | 1,105 |
+| Missing auth req/s | 31,338 | 31,597 | 28,924 | 32,068 |
+| Authorized read req/s | 17,907 | 7,792 | 1,434 | 1,577 |
+| Denied pair req/s | 10,949 | 4,950 | 1,248 | 1,366 |
 
-CPU microseconds/request were 95.5 / 217.0 / 1,822.9 / 1,666.7 for authorized
-reads and 161.5 / 240.9 / 1,744.8 / 1,510.4 for denied pairs in the same target
-order. This removes the reference application pass and saves about 9% CPU for
-reads and 13% for denied pairs in this host, while throughput improves only
-slightly. Fresh guest construction, JSON envelopes and Bun WASM scheduling still
-dominate. The result supports a performance roadmap; it is not yet a performance
-win large enough for production adoption.
+CPU microseconds/request were 56.9 / 204.2 / 1,503.9 / 1,308.6 for authorized
+reads and 95.2 / 239.4 / 1,458.3 / 1,280.4 for denied pairs in the same target
+order. The monitor saves about 13% CPU for reads and 12% for denied pairs versus
+scoped WASM in this rerun, while throughput improves about 10% and 9%. Fresh
+guest construction and Bun WASM scheduling still dominate. These are short
+attribution cells, not a production capacity claim.
 
 The first ABI optimization adds typed status/request/operation/capability fields
 and reuses adapter buffers while leaving application payloads as bounded JSON.
@@ -62,6 +76,10 @@ The append-only campaign ledger and resume checkpoint are in
 An in-process confirmation of the real auth/policy/SQLite path is retained in
 `experiments/capability-monitor/in-process-bench-results.json`; it is not an
 HTTP capacity result.
+The opt-in prepared-statement cache probe is retained in
+`experiments/capability-monitor/sqlite-cache-bench-results.json`: six paired
+samples improved the in-process cell by 1.8% throughput and 0.7% CPU, which is
+below the acceptance threshold and does not justify enabling it by default.
 
 ## Performance roadmap and gates
 
@@ -78,6 +96,11 @@ change:
    and cross-principal isolation. Fresh instances remain the reference guarantee.
 4. Measure SQLite scheduling and transaction overhead separately. Do not reduce
    freshness, validation, redaction or commit gating to improve a chart.
+
+The prepared-statement cache probe was the permitted local adapter candidate for
+this pass. Its 1.8% in-process gain did not meet the 2× gate, so no further
+optimization candidate is accepted without a workerd or native end-to-end
+campaign that can attribute the remaining cost.
 
 The prototype target is at least **2× the scoped-WASM authorized-read throughput**
 with no conformance regression. Failure to reach that gate keeps native as the

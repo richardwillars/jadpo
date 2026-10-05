@@ -4,12 +4,19 @@ use jadpo_semantic::checked_manifest_json;
 use jadpo_syntax::{
     CallableKind, ConfigDeclaration, Constraint, ConstraintKind, Declaration, EnumDeclaration,
     FailureDeclaration, FieldDeclaration, HttpMethod, LiteralKind, PersistenceModifier,
-    RecordDeclaration, RecordKind, TypeDeclaration, TypeReference,
+    RecordDeclaration, RecordKind, RouteSuccess, TypeDeclaration, TypeReference,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+
+mod approval;
+mod artifact_provenance;
+pub use approval::{
+    approval_text, derive_approval_subject, derive_approval_subject_with_state_pin,
+    validate_approval_export,
+};
 
 static OUTPUT_REVISION: AtomicU64 = AtomicU64::new(0);
 
@@ -20,6 +27,20 @@ pub struct GeneratedArtifact {
 }
 
 pub fn derive_artifacts(project_path: &Path, project: &AnalyzedProject) -> Vec<GeneratedArtifact> {
+    let subject = derive_approval_subject(project_path, project, None, None, None)
+        .expect("artifact generation requires a checked project");
+    let mut outputs = derive_non_approval_artifacts(project_path, project);
+    // Preserve the established build order while sharing the exact no-approval
+    // producer with fresh output pinning. Approval cannot hash itself.
+    outputs.insert(8, artifact("approval/subject.json", subject.clone()));
+    outputs.insert(9, artifact("approval/subject.txt", approval_text(&subject)));
+    outputs
+}
+
+fn derive_non_approval_artifacts(
+    project_path: &Path,
+    project: &AnalyzedProject,
+) -> Vec<GeneratedArtifact> {
     let model = ArtifactModel::new(project);
     let metadata = normalized_manifest(project_path, project);
     let mut outputs = vec![
@@ -51,24 +72,21 @@ pub fn derive_artifacts(project_path: &Path, project: &AnalyzedProject) -> Vec<G
             model.authentication_audit_json(project_path),
         ));
     }
+    if !project.semantics.external_effects.is_empty() {
+        outputs.push(artifact(
+            "audit/services.json",
+            model.service_audit_json(project_path),
+        ));
+    }
+    if !project.failures.jobs.is_empty() {
+        outputs.push(artifact("audit/jobs.json", model.job_audit_json()));
+    }
     outputs
 }
 
 fn normalized_manifest(project_path: &Path, project: &AnalyzedProject) -> String {
-    let project_root = if project_path.is_dir() {
-        project_path
-    } else {
-        project_path.parent().unwrap_or_else(|| Path::new("."))
-    };
-    let mut graph = project.semantics.clone();
-    for node in &mut graph.nodes {
-        node.source = normalized_source(project_root, &node.source);
-    }
-    let mut typing = project.typing.clone();
-    for expression in &mut typing.expressions {
-        expression.source = normalized_source(project_root, &expression.source);
-    }
-    let graph_json = checked_manifest_json(&graph, &typing, &project.failures);
+    let project_root = project_root(project_path);
+    let graph_json = normalized_graph_json(project_path, project);
     let operations = project
         .syntax
         .sources
@@ -96,7 +114,46 @@ fn normalized_manifest(project_path: &Path, project: &AnalyzedProject) -> String
     )
 }
 
-fn normalized_source(project_root: &Path, source: &str) -> String {
+pub(super) fn project_root(project_path: &Path) -> &Path {
+    if project_path.is_dir() {
+        project_path
+    } else {
+        project_path.parent().unwrap_or_else(|| Path::new("."))
+    }
+}
+
+fn normalized_graph_json(project_path: &Path, project: &AnalyzedProject) -> String {
+    let project_root = project_root(project_path);
+    let mut graph = project.semantics.clone();
+    for node in &mut graph.nodes {
+        node.source = normalized_source(project_root, &node.source);
+    }
+    for effect in &mut graph.external_effects {
+        effect.source = normalized_source(project_root, &effect.source);
+    }
+    let mut typing = project.typing.clone();
+    for expression in &mut typing.expressions {
+        expression.source = normalized_source(project_root, &expression.source);
+    }
+    for read in &mut typing.clock_reads {
+        read.source = normalized_source(project_root, &read.source);
+    }
+    let manifest = checked_manifest_json(&graph, &typing, &project.failures);
+    if project.delivery_model().bindings().is_empty() {
+        return manifest;
+    }
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&manifest).expect("checked manifest JSON");
+    manifest["delivery_bindings"] = serde_json::json!(project
+        .delivery_model()
+        .bindings()
+        .iter()
+        .map(|binding| binding.source_facts())
+        .collect::<Vec<_>>());
+    manifest.to_string()
+}
+
+pub(super) fn normalized_source(project_root: &Path, source: &str) -> String {
     if source.starts_with('<') {
         return source.to_owned();
     }
@@ -191,8 +248,12 @@ struct RouteModel {
     public: bool,
     fresh_authority: bool,
     path_fields: Vec<(String, String)>,
+    query: Option<String>,
+    headers: Vec<(String, String, String, bool)>,
     input: Option<String>,
     output: Option<String>,
+    success: RouteSuccess,
+    deadline_ms: Option<u64>,
     callable: Option<String>,
     behavior: &'static str,
 }
@@ -208,6 +269,57 @@ struct CallableModel {
 }
 
 impl<'project> ArtifactModel<'project> {
+    fn job_audit_json(&self) -> String {
+        let jobs = self.project.syntax.sources.iter().flat_map(|source| {
+            source.file.declarations.iter().filter(|declaration| matches!(declaration, Declaration::Job(_))).map(|declaration| {
+                let Declaration::Job(job) = declaration else { unreachable!() };
+                // Explicit union: delivery never enters ordinary typing.jobs.
+                let delivery = self.project.delivery_model().bindings().iter().find(|entry| entry.schedule().job == job.name.text);
+                let contract = match delivery {
+                    Some(delivery) => delivery.run_failure_contract(),
+                    None => self.project.failures.jobs.iter().find(|entry| entry.job == job.name.text).expect("checked ordinary job failure completeness"),
+                };
+                let binding = match delivery {
+                    Some(delivery) => delivery.schedule(),
+                    None => self.project.typing.jobs.iter().find(|entry| entry.job == job.name.text).expect("checked ordinary job completeness"),
+                };
+                let mut reachable = BTreeSet::from([job.name.text.clone()]);
+                loop {
+                    let old_len = reachable.len();
+                    for edge in &self.project.semantics.calls {
+                        let caller = &self.project.semantics.nodes[edge.caller.0 as usize].name;
+                        if reachable.contains(caller) {
+                            reachable.insert(self.project.semantics.nodes[edge.callee.0 as usize].name.clone());
+                        }
+                    }
+                    if old_len == reachable.len() { break; }
+                }
+                let effects = self.project.semantics.external_effects.iter().filter_map(|effect| {
+                    let name = format!("{}.{}", effect.service, effect.operation);
+                    reachable.contains(&name).then_some(name)
+                }).collect::<Vec<_>>();
+                let mut row = serde_json::json!({
+                    "job": job.name.text, "interval_ms": binding.interval_ms,
+                    "concurrency": "singleton", "retry_wakeup": "next_schedule",
+                    "run": contract.callee, "argument": {"constructor": binding.snapshot_type, "value": "clock.now"}, "output": "Unit",
+                    "constructor_validation_proof": binding.constructor_proof,
+                    "failures": contract.failures, "may_suspend": contract.may_suspend,
+                    "reachable_names": reachable, "external_service_effects": effects,
+                    "effect_evidence": "static_may_call_not_execution_or_authority",
+                    "durable_failure_dispositions": "pending_checked_worker_binding",
+                    "execution_profile": null, "runtime_lowering_supported": false
+                });
+                if let Some(delivery) = delivery {
+                    row["delivery"] = delivery.source_facts();
+                    row["delivery_service_effects"] = serde_json::json!([delivery.source_facts()["service_contract"]["operation"]]);
+                    row["durable_failure_dispositions"] = serde_json::json!("pending_generated_worker_conformance");
+                }
+                row
+            })
+        }).collect::<Vec<_>>();
+        serde_json::json!({"schema_version": if self.project.delivery_model().bindings().is_empty() { 1 } else { 2 }, "scope": "checked_nonexecuting_schedule_entries", "jobs": jobs}).to_string()
+    }
+
     fn new(project: &'project AnalyzedProject) -> Self {
         let mut types = BTreeMap::new();
         let mut enums = BTreeMap::new();
@@ -297,8 +409,25 @@ impl<'project> ArtifactModel<'project> {
                                     (field.name.text.clone(), type_name(&field.field_type))
                                 })
                                 .collect(),
+                            query: declaration.query.as_ref().map(type_name),
+                            headers: declaration
+                                .headers
+                                .iter()
+                                .map(|header| {
+                                    (
+                                        header.name.text.clone(),
+                                        unquote(&header.wire_name.text).to_owned(),
+                                        type_name(&header.field_type),
+                                        header.optional,
+                                    )
+                                })
+                                .collect(),
                             input: declaration.input.as_ref().map(type_name),
                             output: declaration.output.as_ref().map(type_name),
+                            success: declaration.success,
+                            deadline_ms: declaration.deadline.as_ref().map(|deadline| {
+                                deadline.milliseconds().expect("checked route deadline")
+                            }),
                             callable: declaration.run.as_ref().map(|run| {
                                 run.callee
                                     .path
@@ -331,12 +460,33 @@ impl<'project> ArtifactModel<'project> {
                             }
                         }
                     }
+                    Declaration::AuthenticationStrategy(declaration) => {
+                        if let Some(exchange) = &declaration.exchange {
+                            let path = unquote(&exchange.path.text).to_owned();
+                            routes.push(RouteModel {
+                                key: format!("POST {path}"),
+                                method: "POST",
+                                path,
+                                public: false,
+                                fresh_authority: false,
+                                path_fields: Vec::new(),
+                                query: None,
+                                headers: Vec::new(),
+                                input: None,
+                                output: None,
+                                success: RouteSuccess::Ok,
+                                deadline_ms: None,
+                                callable: None,
+                                behavior: "service_credential_exchange",
+                            });
+                        }
+                    }
                     Declaration::Application(_)
                     | Declaration::Locales(_)
-                    | Declaration::AuthenticationStrategy(_)
                     | Declaration::Principal(_)
                     | Declaration::Fixture(_)
-                    | Declaration::Test(_) => {}
+                    | Declaration::Test(_)
+                    | Declaration::Job(_) => {}
                 }
             }
         }
@@ -507,8 +657,17 @@ impl<'project> ArtifactModel<'project> {
                         json_string(field_type)
                     )
                 });
+                let headers = route.headers.iter().map(|(name, wire_name, field_type, optional)| {
+                    format!(
+                        "{{\"name\":{},\"wire_name\":{},\"type\":{},\"optional\":{}}}",
+                        json_string(name),
+                        json_string(wire_name),
+                        json_string(field_type),
+                        optional,
+                    )
+                });
                 format!(
-                    "{{\"route\":{},\"method\":{},\"path\":{},\"auth\":{},\"path_fields\":{},\"input\":{},\"output\":{},\"behavior\":{},\"callable\":{},\"failures\":{}}}",
+                    "{{\"route\":{},\"method\":{},\"path\":{},\"auth\":{},\"path_fields\":{},\"query\":{},\"headers\":{},\"input\":{},\"output\":{},\"success\":{{\"kind\":{},\"http_status\":{}}},\"deadline_ms\":{},\"behavior\":{},\"callable\":{},\"failures\":{},\"operational_boundary\":\"bun_http\",\"operational_failures\":{}}}",
                     json_string(&route.key),
                     json_string(route.method),
                     json_string(&route.path),
@@ -520,8 +679,24 @@ impl<'project> ArtifactModel<'project> {
                         "authenticated_default"
                     }),
                     json_array(path_fields),
+                    json_optional_string(route.query.as_deref()),
+                    json_array(headers),
                     json_optional_string(route.input.as_deref()),
                     json_optional_string(route.output.as_deref()),
+                    json_string(match route.success {
+                        RouteSuccess::Ok => "ok",
+                        RouteSuccess::Created => "created",
+                        RouteSuccess::NoContent => "no_content",
+                    }),
+                    match route.success {
+                        RouteSuccess::Ok => 200,
+                        RouteSuccess::Created => 201,
+                        RouteSuccess::NoContent => 204,
+                    },
+                    route.deadline_ms.map_or_else(
+                        || "null".to_owned(),
+                        |milliseconds| milliseconds.to_string(),
+                    ),
                     json_string(route.behavior),
                     json_optional_string(route.callable.as_deref()),
                     json_array(failures.into_iter().map(|failure| {
@@ -531,10 +706,11 @@ impl<'project> ArtifactModel<'project> {
                             json_string(failure.code),
                             failure.http_status
                         )
-                    }))
+                    })),
+                    bun_operational_failures_json()
                 )
             });
-        format!("{{\"schema_version\":1,\"routes\":{}}}", json_array(routes))
+        format!("{{\"schema_version\":2,\"routes\":{}}}", json_array(routes))
     }
 
     fn callables_json(&self) -> String {
@@ -576,7 +752,7 @@ impl<'project> ArtifactModel<'project> {
                 json_string(&contract.name),
                 json_string(&contract.code),
                 json_string(&contract.kind),
-                contract.http_status,
+                contract.http_status.map_or_else(|| "null".to_owned(), |status| status.to_string()),
                 json_optional_string(contract.message.as_deref()),
                 json_string_array(contract.public_fields.iter().map(String::as_str)),
                 json_string_array(contract.internal_fields.iter().map(String::as_str)),
@@ -584,8 +760,8 @@ impl<'project> ArtifactModel<'project> {
             )
         });
         format!(
-            "{{\"schema_version\":1,\"policy\":{{\"closed_public_payloads\":true,\"internal_context_disclosed\":false}},\"failures\":{}}}",
-            json_array(contracts)
+            "{{\"schema_version\":2,\"policy\":{{\"closed_public_payloads\":true,\"internal_context_disclosed\":false}},\"failures\":{},\"operational_boundary\":\"bun_http\",\"operational_failures\":{}}}",
+            json_array(contracts), bun_operational_failures_json()
         )
     }
 
@@ -652,6 +828,62 @@ impl<'project> ArtifactModel<'project> {
         )
     }
 
+    fn service_audit_json(&self, project_path: &Path) -> String {
+        let effects = self
+            .project
+            .semantics
+            .external_effects
+            .iter()
+            .map(|effect| {
+                let mappings = effect
+                    .outcome_mappings
+                    .iter()
+                    .map(|(provider, failure)| {
+                        format!(
+                            "{{\"provider\":{},\"failure\":{}}}",
+                            json_string(provider),
+                            json_string(failure)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let schema_parity = effect.schema_parity_json();
+                format!(
+                    "{{\"service\":{},\"operation\":{},\"method\":{},\"path\":{},\"input\":{},\"output\":{},\"idempotency_type\":{},\"egress\":{},\"credential_slot\":{},\"credential_header\":{},\"imported_contract\":{},\"import_version\":{},\"import_sha256\":{},\"timeout_ms\":{},\"retry\":{{\"max_attempts\":{},\"max_elapsed_ms\":{},\"jitter\":{}}},\"proxy_allowed\":{},\"redirects_allowed\":{},\"outcomes\":{},\"outcome_mappings\":[{}],\"schema_parity\":{},\"source\":{},\"range\":{{\"start\":{},\"end\":{}}}}}",
+                    json_string(&effect.service),
+                    json_string(&effect.operation),
+                    json_string(&effect.method),
+                    json_string(&effect.path),
+                    json_string(&effect.input),
+                    json_string(&effect.output),
+                    json_string(&effect.idempotency_type),
+                    json_string(&effect.egress),
+                    json_string(&effect.credential_slot),
+                    json_string(&effect.credential_header),
+                    json_string(&effect.imported_contract),
+                    json_string(&effect.import_version),
+                    json_string(&effect.import_sha256),
+                    effect.timeout_ms,
+                    effect.max_attempts,
+                    effect.max_elapsed_ms,
+                    json_string(&effect.jitter),
+                    effect.proxy_allowed,
+                    effect.redirects_allowed,
+                    json_string_array(effect.outcomes.iter().map(String::as_str)),
+                    mappings,
+                    schema_parity,
+                    json_string(&normalized_source(project_root(project_path), &effect.source)),
+                    effect.range.start,
+                    effect.range.end
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(
+            "{{\"schema_version\":1,\"kind\":\"service_effect_contract\",\"runtime_conformance\":\"not_established\",\"effects\":[{effects}]}}"
+        )
+    }
+
     fn validator_plan_json(&self) -> String {
         let named_types = self.types.iter().map(|(name, declaration)| {
             format!(
@@ -702,8 +934,13 @@ impl<'project> ArtifactModel<'project> {
         });
         let boundaries = self.routes.iter().map(|route| {
             format!(
-                "{{\"route\":{},\"input\":{},\"output\":{},\"reject_unknown_input_fields\":true,\"validate_output\":true}}",
+                "{{\"route\":{},\"query\":{},\"headers\":{},\"input\":{},\"output\":{},\"reject_unknown_input_fields\":true,\"validate_output\":true}}",
                 json_string(&route.key),
+                json_optional_string(route.query.as_deref()),
+                json_array(route.headers.iter().map(|(name, wire_name, field_type, optional)| format!(
+                    "{{\"name\":{},\"wire_name\":{},\"type\":{},\"optional\":{}}}",
+                    json_string(name), json_string(wire_name), json_string(field_type), optional
+                ))),
                 json_optional_string(route.input.as_deref()),
                 json_optional_string(route.output.as_deref())
             )
@@ -723,7 +960,7 @@ impl<'project> ArtifactModel<'project> {
                 "{{\"code\":{},\"failure\":{},\"http_status\":{},\"message\":{},\"public_fields\":{}}}",
                 json_string(&contract.code),
                 json_string(&contract.name),
-                contract.http_status,
+                crate::target::bun_failure_http_status(&contract.kind, contract.http_status),
                 json_optional_string(contract.message.as_deref()),
                 json_string_array(contract.public_fields.iter().map(String::as_str))
             )
@@ -761,15 +998,38 @@ impl<'project> ArtifactModel<'project> {
         } else {
             "[\"configured_runtime_pending\",\"profile_bearing_principals\",\"public_login_endpoints\"]"
         };
-        let jwt_authority = if jwt { "\"verified_subject_resolves_once_on_every_request\"" } else { "null" };
+        let jwt_authority = if jwt {
+            "\"verified_subject_resolves_once_on_every_request\""
+        } else {
+            "null"
+        };
         let strategies = self.authentication_strategies().into_iter().map(|strategy| {
             let (transport, location) = match &strategy.transport.location {
                 jadpo_syntax::CredentialLocation::Cookie(cookie) => ("cookie", cookie.text.trim_matches('"')),
                 jadpo_syntax::CredentialLocation::Bearer(_) => ("bearer", "authorization"),
             };
-            let validators = strategy.validators.iter().map(|v| format!("{{\"name\":{},\"mode\":{},\"principal\":{},\"settings\":{}}}", json_string(&v.name.text), json_string(&v.mode.text), json_string(&v.principal.text), json_array(v.settings.iter().map(|s| json_string(&s.name.text)))));
+            let validators = strategy.validators.iter().map(|v| {
+                let credentials = v.credentials.as_ref().map(|binding| {
+                    let field = |reference: &jadpo_syntax::NameExpression| json_string(&reference.path.iter().map(|n| n.text.as_str()).collect::<Vec<_>>().join("."));
+                    let active = self.project.syntax.sources.iter().find(|source| source.file.declarations.iter().any(|declaration| matches!(declaration, jadpo_syntax::Declaration::AuthenticationStrategy(item) if std::ptr::eq(item, strategy))))
+                        .and_then(|source| source.source_text.get(binding.active.range().start..binding.active.range().end)).unwrap_or_default();
+                    format!("{{\"identity\":{},\"principal\":{},\"verifier\":{},\"active\":{},\"expires\":{},\"revoked\":{}}}", field(&binding.identity), field(&binding.principal), field(&binding.verifier), json_string(active), field(&binding.expires), field(&binding.revoked))
+                }).unwrap_or_else(|| "null".to_owned());
+                format!("{{\"name\":{},\"mode\":{},\"principal\":{},\"settings\":{},\"credentials\":{}}}", json_string(&v.name.text), json_string(&v.mode.text), json_string(&v.principal.text), json_array(v.settings.iter().map(|s| json_string(&s.name.text))), credentials)
+            });
             let resolutions = strategy.resolutions.iter().map(|r| format!("{{\"authority\":{},\"inactive_failure\":{}}}", json_string(&r.authority.path.iter().map(|n| n.text.as_str()).collect::<Vec<_>>().join(".")), json_string(&r.inactive.text)));
-            format!("{{\"name\":{},\"transport\":{},\"location\":{},\"validators\":{},\"resolutions\":{},\"source_range\":{{\"start\":{},\"end\":{}}}}}", json_string(&strategy.name.text), json_string(transport), json_string(location), json_array(validators), json_array(resolutions), strategy.range.start, strategy.range.end)
+            let exchange = strategy.exchange.as_ref().map_or_else(
+                || "null".to_owned(),
+                |exchange| {
+                    format!(
+                        "{{\"method\":\"POST\",\"path\":{},\"key_validator\":{},\"signed_validator\":{},\"credential_selection\":\"exactly_one\",\"raw_credential\":\"compiler_private_only\",\"success\":{{\"status\":200,\"response_fields\":[\"access_token\",\"token_type\",\"expires_at\"],\"expiry\":\"min(declared_key_expires_at, now + application.revocation.maximum_delay)\"}},\"failures\":{{\"authentication_required\":401,\"invalid_credentials\":401,\"ambiguous_credentials\":401,\"service_disabled\":403,\"authentication_unavailable\":503}}}}",
+                        json_string(unquote(&exchange.path.text)),
+                        json_string(&exchange.key.text),
+                        json_string(&exchange.signed.text),
+                    )
+                },
+            );
+            format!("{{\"name\":{},\"transport\":{},\"location\":{},\"validators\":{},\"resolutions\":{},\"exchange\":{},\"source_range\":{{\"start\":{},\"end\":{}}}}}", json_string(&strategy.name.text), json_string(transport), json_string(location), json_array(validators), json_array(resolutions), exchange, strategy.range.start, strategy.range.end)
         });
         let revocation = self
             .project
@@ -824,11 +1084,30 @@ impl<'project> ArtifactModel<'project> {
         let mut paths = BTreeMap::<String, Vec<String>>::new();
         for route in &self.routes {
             let mut responses = Vec::new();
-            if let Some(output) = &route.output {
+            let (success_status, success_description) = match route.success {
+                RouteSuccess::Ok => (200, "Success"),
+                RouteSuccess::Created => (201, "Created"),
+                RouteSuccess::NoContent => (204, "No content"),
+            };
+            if route.success == RouteSuccess::NoContent {
                 responses.push(format!(
-                    "\"200\":{{\"description\":\"Success\",\"content\":{{\"application/json\":{{\"schema\":{}}}}}}}",
+                    "\"{success_status}\":{{\"description\":{}}}",
+                    json_string(success_description)
+                ));
+            } else if let Some(output) = &route.output {
+                responses.push(format!(
+                    "\"{success_status}\":{{\"description\":{},\"content\":{{\"application/json\":{{\"schema\":{}}}}}}}",
+                    json_string(success_description),
                     self.openapi_type_schema(output)
                 ));
+            } else {
+                responses.push(format!(
+                    "\"{success_status}\":{{\"description\":{}}}",
+                    json_string(success_description)
+                ));
+            }
+            if route.deadline_ms.is_some() {
+                responses.push("\"504\":{\"description\":\"The route operation exceeded its declared deadline\"}".to_owned());
             }
             let mut failure_groups = BTreeMap::<u16, Vec<&str>>::new();
             for failure in self.route_failures(&route.key) {
@@ -837,8 +1116,12 @@ impl<'project> ArtifactModel<'project> {
                     .or_default()
                     .push(failure.name);
             }
+            failure_groups.entry(500).or_default();
+            if !self.project.entity_model.entities.is_empty() {
+                failure_groups.entry(503).or_default();
+            }
             for (status, names) in failure_groups {
-                let references = names
+                let mut references = names
                     .iter()
                     .map(|name| {
                         format!(
@@ -847,6 +1130,10 @@ impl<'project> ArtifactModel<'project> {
                         )
                     })
                     .collect::<Vec<_>>();
+                if status == 500 || status == 503 && !self.project.entity_model.entities.is_empty()
+                {
+                    references.push(bun_operational_schema_json(status));
+                }
                 let failure_schema = if references.len() == 1 {
                     references[0].clone()
                 } else {
@@ -855,7 +1142,11 @@ impl<'project> ArtifactModel<'project> {
                 responses.push(format!(
                     "{}:{{\"description\":{},\"content\":{{\"application/json\":{{\"schema\":{}}}}}}}",
                     json_string(&status.to_string()),
-                    json_string(&names.join(" or ")),
+                    json_string(&match status {
+                        500 => "Bun operational failure or declared failure; uncertain effects are not automatically retried".to_owned(),
+                        503 if !self.project.entity_model.entities.is_empty() => "Bun storage unavailable or declared failure".to_owned(),
+                        _ => names.join(" or "),
+                    }),
                     failure_schema
                 ));
             }
@@ -869,13 +1160,59 @@ impl<'project> ArtifactModel<'project> {
                     )
                 },
             );
-            let parameters = json_array(route.path_fields.iter().map(|(name, field_type)| {
-                format!(
-                    "{{\"name\":{},\"in\":\"path\",\"required\":true,\"schema\":{}}}",
-                    json_string(name),
-                    self.openapi_type_schema(field_type)
-                )
-            }));
+            let mut parameters = route
+                .path_fields
+                .iter()
+                .map(|(name, field_type)| {
+                    format!(
+                        "{{\"name\":{},\"in\":\"path\",\"required\":true,\"schema\":{}}}",
+                        json_string(name),
+                        self.openapi_type_schema(field_type)
+                    )
+                })
+                .collect::<Vec<_>>();
+            if let Some(query_name) = &route.query {
+                if let Some(query) = self.records.get(query_name) {
+                    for field in &query.fields {
+                        let mut schema = self.openapi_field_schema(field);
+                        if let Some(default) = &field.default {
+                            let value = if default.kind == jadpo_syntax::LiteralKind::None {
+                                "null".to_owned()
+                            } else {
+                                default.text.clone()
+                            };
+                            schema = format!("{{\"allOf\":[{schema}],\"default\":{value}}}");
+                        }
+                        let required = !field.optional && field.default.is_none();
+                        let field_type = type_name(&field.field_type);
+                        if self.records.contains_key(&field_type) {
+                            parameters.push(format!(
+                                "{{\"name\":{},\"in\":\"query\",\"required\":{required},\"content\":{{\"application/json\":{{\"schema\":{schema}}}}}}}",
+                                json_string(&field.name.text),
+                            ));
+                        } else {
+                            parameters.push(format!(
+                                "{{\"name\":{},\"in\":\"query\",\"required\":{required},\"schema\":{schema}}}",
+                                json_string(&field.name.text),
+                            ));
+                        }
+                    }
+                }
+            }
+            parameters.extend(
+                route
+                    .headers
+                    .iter()
+                    .map(|(_, wire_name, field_type, optional)| {
+                        format!(
+                            "{{\"name\":{},\"in\":\"header\",\"required\":{},\"schema\":{}}}",
+                            json_string(wire_name),
+                            !optional,
+                            self.openapi_type_schema(field_type),
+                        )
+                    }),
+            );
+            let parameters = json_array(parameters);
             let security = if route.public {
                 "[]".to_owned()
             } else {
@@ -885,17 +1222,47 @@ impl<'project> ArtifactModel<'project> {
                         .map(|s| format!("{{{}:[]}}", json_string(&s.name.text))),
                 )
             };
+            let deadline_extension = route.deadline_ms.map_or_else(String::new, |milliseconds| {
+                format!(",\"x-jadpo-deadline-ms\":{milliseconds}")
+            });
             let operation = format!(
-                "{}:{{\"operationId\":{},\"parameters\":{},\"requestBody\":{},\"responses\":{{{}}},\"security\":{},\"x-jadpo-fresh-authority\":{}}}",
+                "{}:{{\"operationId\":{},\"parameters\":{},\"requestBody\":{},\"responses\":{{{}}},\"security\":{},\"x-jadpo-fresh-authority\":{}{}}}",
                 json_string(&route.method.to_ascii_lowercase()),
                 json_string(route.callable.as_deref().unwrap_or(&route.key)),
                 parameters,
                 request_body,
                 responses.join(","),
                 security,
-                route.fresh_authority
+                route.fresh_authority,
+                deadline_extension
             );
             paths.entry(route.path.clone()).or_default().push(operation);
+        }
+
+        for strategy in &strategies {
+            let Some(exchange) = &strategy.exchange else {
+                continue;
+            };
+            let path = unquote(&exchange.path.text).to_owned();
+            let response_schema = r#"{"type":"object","additionalProperties":false,"properties":{"access_token":{"type":"string"},"token_type":{"type":"string","enum":["Bearer"]},"expires_at":{"type":"string","format":"date-time"}},"required":["access_token","token_type","expires_at"]}"#;
+            let success_response = [
+                "\"200\":{\"description\":\"Bounded service bearer issued\",\"content\":{\"application/json\":{\"schema\":",
+                response_schema,
+                "}}}",
+            ]
+            .concat();
+            let responses = format!(
+                "{success_response},\"401\":{{\"description\":\"Credential absent, invalid, or ambiguous\"}},\"403\":{{\"description\":\"Service is disabled\"}},\"503\":{{\"description\":\"Authentication authority unavailable\"}}"
+            );
+            let operation = format!(
+                r#""post":{{"operationId":{},"parameters":[],"requestBody":null,"responses":{{{responses}}},"security":[{{{}:[]}}],"x-jadpo-fresh-authority":false}}"#,
+                json_string(&format!(
+                    "exchange_service_credential_{}",
+                    strategy.name.text
+                )),
+                json_string(&strategy.name.text),
+            );
+            paths.entry(path).or_default().push(operation);
         }
 
         let mut schemas = Vec::new();
@@ -967,7 +1334,10 @@ impl<'project> ArtifactModel<'project> {
                     .map(|contract| RouteFailureView {
                         name: &route.failure,
                         code: &contract.code,
-                        http_status: route.http_status,
+                        http_status: crate::target::bun_failure_http_status(
+                            &contract.kind,
+                            route.http_status,
+                        ),
                     })
             })
             .collect()
@@ -1000,10 +1370,12 @@ impl<'project> ArtifactModel<'project> {
         }
         for route in &self.routes {
             for reference in route
-                .input
+                .query
                 .iter()
+                .chain(route.input.iter())
                 .chain(route.output.iter())
                 .chain(route.path_fields.iter().map(|(_, reference)| reference))
+                .chain(route.headers.iter().map(|(_, _, reference, _)| reference))
             {
                 self.collect_field_schema_names(reference, &mut names);
             }
@@ -1107,7 +1479,7 @@ impl<'project> ArtifactModel<'project> {
         let required = declaration
             .fields
             .iter()
-            .filter(|field| !field.optional)
+            .filter(|field| !field.optional && field.default.is_none())
             .map(|field| field.name.text.as_str());
         format!(
             "{{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{{{}}},\"required\":{}}}",
@@ -1523,7 +1895,8 @@ fn unquote(value: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{derive_artifacts, write_artifacts, GeneratedArtifact};
-    use crate::analyze_project;
+    use crate::{analyze_project, analyze_sources};
+    use jadpo_syntax::SourceFile;
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -1555,6 +1928,8 @@ mod tests {
                 "audit/transactions.json",
                 "audit/configuration.json",
                 "audit/policy.json",
+                "approval/subject.json",
+                "approval/subject.txt",
                 "validators/plan.json",
                 "compatibility/public-failure-codes.json",
                 "openapi/openapi.json",
@@ -1563,12 +1938,86 @@ mod tests {
             ]
         );
         assert!(artifact(&artifacts, "inventory/routes.json").contains("\"auth\":\"none\""));
+        let subject = artifact(&artifacts, "approval/subject.json");
+        let text_subject = artifact(&artifacts, "approval/subject.txt");
+        assert!(subject.contains("\"kind\":\"approval_subject\""));
+        assert!(subject.contains("\"before\":null"));
+        assert!(subject.contains("\"subject_digest\":\"sha256:"));
+        assert!(text_subject.starts_with("Jadpo behavioral review v5"));
+        assert!(text_subject.contains(&subject[..subject.len() - 1]));
         assert!(artifact(&artifacts, "diagnostics/catalogue.json")
             .contains("\"ruleId\":\"failure.attempt_required\""));
         assert!(
             artifact(&artifacts, "audit/failures.json").contains("\"internal_to_client\":false")
         );
         assert!(artifact(&artifacts, "openapi/openapi.json").contains("\"422\""));
+    }
+
+    #[test]
+    fn emits_a_scoped_audit_for_checked_service_effects() {
+        let path = repository_root().join("tests/compile/pass/170_checked_service_operation.jadpo");
+        let source = fs::read_to_string(&path).expect("service fixture should be readable");
+        let analyzed = analyze_sources(vec![SourceFile::new(path.clone(), source)])
+            .expect("service fixture should analyze");
+        assert!(analyzed
+            .semantics
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.severity != jadpo_diagnostics::Severity::Error));
+
+        let artifacts = derive_artifacts(&path, &analyzed);
+        let service_audit = artifacts
+            .iter()
+            .find(|artifact| artifact.relative_path == "audit/services.json")
+            .expect("checked service should have an audit artifact");
+        let json: serde_json::Value =
+            serde_json::from_str(&service_audit.contents).expect("service audit should be JSON");
+        assert_eq!(json["kind"], "service_effect_contract");
+        assert_eq!(json["runtime_conformance"], "not_established");
+        assert_eq!(json["effects"][0]["egress"], "mail.example.invalid:443");
+        assert_eq!(json["effects"][0]["retry"]["max_attempts"], 3);
+        assert_eq!(
+            json["effects"][0]["outcome_mappings"]
+                .as_array()
+                .unwrap()
+                .len(),
+            10
+        );
+        assert_eq!(
+            json["effects"][0]["schema_parity"]["input"]
+                .as_array()
+                .unwrap()
+                .len(),
+            5
+        );
+        let title_parity = json["effects"][0]["schema_parity"]["input"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|field| field["field"] == "todo_title")
+            .expect("audit should identify the checked title field");
+        assert_eq!(
+            title_parity["imported_shape"],
+            "string,minLength=1,maxLength=200"
+        );
+    }
+
+    #[test]
+    fn approval_subject_digest_is_stable_and_changes_with_checked_graph() {
+        let seed = repository_root().join("examples/jadpo-seed");
+        let analyzed = analyze_project(&seed).expect("seed should be analyzable");
+        let first =
+            artifact(&derive_artifacts(&seed, &analyzed), "approval/subject.json").to_owned();
+        let second =
+            artifact(&derive_artifacts(&seed, &analyzed), "approval/subject.json").to_owned();
+        assert_eq!(first, second);
+        assert!(first.contains("\"before\":null"));
+
+        let other_path = repository_root().join("tests/compile/pass/59_p106_failure_route.jadpo");
+        let other = analyze_project(&other_path).expect("route fixture should be analyzable");
+        let other_artifacts = derive_artifacts(&other_path, &other);
+        let other_subject = artifact(&other_artifacts, "approval/subject.json");
+        assert_ne!(first, other_subject);
     }
 
     #[test]
@@ -1638,6 +2087,50 @@ mod tests {
             .contains("\"name\":\"Refused\",\"code\":\"refused\",\"http_status\":422"));
         assert!(artifact(&inline_artifacts, "openapi/openapi.json")
             .contains("\"422\":{\"description\":\"Refused\""));
+    }
+
+    #[test]
+    fn exposes_route_deadline_in_inventory_and_openapi() {
+        let fixture = repository_root().join("tests/compile/pass/171_route_deadline.jadpo");
+        let analyzed = analyze_project(&fixture).expect("deadline route fixture should analyze");
+        let artifacts = derive_artifacts(&fixture, &analyzed);
+        let inventory = artifact(&artifacts, "inventory/routes.json");
+        assert!(inventory.contains("\"deadline_ms\":1500"));
+
+        let openapi = artifact(&artifacts, "openapi/openapi.json");
+        assert!(openapi.contains("\"x-jadpo-deadline-ms\":1500"));
+        assert!(openapi.contains(
+            "\"504\":{\"description\":\"The route operation exceeded its declared deadline\"}"
+        ));
+    }
+
+    #[test]
+    fn openapi_input_schema_allows_omission_for_defaulted_nullable_field() {
+        let source_path = Path::new("input-default.jadpo");
+        let source = r#"input CreateTodo { title: Text due_at: Instant? default none }
+output TodoView { due_at: Instant? }
+route POST /todos {
+    auth: none
+    input: CreateTodo
+    output: TodoView
+    action: { return TodoView { due_at: input.due_at } }
+}
+"#;
+        let project = analyze_sources(vec![jadpo_syntax::SourceFile::new(
+            source_path.to_path_buf(),
+            source.to_owned(),
+        )])
+        .expect("input default source should analyze");
+        assert!(
+            project.typing.diagnostics.is_empty(),
+            "{:?}",
+            project.typing.diagnostics
+        );
+
+        let artifacts = derive_artifacts(source_path, &project);
+        let openapi = artifact(&artifacts, "openapi/openapi.json");
+        assert!(openapi.contains("\"required\":[\"title\"]"));
+        assert!(!openapi.contains("\"required\":[\"title\",\"due_at\"]"));
     }
 
     #[test]
@@ -1780,4 +2273,21 @@ mod tests {
         }
         relative
     }
+}
+
+fn bun_operational_failures_json() -> &'static str {
+    r#"[{"code":"internal_fault","http_status":500,"condition":"contained_runtime_defect"},{"code":"transaction_unavailable","semantic_http_default":503,"http_status":503,"message":"A temporary storage issue prevented the operation.","condition":"retryable_no_commit_not_retried_or_exhausted","automatic_retry":false},{"code":"read_unavailable","semantic_http_default":503,"http_status":503,"message":"A temporary storage issue prevented the read.","condition":"checked_query_only_operation_with_listed_structured_driver_cause","automatic_retry":false},{"code":"outcome_unknown","semantic_http_default":null,"http_status":500,"message":"The operation may have completed.","condition":"effect_may_have_occurred","automatic_retry":false}]"#
+}
+
+fn bun_operational_schema_json(status: u16) -> String {
+    let codes = if status == 503 {
+        vec!["transaction_unavailable", "read_unavailable"]
+    } else {
+        vec!["internal_fault", "outcome_unknown"]
+    };
+    serde_json::json!({"type":"object","additionalProperties":false,"required":["error"],"properties":{
+        "error":{"type":"object","additionalProperties":false,"required":["code","message","request_id"],"properties":{
+            "code":{"type":"string","enum":codes},"message":{"type":"string"},"request_id":{"type":"string"}
+        }}
+    }}).to_string()
 }

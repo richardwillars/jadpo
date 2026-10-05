@@ -40,6 +40,20 @@ the application no longer selects a production clock. The remaining TEST-001
 boundary and fixture work is tracked separately and does not restore any legacy
 date/time spelling.
 
+The compiler-checked successor source is being assembled in the separate
+[`golden-todo-migration` package](../golden-todo-migration/README.md) so the
+pre-DATA-007 pressure source remains intact. Its first slices migrate the four
+persistent domain entities, ownership references, and supported value/input/
+output declarations, plus typed configuration, the bounded principal and user
+authentication declarations, and the static public liveness route. This is
+source migration evidence only: the package has not integrated protected
+application operations or executed acceptance cases. A `TodoRole.owner` binding
+and entity permission matrix preserve the direct Todo-owner scope. The
+successor source now also represents the frozen User self-read equality as an
+identity-bound `UserRole.self` with field narrowing. User disablement and
+soft-delete lifecycle, protected operations, and integrated acceptance remain
+open; the frozen human-owned policy file is untouched.
+
 The package has two independent authorities:
 
 1. [`policy.jadpo`](policy.jadpo) defines human-owned permission, field, effect,
@@ -61,6 +75,21 @@ The remaining artifacts are subordinate evidence:
    expressible by the compiler at the time of this candidate freeze.
 8. [`REVIEW.md`](REVIEW.md) records author-side contradictions and the pending
    independent-review checklist.
+
+On 2026-10-02 the owner authorised a successor acceptance revision that keeps
+`User.email` provisioning-only and omits it from the self-service
+`UserWithTodos` response. The human-owned policy did not change; the predecessor
+acceptance and both digests are retained in the
+[review log](REVIEW.md#2026-10-02-owner-authorised-userwithtodos-email-revision).
+The migrated route now uses a self-scoped parent lookup and a bounded indexed
+Todo page; focused SQLite, PostgreSQL and JWT HTTP evidence is recorded in
+[RM-107 history](../../docs/implementation-history.md#2026-10-02--rm-107-self-scoped-user-todo-route).
+The frozen AUTH-007/REL-001 case entries remain unexecuted until the full
+source-bound golden harness runs.
+
+The compiler now supports explicit `success: created` and `success: no_content`
+route outcomes. Golden application integration remains part of the outstanding
+source migration and does not execute any acceptance case by itself.
 
 The cross-package
 [`evidence-map-v0.1.json`](../../tests/assurance/evidence-map-v0.1.json) links
@@ -108,3 +137,14 @@ may not silently disappear.
 Run `python3 tools/verify-p10r.py` from the repository root to validate the
 package and print informational candidate digests. Those digests are not a
 freeze record until the independent P10R review is complete.
+
+### Reviewed lifecycle and service successors — 2026-10-02
+
+The [DATA-007 lifecycle contract](../../docs/lifecycle-plan.md) and
+[SERVICE-001 semantic contract](../../docs/service-plan.md) are independently
+reviewed and frozen for implementation. The pressure app/policy retain historical
+spellings and bytes; the service successor replaces lifetime Todo deduplication
+with a durable UUID per schedule revision and records the narrow policy identity
+amendment. Its [JOB-001 overlay](../../tests/assurance/service-acceptance-successor-v0.1.json)
+replaces only that case in the current 44-case matrix for future migration. These
+are contract-only inputs: runtime acceptance and protected P10R review stay open.

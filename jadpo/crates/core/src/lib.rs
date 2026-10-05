@@ -16,6 +16,9 @@ use std::path::{Path, PathBuf};
 
 mod artifacts;
 mod configuration;
+mod delivery;
+mod delivery_hooks;
+mod delivery_phases;
 mod entity_model;
 mod formatter;
 mod index_advisor;
@@ -25,7 +28,10 @@ mod policy;
 mod scaffold;
 mod target;
 
-pub use artifacts::{derive_artifacts, write_artifacts, GeneratedArtifact};
+pub use artifacts::{
+    approval_text, derive_approval_subject, derive_approval_subject_with_state_pin,
+    derive_artifacts, validate_approval_export, write_artifacts, GeneratedArtifact,
+};
 pub use configuration::{
     check_local_configuration, configuration_fields, local_configuration_environment,
     set_local_configuration, ConfigurationField, LocalConfigurationState, LocalConfigurationStatus,
@@ -33,6 +39,9 @@ pub use configuration::{
 pub use entity_model::{
     EntityContract, EntityModel, QueryContract, RepresentationContract, TransactionContract,
 };
+pub use delivery_phases::DeliveryPhaseCandidate;
+pub use delivery::{CheckedReminderDeliveryBinding, DeliveryModel, DeliveryPrivateEdge, DeliveryPrivateGraph, DeliveryPrivateNode};
+pub use delivery_hooks::DeliveryHookCandidate;
 pub use formatter::format_source;
 pub use index_advisor::{
     accept_index_recommendation, index_recommendation_count, index_recommendations_json,
@@ -64,6 +73,22 @@ pub struct AnalyzedProject {
     pub failures: FailureCheckResult,
     pub entity_model: EntityModel,
     pub policy: PolicyModel,
+    delivery_phase_candidates: Vec<DeliveryPhaseCandidate>,
+    delivery_model: DeliveryModel,
+    delivery_hook_candidates: Vec<DeliveryHookCandidate>,
+}
+
+impl AnalyzedProject {
+    /// Incomplete nonexecuting obligations, not checked delivery authority.
+    pub fn delivery_phase_candidates(&self) -> &[DeliveryPhaseCandidate] {
+        &self.delivery_phase_candidates
+    }
+    pub fn delivery_model(&self) -> &DeliveryModel {
+        &self.delivery_model
+    }
+    pub fn delivery_hook_candidates(&self) -> &[DeliveryHookCandidate] {
+        &self.delivery_hook_candidates
+    }
 }
 
 impl ParsedProject {
@@ -76,7 +101,11 @@ impl ParsedProject {
     pub fn declaration_count(&self) -> usize {
         self.sources
             .iter()
-            .map(|source| source.file.declarations.len() + source.file.persistence.len())
+            .map(|source| {
+                source.file.declarations.len()
+                    + source.file.persistence.len()
+                    + source.file.services.len()
+            })
             .sum()
     }
 }
@@ -195,12 +224,25 @@ pub fn analyze_sources(mut sources: Vec<SourceFile>) -> Result<AnalyzedProject, 
     let failures = check_failures(&syntax.sources, &semantics);
     let entity_model = entity_model::analyze_entity_model(&syntax.sources);
     let policy = policy::analyze_policy(&syntax.sources, &typing);
+    let (hook_diagnostics, delivery_hook_candidates) = delivery_hooks::check_delivery_hooks(&syntax.sources, &semantics);
+    semantics.diagnostics.extend(hook_diagnostics);
+    let (phase_diagnostics, delivery_phase_candidates) = delivery_phases::check_delivery_phases(
+        &syntax.sources,
+        &semantics,
+        &policy,
+        &typing.delivery_candidates,
+    );
+    semantics.diagnostics.extend(phase_diagnostics);
     semantics
         .diagnostics
         .extend(entity_model.diagnostics.iter().cloned());
     semantics
         .diagnostics
         .extend(policy.diagnostics.iter().cloned());
+    let (delivery_model, delivery_finish_diagnostics) = delivery::finish_delivery_candidates(
+        &syntax, &mut semantics, &typing, &failures, &delivery_phase_candidates, &delivery_hook_candidates,
+    );
+    semantics.diagnostics.extend(delivery_finish_diagnostics);
     Ok(AnalyzedProject {
         syntax,
         semantics,
@@ -208,6 +250,9 @@ pub fn analyze_sources(mut sources: Vec<SourceFile>) -> Result<AnalyzedProject, 
         failures,
         entity_model,
         policy,
+        delivery_phase_candidates,
+        delivery_model,
+        delivery_hook_candidates,
     })
 }
 
@@ -268,7 +313,8 @@ fn apply_persistence_declarations(sources: &mut [ParsedSyntax]) {
             | Declaration::Record(_)
             | Declaration::Fixture(_)
             | Declaration::Test(_)
-            | Declaration::Route(_) => None,
+            | Declaration::Route(_)
+            | Declaration::Job(_) => None,
         })
         .collect::<BTreeMap<_, _>>();
     let persistence = sources
@@ -449,7 +495,7 @@ mod tests {
         let fixtures = repository_root().join("tests/compile");
         let sources = discover_sources(&fixtures).expect("fixtures should be discoverable");
 
-        assert_eq!(sources.len(), 180);
+        assert_eq!(sources.len(), 216);
     }
 
     #[test]
@@ -1002,7 +1048,7 @@ mod tests {
             if fixture == "pass/08_automatic_not_found_mapping" {
                 assert_eq!(project.failures.routes.len(), 1);
                 assert_eq!(project.failures.routes[0].failure, "CustomerNotFound");
-                assert_eq!(project.failures.routes[0].http_status, 404);
+                assert_eq!(project.failures.routes[0].http_status, Some(404));
                 assert!(project.failures.routes[0].derived);
             }
             if fixture == "pass/09_internal_context_not_public" {

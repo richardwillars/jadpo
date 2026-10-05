@@ -12,7 +12,67 @@ const root = mkdtempSync(join(tmpdir(), "jadpo-service-auth-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 const compiler = Bun.env.JADPO_BIN ?? new URL("../../jadpo/target/debug/jadpo", import.meta.url).pathname;
 const source = readFileSync(new URL("./fixtures/service-auth/app.jadpo", import.meta.url), "utf8");
-writeFileSync(join(root, "app.jadpo"), source);
+// Policy-composition pressure fixture, not the golden reminder worker/grant.
+writeFileSync(join(root, "app.jadpo"), `${source}
+enum ScopedNoteRole { owner }
+enum ReminderRole { worker }
+entity ReminderMembership {
+    id: Uuid identity worker_id: Worker.id role: ReminderRole
+    membership { scope: application member: worker_id role: role }
+}
+input ScopedLookup { id: ScopedNote.id }
+input ScopedChange { id: ScopedNote.id title: ScopedNote.title sent: ScopedNote.sent }
+output ScopedView { id: ScopedNote.id title: ScopedNote.title }
+output ScopedReceipt { id: ScopedNote.id sent: ScopedNote.sent }
+failure ScopedMissing { kind: NotFound code: "scoped_missing" }
+failure ScopedConflict { kind: Conflict code: "scoped_conflict" }
+entity ScopedNote {
+    id: Uuid identity
+    owner_id: Operator.id { role: ScopedNoteRole.owner immutable: true }
+    title: Text { policy { ScopedNoteRole.owner: [read, update] } }
+    sent: Text? { policy { ScopedNoteRole.owner: [read, update] ReminderRole.worker: [read, update] } }
+    hidden: Text? { policy {} }
+    readonly: Text { policy { ScopedNoteRole.owner: [read] } }
+    policy {
+        ScopedNoteRole.owner: [read, update]
+        operations {
+            complete { ReminderRole.worker: [update] }
+            bad_complete { ReminderRole.worker: [update] }
+            peek { ReminderRole.worker: [read] }
+        }
+    }
+    query summary(input: ScopedLookup) freshness: authoritative fails ScopedMissing -> ScopedView {
+        var note = attempt query required ScopedNote { where: id == input.id missing: ScopedMissing }
+        return ScopedView { id: note.id title: note.title }
+    }
+    query peek(input: ScopedLookup) freshness: authoritative fails ScopedMissing -> ScopedReceipt {
+        var note = attempt query required ScopedNote { where: id == input.id missing: ScopedMissing }
+        return ScopedReceipt { id: note.id sent: note.sent }
+    }
+    action complete(input: ScopedChange) fails ScopedMissing, ScopedConflict -> Unit {
+        var note = attempt update required ScopedNote { where: id == input.id set: { sent: input.sent } missing: ScopedMissing conflict: ScopedConflict }
+    }
+    action bad_complete(input: ScopedChange) fails ScopedMissing, ScopedConflict -> Unit {
+        var note = attempt update required ScopedNote { where: id == input.id set: { sent: input.sent title: input.title } missing: ScopedMissing conflict: ScopedConflict }
+    }
+    action rename(input: ScopedChange) fails ScopedMissing, ScopedConflict -> Unit {
+        var note = attempt update required ScopedNote { where: id == input.id set: { title: input.title } missing: ScopedMissing conflict: ScopedConflict }
+    }
+    action write_hidden(input: ScopedChange) fails ScopedMissing, ScopedConflict -> Unit {
+        var note = attempt update required ScopedNote { where: id == input.id set: { hidden: none } missing: ScopedMissing conflict: ScopedConflict }
+    }
+    action write_readonly(input: ScopedChange) fails ScopedMissing, ScopedConflict -> Unit {
+        var note = attempt update required ScopedNote { where: id == input.id set: { readonly: ScopedNote.readonly("Forbidden") } missing: ScopedMissing conflict: ScopedConflict }
+    }
+}
+route POST /scoped/read { input: ScopedLookup output: ScopedView run: ScopedNote.summary(input) }
+route POST /scoped/peek { auth: fresh input: ScopedLookup output: ScopedReceipt run: ScopedNote.peek(input) }
+route POST /scoped/complete { auth: fresh input: ScopedChange run: ScopedNote.complete(input) success: no_content }
+route POST /scoped/bad-complete { auth: fresh input: ScopedChange run: ScopedNote.bad_complete(input) success: no_content }
+route POST /scoped/rename { input: ScopedChange run: ScopedNote.rename(input) success: no_content }
+route POST /scoped/hidden { input: ScopedChange run: ScopedNote.write_hidden(input) success: no_content }
+route POST /scoped/readonly { input: ScopedChange run: ScopedNote.write_readonly(input) success: no_content }
+`);
 const build = Bun.spawnSync([compiler, "build", root], { stdout: "pipe", stderr: "pipe" });
 if (build.exitCode !== 0) throw new Error(`Service fixture failed to build:\n${build.stdout}\n${build.stderr}`);
 const postgresUrl = Bun.env.JADPO_SERVICE_AUTH_DATABASE_URL;
@@ -47,10 +107,12 @@ const nextKey = Buffer.alloc(32, 73).toString("base64url");
 const environment = { AUTH_SIGNING_KEY: currentKey, AUTH_PREVIOUS_SIGNING_KEY: previousKey, BROWSER_ORIGIN: "https://service.test" };
 let now: number;
 beforeEach(async () => {
-  await db.exec('DELETE FROM "__jadpo_auth_service_credentials"; DELETE FROM "__jadpo_auth_sessions"; DELETE FROM asset; DELETE FROM worker; DELETE FROM operator;');
+  await db.exec('DELETE FROM "__jadpo_auth_service_credentials"; DELETE FROM "__jadpo_auth_sessions"; DELETE FROM reminder_membership; DELETE FROM scoped_note; DELETE FROM asset; DELETE FROM worker; DELETE FROM operator;');
   await db.all('INSERT INTO operator (id, authentication_subject, enabled) VALUES (?, ?, TRUE)', operator, "operator");
   for (const [id, subject] of [[worker, "worker"], [otherWorker, "other"]]) await db.all('INSERT INTO worker (id, authentication_subject, responsible_operator, enabled) VALUES (?, ?, ?, TRUE)', id, subject, operator);
   for (const [id, owner] of [[asset, worker], [otherAsset, otherWorker]]) await db.all('INSERT INTO asset (id, worker_id, title) VALUES (?, ?, ?)', id, owner, "Private");
+  await db.all('INSERT INTO reminder_membership (id, worker_id, role) VALUES (?, ?, ?)', replacement, worker, "worker");
+  await db.all('INSERT INTO scoped_note (id, owner_id, title, sent, hidden, readonly) VALUES (?, ?, ?, NULL, NULL, ?)', asset, operator, "Original", "Read only");
   await app.initializeApplication(environment); now = Date.now();
 });
 const host = () => app.authenticationHost();
@@ -81,12 +143,56 @@ test("service issuance reveals a random secret once and persists only an identif
   expect(first.credential).toMatch(/^jdk1\.[a-f0-9-]+\.[A-Za-z0-9_-]{43}$/u);
   expect(first.credential).not.toBe(second.credential); expect(first.credentialId).not.toBe(second.credentialId);
   expect(first.serviceId).toBe(worker); await accepted(first.credential); await accepted(second.credential);
+  await accepted(first.credential, worker, "/service-identity");
+  const userCredential = await host().issue("api_bearer", "operator", now + 3_600_000, now);
+  const wrongPrincipal = await request(userCredential.credential, "/service-identity");
+  expect(wrongPrincipal.status).toBe(403);
+  expect((await wrongPrincipal.json()).error.code).toBe("not_permitted");
   const rows = await db.all('SELECT * FROM "__jadpo_auth_service_credentials"'); expect(rows).toHaveLength(2);
   const text = JSON.stringify(rows); expect(text).not.toContain(first.credential); expect(text).not.toContain(second.credential); expect(text).not.toContain(currentKey);
   const stored = JSON.parse(rows.find(row => row.id === first.credentialId).data);
   expect(stored.serviceId).toBe(worker); expect(stored.subject).toBe("worker"); expect(stored.verifier).toMatch(/^[A-Za-z0-9_-]{43}$/u);
   expect(Object.keys(stored).sort()).toEqual(["expires", "id", "keyId", "revoked", "serviceId", "strategy", "subject", "verifier"]);
   expect(host()).not.toHaveProperty("revealServiceCredential");
+});
+test("scoped policy composition permits only named service operations and preserves owner writes", async () => {
+  const key = await issue();
+  const user = await host().issue("api_bearer", "operator", now + 60000, now);
+  const change = { id: asset, title: "Changed", sent: "Observed" };
+  expect((await request(key.credential, "/scoped/read", { id: asset })).status).toBe(404);
+  expect((await request(key.credential, "/scoped/rename", change)).status).toBe(404);
+  expect((await request(key.credential, "/scoped/complete", change)).status).toBe(204);
+  const peek = await request(key.credential, "/scoped/peek", { id: asset });
+  expect(peek.status).toBe(200); expect(await peek.json()).toEqual({ id: asset, sent: "Observed" });
+  expect((await request(key.credential, "/scoped/bad-complete", { ...change, sent: "Must roll back" })).status).toBe(404);
+  expect(await db.all('SELECT title, sent FROM scoped_note WHERE id = ?', asset)).toEqual([{ title: "Original", sent: "Observed" }]);
+  expect((await request(user.credential, "/scoped/complete", change)).status).toBe(404);
+  expect((await request(user.credential, "/scoped/rename", change)).status).toBe(204);
+  const read = await request(user.credential, "/scoped/read", { id: asset });
+  expect(read.status).toBe(200); expect(await read.json()).toEqual({ id: asset, title: "Changed" });
+});
+test("scoped policy composition treats empty and read-only field policies as explicit write denial", async () => {
+  const user = await host().issue("api_bearer", "operator", now + 60000, now);
+  const before = await db.all('SELECT * FROM scoped_note WHERE id = ?', asset);
+  for (const path of ["/scoped/hidden", "/scoped/readonly"]) {
+    const denied = await request(user.credential, path, { id: asset, title: "Forbidden", sent: "Forbidden" });
+    expect(denied.status).toBe(404); expect((await denied.json()).error.code).toBe("scoped_missing");
+    expect(await db.all('SELECT * FROM scoped_note WHERE id = ?', asset)).toEqual(before);
+  }
+});
+test("scoped policy composition rereads service membership and does not lend its role to a user UUID", async () => {
+  const key = await issue(); const other = await issue("other");
+  const change = { id: asset, title: "Forbidden", sent: "Observed" };
+  expect((await request(other.credential, "/scoped/complete", change)).status).toBe(404);
+  // A user with the same identifier still lacks the service membership.
+  await db.all('INSERT INTO operator (id, authentication_subject, enabled) VALUES (?, ?, TRUE)', worker, "same-uuid-user");
+  const sameUuid = await host().issue("api_bearer", "same-uuid-user", now + 60000, now);
+  expect((await request(sameUuid.credential, "/scoped/complete", change)).status).toBe(404);
+  expect((await request(key.credential, "/scoped/complete", change)).status).toBe(204);
+  await db.all('DELETE FROM reminder_membership WHERE worker_id = ?', worker);
+  expect((await request(key.credential, "/scoped/complete", { ...change, sent: "After revocation" })).status).toBe(404);
+  expect((await request(key.credential, "/scoped/peek", { id: asset })).status).toBe(404);
+  expect(await db.all('SELECT sent FROM scoped_note WHERE id = ?', asset)).toEqual([{ sent: "Observed" }]);
 });
 test("direct and exchanged services share the existing policy boundary without acquiring user identity", async () => {
   const key = await issue(); const bearer = await exchange(key.credential);

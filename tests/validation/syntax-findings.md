@@ -82,6 +82,15 @@ change this classification. Keyword-named qualified members are handled too.
 Numeric scanning itself is unchanged; exponent syntax is not currently part of
 the documented numeric literal grammar or supported scanner.
 
+The expanded mutation campaign found a recovering-parser span defect in a
+malformed nested call: after `parse_arguments` failed to find its closing
+parenthesis, the caller substituted a default end offset of zero and produced
+an inverted expression/diagnostic range. Incomplete invocation, object, and
+construction expressions now return a bounded `Missing` range based on the
+last consumed token instead of fabricating an AST node ending at byte zero.
+The mutated compile-fail fixture remains part of the deterministic corpus
+campaign.
+
 ## Verification
 
 ```sh
@@ -97,7 +106,12 @@ No expected-failure exemption was added.
 
 ## Limits and remaining work
 
-- Deterministic truncation/property cases are not a sustained fuzz campaign.
+- The deterministic property test now applies at least 3,000 token deletions,
+  structural-delimiter replacements, and multibyte unexpected-character
+  replacements sampled across both compile-pass and compile-fail corpora. It
+  checks deterministic parsing, token/diagnostic byte ranges, and EOF spans.
+  It remains a bounded deterministic campaign, not sustained coverage-guided
+  fuzzing.
   Deep nesting, very large graphs and resource-exhaustion limits need explicit
   budgets and separate process-level tests.
 - The Rust `&str` lexer API cannot represent invalid UTF-8; file-loader/CLI
@@ -106,8 +120,8 @@ No expected-failure exemption was added.
   synchronization path, nor every parser diagnostic's complete message/repair.
 - The successful explicit-import repair demonstrates one repair boundary;
   automatic-edit correctness across the diagnostic catalogue remains separate.
-- No mutation campaign was run in this package. A separate reviewer can mutate
-  keyword boundary handling, precedence, span byte counts and module visibility
-  checks to challenge these assertions.
+- No implementation-code mutation campaign was run in this package. A separate
+  reviewer can mutate keyword boundary handling, precedence, span byte counts
+  and module visibility checks to challenge these assertions.
 - Alias/package/relative-import features remain unsupported. These tests do
   not propose semantics for them or settle canonical-data-model migration.

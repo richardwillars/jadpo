@@ -3,6 +3,7 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { diagnosticDetailsHtml, problemMessage } = require("./diagnostic-presentation");
+const { GENERATED_ARTIFACTS } = require("./generated-artifacts");
 
 const tokenTypes = ["namespace", "type", "enum", "enumMember", "property", "function", "variable", "parameter", "string", "number", "keyword", "operator", "comment"];
 
@@ -218,6 +219,29 @@ function activate(context) {
   }));
   context.subscriptions.push(vscode.commands.registerCommand("jadpo.openGeneratedValidators", () => {
     return openGeneratedArtifact("validators", "plan.json");
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand("jadpo.openGeneratedArtifact", async () => {
+    const folder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0];
+    if (!folder) {
+      return vscode.window.showInformationMessage("Open a Jadpo project before opening generated output.");
+    }
+    const available = (await Promise.all(GENERATED_ARTIFACTS.map(async item => {
+      try {
+        await fs.promises.access(path.join(folder.uri.fsPath, "build", item.path));
+        return item;
+      } catch (_error) {
+        return undefined;
+      }
+    }))).filter(Boolean);
+    if (available.length === 0) {
+      return vscode.window.showInformationMessage("Build the project first, then try opening generated output again.");
+    }
+    const choice = await vscode.window.showQuickPick(
+      available.map(item => ({ label: item.label, description: item.path, path: item.path })),
+      { placeHolder: "Choose a generated audit or contract artifact." },
+    );
+    if (!choice) return;
+    return openGeneratedArtifact(...choice.path.split("/"));
   }));
 
   context.subscriptions.push(vscode.languages.registerDocumentSymbolProvider("jadpo", {

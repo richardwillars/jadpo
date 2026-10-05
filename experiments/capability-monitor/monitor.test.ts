@@ -11,9 +11,9 @@ const base=import.meta.dir,monitor=readFileSync(base+'/monitor.wasm'),applicatio
 const seed=JSON.parse(readFileSync('build/capability-host/seed.json','utf8'));
 const [a,b,c]=seed.notes;
 const frame=(user='alice',path='/notes/read',body:any={id:a.id})=>({method:'POST',path,authorization:user?`Bearer ${seed.credentials[user]}`:null,cookie:null,body:JSON.stringify(body),now:seed.now,configuration:seed.configuration});
-function fixture(factory=()=>new Guest(application)){
+function fixture(factory=()=>new Guest(application),cacheStatements=false){
  const dir=mkdtempSync(join(tmpdir(),'jadpo-monitor-'));copyFileSync('build/capability-host/seed.sqlite',dir+'/state.sqlite');
- const db=new Database(dir+'/state.sqlite'),host=new MonitorHost(new Guest(monitor),factory,db);
+ const db=new Database(dir+'/state.sqlite'),host=new MonitorHost(new Guest(monitor),factory,db,cacheStatements);
  return {db,host,snapshot:()=>db.prepare('SELECT * FROM note ORDER BY id').all(),close(){db.close();rmSync(dir,{recursive:true,force:true});}};
 }
 test('typed WASM ABI carries pending metadata separately from JSON payload',()=>{
@@ -39,6 +39,16 @@ test('authentication and live policy run before and during the guest',()=>{
   expect(f.host.invoke(frame('charlie')).value.status).toBe(404);
   f.db.prepare('UPDATE note SET owner_id=? WHERE id=?').run(seed.users.charlie,a.id);
   expect(f.host.invoke(frame('charlie','/notes/private')).value.body.private_note).toBe(a.private_note);
+ }finally{f.close();}
+});
+test('opt-in prepared statement cache preserves revocation and rollback',()=>{
+ const f=fixture(()=>new Guest(application),true);try{
+  expect(f.host.invoke(frame()).value.status).toBe(200);
+  f.db.prepare('UPDATE __jadpo_auth_sessions SET revoked=1 WHERE id=?').run(seed.credentials.alice.split('.')[1]);
+  expect(f.host.invoke(frame()).value.status).toBe(401);
+  const before=f.snapshot();
+  expect(f.host.invoke(frame('bob','/notes/pair',{first:a.id,second:c.id,title:'First',second_title:'Second'})).value.status).toBe(404);
+  expect(f.snapshot()).toEqual(before);expect(f.db.inTransaction).toBe(false);
  }finally{f.close();}
 });
 for(const mode of [1,2,3,4])test('hostile guest cannot select monitor authority '+mode,()=>{

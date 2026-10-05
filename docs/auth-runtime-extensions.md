@@ -3,8 +3,9 @@
 This extends the browser/API runtime under the accepted
 [AUTH-001 contract](authentication-plan.md). The service and JWT adapters share
 the existing exactly-one-credential selector, protected-route default, typed
-principal, authoritative resolution and policy context. This is an exploratory
-compiler/runtime implementation, not an independent security assessment.
+principal, authoritative resolution and policy context. The generated service
+exchange has scoped independent runtime/security review; this is not external
+security assurance or deployment qualification.
 
 ## Service credentials
 
@@ -16,6 +17,29 @@ are not prescribed. A `resolution service` declares that authority's unique
 subject, active predicate, service identity mapping and inactive failure.
 An optional service `signed` validator in the same slot enables bounded exchange.
 See the [checked fixture](../tests/runtime/fixtures/service-auth/app.jadpo).
+
+An API-key validator can bind a declared credential entity with `credentials`:
+`identity`, `principal`, `verifier`, `active`, `expires` and `revoked`. See the
+[golden migration declaration](../examples/golden-todo-migration/authentication.jadpo).
+All field roles belong to one persistent authority in the service's store.
+Identity is a UUID; principal is a required reference to the service identity;
+verifier is unique Text; expiry is an Instant; revocation is nullable Instant.
+Active must be a required local field equal to a unit enum variant or Boolean
+literal. For this binding, the service active predicate uses the same subset.
+Field roles must be distinct. Generated lifecycle roles are rejected; generated
+UUID identity is supported. Other required fields must be generated creation
+timestamps, so the host can construct a complete row. Unsupported shapes fail
+target generation. Names of entities, fields and enum variants are not prescribed.
+
+Issuance writes the declared row and private metadata in one transaction, with
+an active-service recheck protected by the database transaction. Private metadata
+retains identity, strategy, key version and a verifier integrity digest; it cannot
+replace declared status, expiry or revocation. The verifier lives only in the
+declared row. Revocation writes its `revoked` timestamp, without requiring a
+particular inactive enum variant. Rotation creates a separate credential.
+The golden service subject is the unique nonsecret service name; the stable
+service UUID prevents a reassigned name from inheriting an existing credential.
+Applications without this binding retain their internal credential storage.
 
 The compiler's trusted host integration exposes:
 
@@ -29,8 +53,29 @@ The compiler's trusted host integration exposes:
   record. Other overlapping credentials continue to work.
 - `refresh` and `revoke`: retain the originating service credential boundary.
 
-These are compiler-owned host operations, not authored business callables or
-new HTTP endpoints. The embedding host owns provisioning authorization.
+These are compiler-owned host operations, not authored business callables. The
+embedding host owns provisioning authorization; this repository's selected
+issuance path is trusted host provisioning with one-time reveal. A strategy may
+declare a bounded exchange with:
+
+```jadpo
+exchange {
+    path: "/auth/exchange"
+    key: service_key
+    signed: service_signed
+}
+```
+
+The compiler lowers that declaration to `POST` and owns credential selection,
+failure mapping, the minimal `{ access_token, token_type, expires_at }` response,
+audit and generated route/OpenAPI metadata. It inventories credential locations
+once, rejects missing, malformed or competing presentations before validation,
+and passes the sole selected key directly to the host operation. Business
+callables receive neither the raw key nor the returned bearer. The original key
+and stored verifier remain private. The scoped implementation is approved by the
+[independent runtime/security review](../tests/validation/rm104-generated-runtime-review.json)
+and documented in the [RM-104 history](implementation-history.md#2026-10-02--rm-104-generated-service-credential-exchange).
+
 Direct keys check credential and service authority on every request. Ordinary
 bounded requests validate locally; fresh requests, refresh and exchange check
 current authority. A revoked/disabled service may retain ordinary access until
@@ -66,6 +111,29 @@ IDs and lifecycle state come from the authority; token profile/role claims do
 not populate the principal. Credential checks are counted separately from the
 principal lookup, as chosen by the owner. Discovery is lazy; startup validates
 settings, but successful startup does not attest provider availability/readiness.
+
+## Typed authentication strength
+
+The first-party boundary supports a declared `authentication_strength` enum
+whose complete vocabulary is `primary` and `multi_factor`; the enum's type name
+is not prescribed. Built-in signed, opaque, API-key and JWT proofs map to
+`primary` before principal normalization, including bounded, fresh and refresh
+paths. These adapters do not establish multi-factor assurance. Unsupported enum
+vocabularies fail target generation instead of accepting values by type name.
+Legacy Text strength retains the existing adapter-mode strings.
+
+The general adapter boundary validates declared subject and strength scalar/enum
+representations. It rejects undeclared strength values and malformed primitives;
+it does not coerce an independent trusted adapter's valid `multi_factor` result.
+The generated TypeScript principal type carries the declared enum vocabulary.
+This change does not implement additional nominal Text refinement validation.
+
+The golden migration has an explicit service credential binding. Its dedicated
+regressions exercise declared expiry/revocation/status, service disablement,
+identity substitution, metadata corruption, verifier non-disclosure and rollback
+of either issuance write. Ordinary signed requests retain their issued bound;
+direct and fresh requests consult current lifecycle state.
+See the [current delivery checkpoint](work-plans/golden-delivery-planning.md#rm-102-implementation-slices-and-evidence).
 
 ## Dependency and build contract
 

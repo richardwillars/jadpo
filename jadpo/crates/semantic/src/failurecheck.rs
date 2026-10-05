@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct FailureContract {
     pub name: String,
     pub kind: String,
-    pub http_status: u16,
+    pub http_status: Option<u16>,
     pub code: String,
     pub message: Option<String>,
     pub public_fields: Vec<String>,
@@ -30,8 +30,16 @@ pub struct RouteFailure {
     pub route: String,
     pub failure: String,
     pub kind: String,
-    pub http_status: u16,
+    pub http_status: Option<u16>,
     pub derived: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobFailureSet {
+    pub job: String,
+    pub callee: String,
+    pub failures: Vec<String>,
+    pub may_suspend: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -39,6 +47,7 @@ pub struct FailureCheckResult {
     pub contracts: Vec<FailureContract>,
     pub callables: Vec<CallableFailureSet>,
     pub routes: Vec<RouteFailure>,
+    pub jobs: Vec<JobFailureSet>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -94,27 +103,58 @@ struct CallableFacts {
     source: String,
 }
 
-pub fn check_failures(files: &[ParsedSyntax], _graph: &SemanticGraph) -> FailureCheckResult {
+pub fn check_failures(files: &[ParsedSyntax], graph: &SemanticGraph) -> FailureCheckResult {
     let mut checker = FailureChecker {
         failures: BTreeMap::new(),
         callables: BTreeMap::new(),
+        external_callables: BTreeSet::new(),
         routes: Vec::new(),
         result: FailureCheckResult::default(),
     };
-    checker.collect(files);
+    checker.collect(files, graph);
     checker.validate();
+    // Jobs consume the checked callee's exact failure contract without adopting
+    // route HTTP mappings or asserting any durable failure disposition.
+    for job in graph
+        .nodes
+        .iter()
+        .filter(|node| node.kind == crate::NodeKind::Job)
+    {
+        let Some(edge) = graph.calls.iter().find(|edge| edge.caller == job.id) else {
+            continue;
+        };
+        let callee = &graph.nodes[edge.callee.0 as usize].name;
+        if let Some(contract) = checker
+            .result
+            .callables
+            .iter()
+            .find(|value| &value.callable == callee)
+        {
+            checker.result.jobs.push(JobFailureSet {
+                job: job.name.clone(),
+                callee: callee.clone(),
+                failures: contract.failures.clone(),
+                may_suspend: contract.may_suspend,
+            });
+        }
+    }
+    checker
+        .result
+        .jobs
+        .sort_by(|left, right| left.job.cmp(&right.job));
     checker.result
 }
 
 struct FailureChecker {
     failures: BTreeMap<String, FailureShape>,
     callables: BTreeMap<String, CallableFacts>,
+    external_callables: BTreeSet<String>,
     routes: Vec<(String, String)>,
     result: FailureCheckResult,
 }
 
 impl FailureChecker {
-    fn collect(&mut self, files: &[ParsedSyntax]) {
+    fn collect(&mut self, files: &[ParsedSyntax], graph: &SemanticGraph) {
         let mut codes = BTreeMap::<String, (String, String, TextRange)>::new();
         for file in files {
             for declaration in &file.file.declarations {
@@ -183,7 +223,7 @@ impl FailureChecker {
                         let contract = FailureContract {
                             name: declaration.name.text.clone(),
                             kind: declaration.kind.text.clone(),
-                            http_status: http_status(&declaration.kind.text).unwrap_or(500),
+                            http_status: http_status(&declaration.kind.text),
                             code,
                             message: declaration
                                 .message
@@ -298,9 +338,27 @@ impl FailureChecker {
                     | Declaration::Enum(_)
                     | Declaration::Record(_)
                     | Declaration::Fixture(_)
-                    | Declaration::Test(_) => {}
+                    | Declaration::Test(_)
+                    | Declaration::Job(_) => {}
                 }
             }
+        }
+        for effect in &graph.external_effects {
+            let name = format!("{}.{}", effect.service, effect.operation);
+            self.external_callables.insert(name.clone());
+            self.callables.insert(
+                name,
+                CallableFacts {
+                    kind: CallableKind::Action,
+                    declared: effect.outcomes.iter().cloned().collect(),
+                    calls: Vec::new(),
+                    rejects: Vec::new(),
+                    persistence: Vec::new(),
+                    failures_range: None,
+                    declaration_range: effect.range,
+                    source: effect.source.clone(),
+                },
+            );
         }
         let callable_names = self.callables.keys().cloned().collect::<BTreeSet<_>>();
         for facts in self.callables.values_mut() {
@@ -590,11 +648,15 @@ impl FailureChecker {
                 }
             }
 
-            let stale = facts
-                .declared
-                .difference(&reachable)
-                .cloned()
-                .collect::<Vec<_>>();
+            let stale = if self.external_callables.contains(&name) {
+                Vec::new()
+            } else {
+                facts
+                    .declared
+                    .difference(&reachable)
+                    .cloned()
+                    .collect::<Vec<_>>()
+            };
             if !stale.is_empty() {
                 let range = facts.failures_range.unwrap_or(facts.declaration_range);
                 let replacement = if reachable.is_empty() {
@@ -929,6 +991,13 @@ fn collect_expression_inner(
                 mutative: false,
             });
             collect_expression(&query.value, calls, rejects, persistence);
+            if let Some(page) = &query.page {
+                for predicate in &page.predicates {
+                    collect_expression(&predicate.value, calls, rejects, persistence);
+                }
+                collect_expression(&page.after, calls, rejects, persistence);
+                collect_expression(&page.limit, calls, rejects, persistence);
+            }
             if let Some(pagination) = &query.pagination {
                 collect_expression(&pagination.limit, calls, rejects, persistence);
                 collect_expression(&pagination.offset, calls, rejects, persistence);
@@ -1143,6 +1212,7 @@ fn http_status(kind: &str) -> Option<u16> {
         "RateLimited" => Some(429),
         "Unavailable" => Some(503),
         "TimedOut" => Some(504),
+        "OutcomeUnknown" => None,
         "Misconfigured" | "InternalFault" => Some(500),
         _ => None,
     }
@@ -1197,7 +1267,7 @@ route GET /result { auth: none output: Result run: find() }
         );
         assert!(result.diagnostics.is_empty(), "{:#?}", result.diagnostics);
         assert_eq!(result.routes.len(), 1);
-        assert_eq!(result.routes[0].http_status, 404);
+        assert_eq!(result.routes[0].http_status, Some(404));
         assert!(result.routes[0].derived);
     }
 
@@ -1301,5 +1371,14 @@ action parent() -> Result fails Refused, Closed { reject Refused }
         let repaired = apply_preferred_edit(source, diagnostic);
         assert!(repaired.contains("action parent() -> Result fails Refused {"));
         assert!(check(&repaired).diagnostics.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod operational_boundary_tests {
+    #[test]
+    fn uncertainty_has_no_shared_http_default() {
+        assert_eq!(super::http_status("OutcomeUnknown"), None);
+        assert_eq!(super::http_status("TimedOut"), Some(504));
     }
 }

@@ -99,8 +99,20 @@ query current_identity() -> CurrentIdentity {
     }
 }
 
+query user_identity(principal: Principal.user) -> CurrentIdentity {
+    policy { Access.authenticated: [invoke] }
+    return CurrentIdentity { id: principal.user_id }
+}
+
+query service_identity(principal: Principal.service) -> CurrentIdentity {
+    policy { Access.authenticated: [invoke] }
+    return CurrentIdentity { id: principal.service_id }
+}
+
 route GET /identity { output: CurrentIdentity run: current_identity() }
 route GET /fresh-identity { auth: fresh output: CurrentIdentity run: current_identity() }
+route GET /user-identity { output: CurrentIdentity run: user_identity(current_principal.user) }
+route GET /service-identity { output: CurrentIdentity run: service_identity(current_principal.service) }
 
 input IdentityRequest { label: Text }
 action accept_identity(input: IdentityRequest) -> CurrentIdentity { policy { Access.authenticated: [invoke] } return current_identity() }

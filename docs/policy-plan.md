@@ -1260,3 +1260,28 @@ Implementation stops and returns to owner decision if:
   checks in routine queries/actions.
 
 These are design failures, not invitations to add unchecked escape hatches.
+
+## 19. Retention maintenance addendum — POLICY-D30-M1
+
+**Owner direction:** 2026-10-02, compiler-owned narrow retention maintenance,
+as recorded in the [batch decision](work-plans/golden-delivery-planning.md).
+**Status:** contract addendum frozen on 2026-10-02 after the
+[independent RM-205 correction review](../tests/validation/rm205-independent-contract-review.json)
+accepted the candidate. Its reviewed semantics and decision-row digest are unchanged;
+compiler/runtime conformance remains RM-206.
+It is outside the historically approved D01–D43 baseline in section 2, whose
+exact UTF-8 bytes from its heading up to (excluding) the section-3 heading still
+hash to the accepted `sha256:66e7a8f586b62ed92c3a7220f524e25aee5808ca60b8504fb3c2d225ef2d68bd`.
+The owner direction does not retroactively amend that approval.
+
+| ID | Decision |
+| --- | --- |
+| POLICY-D30-M1 | Owner-selected retention maintenance is a separate compiler maintenance plane, with only a clause-bound physical purge of already-soft-deleted, retention-expired rows in deterministic batches of at most 500. Authored jobs/internal application callers remain under POLICY-D30; no source caller can obtain the maintenance capability or general deletion authority. The exact authority, guarded transaction and audit contract is in [DATA-007](lifecycle-plan.md#retention-maintenance-authority); independent contract review gates its freeze. |
+
+**Addendum decision-row digest:** `sha256:1fd3b1ad5f6714e35e989cd7f8268d6cd7986662c0475478655bf1e249532cf9`.
+This hashes the single UTF-8 POLICY-D30-M1 table row including its trailing LF;
+it does not claim approval of the whole document. The linked DATA-007 contract
+and assurance catalog are separately byte-pinned in the
+[independent review](../tests/validation/rm205-independent-contract-review.json).
+The final review disposition is `approved_for_contract_freeze`; it establishes
+contract acceptance, not future lowering or deployment approval.

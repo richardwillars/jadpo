@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -67,6 +67,11 @@ async function rejects(path: string, body: unknown) {
 }
 
 describe("generated field construction and boundary contracts", () => {
+  test("non-persistent route error handling does not reference persistence-only classes", () => {
+    const generated = readFileSync(join(root, "build/target/app.ts"), "utf8");
+    expect(generated).not.toContain("instanceof PersistenceFault");
+    expect(generated).toContain("error instanceof RequestDeadlineFault");
+  });
   test("a checked field constructor executes as validation", async () => {
     const response = await app.handleRequest(new Request("https://field.test/literal"));
     expect(response.status).toBe(200);

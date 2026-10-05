@@ -1351,7 +1351,8 @@ fn call_site_outcome_markdown(
             | Declaration::Enum(_)
             | Declaration::Record(_)
             | Declaration::Fixture(_)
-            | Declaration::Failure(_) => None,
+            | Declaration::Failure(_)
+            | Declaration::Job(_) => None,
         })?;
     let failures = outcome
         .arms

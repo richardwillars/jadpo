@@ -104,10 +104,10 @@
     {
       "id": "AUTH-007",
       "kind": "http",
-      "title": "provider email claim cannot replace application-owned user data",
+      "title": "provisioning-only user email stays out of self-service output",
       "fixture": ["active alice with database email alice@example.test", "valid alice JWT subject with email claim attacker@example.test"],
       "request": { "method": "GET", "path": "/users/alice/todos", "auth": "alice-jwt" },
-      "expect": { "status": 200, "outputEmail": "alice@example.test", "providerEmailUsed": false }
+      "expect": { "status": 200, "privateFieldsAbsent": ["email"], "providerEmailUsed": false }
     },
     {
       "id": "AUTH-008",
@@ -306,7 +306,7 @@
       "title": "user with zero, one, or many todos uses one bounded child query",
       "fixtureVariants": ["alice zero todos", "alice one todo", "alice 100 todos"],
       "request": { "method": "GET", "path": "/users/alice/todos", "auth": "alice-session" },
-      "expect": { "status": 200, "databaseQueriesAtMost": 2, "childLimit": 100, "childOrder": ["created_at asc", "id asc"], "crossParentMixing": false }
+      "expect": { "status": 200, "outputSchema": "UserWithTodos", "databaseQueriesAtMost": 2, "childLimit": 100, "childOrder": ["created_at asc", "id asc"], "crossParentMixing": false, "privateFieldsAbsent": ["email"] }
     },
     {
       "id": "REL-002",

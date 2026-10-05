@@ -55,7 +55,12 @@ query current_identity() -> Identity {
         Principal.service { subject, service_id } => { return Identity { id: service_id } }
     }
 }
+query service_identity(principal: Principal.service) -> Identity {
+    policy { Access.authenticated: [invoke] }
+    return Identity { id: principal.service_id }
+}
 route GET /identity { output: Identity run: current_identity() }
+route GET /service-identity { output: Identity run: service_identity(current_principal.service) }
 route GET /fresh { auth: fresh output: Identity run: current_identity() }
 type Health = Text {}
 function alive() -> Health { return Health("healthy") }

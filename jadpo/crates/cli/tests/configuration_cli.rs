@@ -40,7 +40,8 @@ fn config_check_reports_status_without_values() {
         .output()
         .expect("missing configuration check");
     assert!(!missing.status.success());
-    assert!(String::from_utf8_lossy(&missing.stderr).contains(&jadpo_diagnostics::catalogue_definition("CONFIG_LOCAL_CHECK_FAILED").rule_id));
+    assert!(String::from_utf8_lossy(&missing.stderr)
+        .contains(&jadpo_diagnostics::catalogue_definition("CONFIG_LOCAL_CHECK_FAILED").rule_id));
     assert!(String::from_utf8_lossy(&missing.stdout).contains("api_key: missing"));
 
     fs::write(root.join(".env.local"), "API_KEY=canary-secret-value\n")

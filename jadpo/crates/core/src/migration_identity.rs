@@ -103,18 +103,28 @@ pub fn validate_schema_identities(
     project: &Path,
     analyzed: &AnalyzedProject,
 ) -> Result<Option<PathBuf>, Diagnostic> {
+    checked_schema_registry_source(project, analyzed)
+        .map(|source| source.map(|_| schema_registry_path(project)))
+}
+
+/// Validate the exact captured bytes so provenance never hashes a second read.
+pub(crate) fn checked_schema_registry_source(
+    project: &Path,
+    analyzed: &AnalyzedProject,
+) -> Result<Option<String>, Diagnostic> {
     let path = schema_registry_path(project);
-    if !path.exists() {
-        return Ok(None);
-    }
-    let source = read_registry_source(&path)?;
+    let source = match fs::read_to_string(&path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(Diagnostic::error("MIG_IDENTITY_REGISTRY_READ_FAILED")),
+    };
     let entries = parse_registry(&source)?;
     validate_registry_entries(&entries, &derive_registry_entries(analyzed))?;
     if registry_json(&entries) != source {
         return Err(Diagnostic::error("MIG_IDENTITY_REGISTRY_NOT_CANONICAL")
             .with_note("registry files are compiler-owned; use schema commands to modify them"));
     }
-    Ok(Some(path))
+    Ok(Some(source))
 }
 
 pub fn rename_schema_identity(

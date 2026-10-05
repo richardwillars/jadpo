@@ -7,6 +7,44 @@
 This log records contradictions found before the independent P10R review. It is
 not external validation and cannot satisfy the P10R review or first-user gates.
 
+## 2026-10-02 lifecycle/service semantic successor freeze
+
+Independent RM-205 and RM-301 reviews accept their separate semantic contracts
+for implementation; [lifecycle](../../docs/lifecycle-plan.md) and
+[service](../../docs/service-plan.md) link exact candidate provenance and findings.
+The service successor has a scoped policy identity amendment and a separately
+pinned JOB-001 replacement, preserving pressure app/policy/acceptance bytes and
+the other 43 case IDs. No HTTP/job/lifecycle execution or final independent
+P10R experiment approval is supplied by these contract reviews.
+
+## 2026-10-02 owner-authorised UserWithTodos email revision
+
+The owner selected: keep `User.email` provisioning-only and omit it from the
+self-service todo-list response. `policy.jadpo` is unchanged. The predecessor
+acceptance bytes are preserved in
+[`acceptance-before-rm107-email-decision.json`](../../tests/validation/golden-baseline/acceptance-before-rm107-email-decision.json)
+(SHA-256 `acfc317db191764ebef1714f22af2f37e6ae1b93c2c609c195527197ef252ab0`).
+The successor digest is
+`3bed090059de86e35d72fb7a61b0fab365990d909e118b4f5f39b7b10ba56608`.
+
+AUTH-007 now requires email to be absent even when the JWT carries an email
+claim. REL-001 retains the `UserWithTodos` response, two-query ceiling, ordered
+child bound and cross-parent isolation, and also requires email to be absent.
+The projection remains `user_id` plus `List<TodoView>`. Both cases remain
+`not_executed`; this is a contract correction, not runtime evidence or final
+independent P10R approval.
+
+**Focused RM-107 evidence, 2026-10-02:** the migrated UserWithTodos route now
+returns that shape through one self-scoped User lookup and one indexed Todo page
+query. The SQLite HTTP suite covers zero, one and more than 100 children,
+counts exactly two application data reads, and proves owner/deleted filtering,
+ordering and private-field exclusion. PostgreSQL 16.3 checks the same capped
+projection and partial-index plan. A real HTTP JWT test supplies a conflicting
+email claim and confirms that neither the stored nor provider email appears in
+the response. These focused tests do not execute the source-bound 44-case
+harness; AUTH-007 and REL-001 remain `not_executed` there, and independent P10R
+review remains pending.
+
 ## 2026-09-25 consistency pass
 
 | Finding | Resolution |
@@ -76,6 +114,29 @@ operation and named `UserDisabled` failure instead of inventing an HTTP endpoint
 or treating a host operation as an HTTP response. A future executable harness
 must execute every timed follow-up; structural candidate validation is not
 runtime evidence.
+
+## 2026-10-01 browser-origin configuration revision
+
+Owner-authorised RM-103 revision: the implemented successor requires
+`browser_origin: Url { binding: "BROWSER_ORIGIN" }` and binds the browser
+validator's `origin` to it. No default or production origin is invented.
+Missing/invalid configuration must fail before listening; exact origin and
+session-bound CSRF proof remain required. Bearer transport stays separate.
+
+The original candidate `app.jadpo`, acceptance and human-owned policy remain
+unchanged. The addition is in `examples/golden-todo-migration`; this is an
+explicit successor configuration revision, not a silent frozen-source edit or
+independent approval. Baseline candidate/migration digests and historical
+diagnostics are retained in
+[provenance](../../tests/validation/golden-baseline/provenance.json).
+
+| Changed successor file | Before SHA-256 | After SHA-256 |
+|---|---|---|
+| `examples/golden-todo-migration/config.jadpo` | `25be093084592a2f324fa958d96b6fae2155bf072403e96b908ebcdab625e593` | `37e5e694bfcef51f19dfcc9a23f6835ea617ad497bbca5bc86dee7381eab2d80` |
+| `examples/golden-todo-migration/authentication.jadpo` | `8e8223032908ce024ad70d31fd6596d1e465258884da92de8888fa164971d143` | `7b58c592fcc6d58de350fbfbb39b013101f1f6501c6302beadda6ca304315c82` |
+
+Runtime proof against the full golden application and independent authentication
+review remain pending RM-102/RM-103; source checks cannot satisfy those gates.
 
 ## Verification
 

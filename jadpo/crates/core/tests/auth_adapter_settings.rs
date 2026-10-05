@@ -39,11 +39,18 @@ fn owner(binding: &str, declaration: &str) -> String {
 #[test]
 fn inactive_principals_preserve_declared_permission_or_domain_failure() {
     for kind in ["NotPermitted", "Rejected"] {
-        assert_eq!(check(&BASE.replace("kind: Rejected", &format!("kind: {kind}"))), Vec::<String>::new());
+        assert_eq!(
+            check(&BASE.replace("kind: Rejected", &format!("kind: {kind}"))),
+            Vec::<String>::new()
+        );
     }
     for kind in ["NotFound", "Conflict", "Internal"] {
-        assert!(check(&BASE.replace("kind: Rejected", &format!("kind: {kind}")))
-            .iter().any(|d| d.starts_with("TYPE_AUTH_INACTIVE_FAILURE_KIND")), "{kind}");
+        assert!(
+            check(&BASE.replace("kind: Rejected", &format!("kind: {kind}")))
+                .iter()
+                .any(|d| d.starts_with("TYPE_AUTH_INACTIVE_FAILURE_KIND")),
+            "{kind}"
+        );
     }
 }
 

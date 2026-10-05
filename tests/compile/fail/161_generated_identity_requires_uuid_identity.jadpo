@@ -1,0 +1,11 @@
+entity Todo {
+    id: Text { generated: identity }
+    title: Text
+
+    identity: id
+
+    persistence {
+        store: primary
+        role: authority
+    }
+}

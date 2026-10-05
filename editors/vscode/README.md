@@ -10,8 +10,11 @@ types as the CLI. Callable hover and signature help show success, exact failures
 and internal completion semantics; exhaustive-match call sites distinguish
 handled, mapped, and propagated failures, and failure arms navigate to their
 declarations. Source underlines are reserved for diagnostics. Use
-**Jadpo: Open Generated OpenAPI** or **Jadpo: Open Generated Validation Plan**
-to inspect build artifacts without turning declarations into document links.
+**Jadpo: Open Generated Artifact** to choose from the compiler's inventories,
+audits, validation plan, compatibility contract, OpenAPI document, and
+diagnostic references without turning declarations into document links. The
+authentication audit is available only for projects that declare an
+authentication strategy.
 
 The `Jadpo: Check Project` command requests a fresh compiler diagnostic pass.
 The server is also available to any standard LSP client through `jadpo lsp`.

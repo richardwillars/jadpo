@@ -1,6 +1,6 @@
 # CONFIG-001 configuration plan
 
-**Status:** core implementation in progress; CONFIG-P0/P1/P3 complete, P2/P4/P6 core implemented, CONFIG-P5 and platform evidence pending
+**Status:** core implementation in progress; CONFIG-P0/P1/P3 complete, P2/P4/P6 core implemented, CONFIG-P5 database liveness/readiness implemented, provider checks and full adversarial evidence pending
 
 **Approved:** 2026-09-27
 
@@ -232,14 +232,135 @@ environment forwarding, and last-known-good `dev` restart behavior. The LSP,
 VS Code grammar/snippet, compile fixtures, CLI integration cases, and a runnable
 configuration example cover the new surface.
 
-The remaining work is deliberately narrower: AUTH-001 and SERVICE-001 must
-provide real compiler-owned secret sinks; SERVICE-001 must define dependency
-probe semantics while the approved [TIME-001/TEST-001 contract](time-testing-plan.md)
-now supplies monotonic deadlines, stable operation instants, deterministic
-clock control, and test isolation; cloud-specific deployment hooks remain out
-of scope unless separately approved; and the golden todo plus the full P6
-adversarial matrix wait for those consumers. Startup validation itself is
-implemented and fail-closed.
+The compiler now generates public, compiler-owned `GET /health/live` and
+`GET /health/ready` handlers. Liveness is local and dependency-free. For an
+application with generated persistence, readiness checks the stable `database`
+dependency ID; other traffic gets a generic 503 while that required dependency
+is unavailable. Recoverable database connection failures keep the process live;
+incompatible schema/configuration failures still stop startup before binding.
+Structured SQLite BUSY/LOCKED (including their extended forms) during schema
+initialization are recoverable, not a permanent startup-fatal latch. This
+initialization rule does not broaden operation-level retry or availability rules.
+Readiness retries on probe requests with a single in-flight check, a one-second
+healthy cache and retry backoff from 250 ms up to five seconds. The PostgreSQL
+probe formerly awaited the native query after requesting cancellation at one
+second. The response-bound continuation below separates the caller response from
+that native lifetime; Bun 1.2.20 active-call interruption remains unproved.
+Recovery repeats idempotent schema initialization
+and replaces the active persistence client without a process restart. SQLite's
+local schema-version probe is synchronous. Structured operation-level lock or
+contention failures do not by themselves mark the whole database unavailable.
+
+The registered recovery suite also starts the generated first-party-auth
+application with its SQLite parent directory missing. The process stays live,
+readiness reports the database unavailable, and a protected route is gated with
+a generic 503. After the directory is created, readiness initializes the
+application and authentication schemas; a loopback-only test harness provisions
+a user/session through trusted host integration, then the protected identity
+route authenticates successfully without restart. Recovery polling eventually
+observes thirty-two ready responses with one authentication initialization.
+Requests arriving on opposite sides of the retry cutoff may return a mixed
+200/503 batch; each response must carry its corresponding safe ready/not-ready
+body. This is bounded local concurrency evidence, not a load or hard-deadline claim.
+
+A listener-free generated-handler continuation repeats database gating and
+recovery with 32 simultaneous readiness requests and exactly one authentication
+schema initialization, then renames the SQLite auth-session table to inject a
+post-startup authentication-store outage. The existing credential receives a
+safe `authentication_unavailable` response while the table is absent and
+succeeds after the table is restored. This directly covers route/auth-storage
+recovery without a listener, but does not establish network serving or
+PostgreSQL auth outage/recovery by itself. The registered live PostgreSQL case
+now repeats the session-table rename after startup and proves the same credential
+returns safe 503 during the outage and its original identity after restoration,
+without restarting or reissuing. Both signing keys, credential, connection URL,
+native error code and raw SELECT are absent from the checked debug-disabled
+response/log paths. The auth and persistence fixtures use separate databases
+inside one disposable cluster because their User schemas differ. The seven-case
+readiness suite passes, including both PostgreSQL cases; the independent
+[PG auth regression review](../tests/validation/rm403-independent-postgres-auth-review.json)
+accepts this narrow evidence. Ready remains 200 during private-table absence:
+availability (and possibly its healthy cache) is not schema-integrity proof.
+This table-rename case does not cover connection loss, concurrent PostgreSQL
+recovery or hard initialization bounds. Approved disposable host verification cleared
+the former socket/shared-memory restrictions. The supported snapshot passes
+61/61 checks, including live HTTP and PostgreSQL readiness
+([report](../build/validation/20261004T092753-91801/report.json)). The
+[independent correction review](../tests/validation/rm403-independent-correction-review.json)
+accepts the mixed-batch assertions and transient initialization classification,
+with real SQLite initial/recovery-time exclusive locks, same-process recovery,
+one initialization and unchanged fatal secret/schema validation. A deterministic
+generated probe covers sixteen calls before and sixteen after the retry cutoff.
+These scoped fixes do not establish hard probe/whole-initialization latency.
+This is a partial CONFIG-P5 implementation. The owner selected advisory,
+unprobed mail on 2026-10-04: SERVICE-001 v0.1 has no safe status operation, so
+readiness does not contact the mail provider and mail does not determine the
+application's ready/not-ready result. This choice does not bypass startup
+configuration validation or change the runtime outcome of an attempted mail
+delivery. `GET /health/ready` keeps required dependency IDs and states in
+`checks` and reports each declared service under `advisories` by its stable
+snake-case service ID with the value `unprobed`; advisory state does not affect
+the top-level readiness result. A direct generated-handler test proves the
+mail status causes no provider connection or fetch. Broader timeout/concurrency-
+bound evidence, the golden P6
+adversarial matrix, and platform evidence also remain open. AUTH-001 and
+SERVICE-001 still own compiler-controlled secret sinks; the approved
+[TIME-001/TEST-001 contract](time-testing-plan.md) supplies monotonic deadlines,
+stable operation instants and test isolation. Cloud-specific deployment hooks
+remain out of scope unless separately approved.
+
+**Connection-loss continuation, 2026-10-05:** the registered disposable
+PostgreSQL wrapper now provisions a separate recovery database and control
+connection. The test checks the exact loopback protocol/host/port/user/database
+pair before refusing new connections and terminating that database's backends.
+After healthy-cache expiry, readiness reports safe 503; 32 concurrent checks
+remain not-ready, ordinary authenticated traffic is gated and liveness stays
+200. Restoring connections yields 32 ready responses and the same credential's
+original identity without restarting the process. Required/advisory bodies and
+debug-disabled logs retain secret/native-detail checks. The verifier strips
+inherited readiness database variables; only the disposable wrapper supplies
+the fault-injection pair, restored in cleanup.
+
+The fresh supported [gate](../build/validation/20261005T010805-27481/report.json)
+passes61/61; its live readiness suite passes8/8 (4,721 assertions in that run).
+The [scoped independent review](../tests/validation/rm403-independent-connection-recovery-review.json)
+approves this evidence, rebuilding isolated targets and independently passing8/8.
+This is real connection-loss/concurrent
+recovery evidence, not an observed PostgreSQL single-initialization count, hard
+probe/whole-initialization bound, golden CONFIG-003 or platform qualification.
+The [next response-bound plan](work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders)
+separates caller response deadlines from native-attempt lifetime and requires
+late-success fencing rather than treating a cancellation request as interruption.
+
+**Asynchronous response-bound continuation, 2026-10-05:** after
+[independent plan approval](../tests/validation/rm403-independent-response-bound-plan-review.json),
+generated readiness now separates the shared one-second caller response budget
+from the aggregate native attempt. Expiry marks not-ready and returns false even
+if best-effort cancellation throws or does not settle the query. The native
+single-flight slot remains owned until actual completion; later requests do not
+attach more native observers/timers or launch overlapping checks. Late success,
+strict deadline equality, a fatal latch and a newer availability invalidation
+all prevent client/ready publication. Recovery initialization stages its success
+without publishing; candidate creation is fenced again immediately before one
+synchronous publication block. Backoff advances once per failure/expiry and
+only a fresh eligible success resets it. Genuine late schema failures still latch
+fatal; synthetic timeout does not.
+
+Six deterministic groups and the14-case current live SQLite/PostgreSQL readiness
+suite pass. The fresh supported
+[gate](../build/validation/20261005T012226-44058/report.json) passes61/61;
+the [independent implementation review](../tests/validation/rm403-independent-response-bound-implementation-review.json)
+approves this narrow slice with no blocking findings. It independently passes
+the six controlled groups and ten in-memory probes of the complete emitted
+persistence/authentication modules, including late initialization, genuine late
+fatal schema failure, false initialization results and newer invalidation. Those
+probes use synthetic SQL/logical time, not live latency measurements. This bounds asynchronous caller response under a progressing event-loop
+scheduler, not synchronous SQLite/event-loop blocking, native operation lifetime,
+initial startup or whole initialization hard latency. A permanently stalled native
+attempt deliberately keeps readiness false with no overlapping replacement.
+Mail remains advisory/unprobed and startup configuration/schema validation still
+precedes listener binding. These limits and the remaining golden P6/platform
+gates are not closed by the response-controller slice.
 
 ## 7. Required evidence
 

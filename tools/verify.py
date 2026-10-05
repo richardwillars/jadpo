@@ -59,6 +59,18 @@ def execute(command, log, environment, timeout=900):
             raise
 
 
+def verification_environment():
+    """Never let caller database/output overrides reach a validation subprocess."""
+    environment = os.environ.copy()
+    for name in ['DATABASE_URL', 'SQLITE_PATH', 'JADPO_AUTH_TEST_DATABASE_URL', 'JADPO_SERVICE_AUTH_DATABASE_URL', 'JADPO_JWT_AUTH_DATABASE_URL', 'JADPO_JWT_DEPENDENCY_DIR', 'JADPO_VALIDATION_PERSISTENCE_DATABASE_URL', 'JADPO_VALIDATION_AUTH_POLICY_DATABASE_URL', 'JADPO_LIFECYCLE_DATABASE_URL', 'JADPO_READINESS_TEST_DATABASE_URL', 'JADPO_READINESS_AUTH_DATABASE_URL', 'JADPO_READINESS_RECOVERY_DATABASE_URL', 'JADPO_READINESS_CONTROL_DATABASE_URL', 'JADPO_DELIVERY_HOOK_DATABASE_URL', 'JADPO_DELIVERY_HOOK_COMPONENT_OUTPUT', 'JADPO_DEBUG_TARGET_STACKS', 'JADPO_BIN']:
+        environment.pop(name, None)
+    environment['JADPO_BIN'] = str(COMPILER)
+    environment['NO_COLOR'] = '1'
+    environment['PYTHONDONTWRITEBYTECODE'] = '1'
+    environment.pop('JADPO_DELIVERY_HOOK_COMPONENT_VARIANT', None)
+    return environment
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--profile', choices=['full', 'quick'], default='full', help='quick explicitly omits live PostgreSQL')
@@ -75,12 +87,7 @@ def main():
     # New results directory per run: failure cannot leave a previous green report.
     output = ROOT / 'build/validation' / (time.strftime('%Y%m%dT%H%M%S') + f'-{os.getpid()}')
     output.mkdir(parents=True)
-    environment = os.environ.copy()
-    for name in ['DATABASE_URL', 'SQLITE_PATH', 'JADPO_AUTH_TEST_DATABASE_URL', 'JADPO_SERVICE_AUTH_DATABASE_URL', 'JADPO_JWT_AUTH_DATABASE_URL', 'JADPO_JWT_DEPENDENCY_DIR', 'JADPO_VALIDATION_PERSISTENCE_DATABASE_URL', 'JADPO_VALIDATION_AUTH_POLICY_DATABASE_URL', 'JADPO_DEBUG_TARGET_STACKS', 'JADPO_BIN']:
-        environment.pop(name, None)
-    environment['JADPO_BIN'] = str(COMPILER)
-    environment['NO_COLOR'] = '1'
-    environment['PYTHONDONTWRITEBYTECODE'] = '1'
+    environment = verification_environment()
     report = {'schema_version': 1, 'profile': args.profile, 'status': 'running', 'steps': [],
               'release_equivalent': False, 'golden': {'status': 'not_run'},
               'toolchain': {}, 'examples': manifest['examples'], 'remaining_gates': manifest['remaining_gates']}

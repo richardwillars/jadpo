@@ -506,3 +506,150 @@ commercial caution identified in the second end-to-end reading.
 Future work should cite and update these documents rather than relying on the
 shared conversation. The conversation remains useful only as historical
 provenance.
+
+## 4. Roadmap reconciliation — 2026-10-01
+
+The roadmap reorganisation preserved an earlier full snapshot, but compressed
+unfinished briefs into short task rows and left some issue-log questions without
+an explicit task. Revset was searchable only inside history. A separate Jev
+follow-up was absent from both roadmaps. This audit restores discoverability
+and outstanding scope without treating every brainstorm as approved delivery.
+
+The active roadmap now owns a [discussion/legacy index](implementation-roadmap.md#discussion-and-legacy-work-index),
+[a complete active-issue mapping](implementation-roadmap.md#language-issue-coverage)
+and the [Revset review brief](implementation-roadmap.md#revset-and-the-web-review-ui).
+Existing IDs and estimates are retained. Newly explicit tasks RM-214–RM-220,
+RM-408–RM-410, RM-508, RM-1005 and RM-1106–RM-1107 are unestimated and need
+planning. Conditional items retain activation conditions; this does not enlarge
+the other chat's selected delivery scope. The original history snapshot and
+original extraction above are preserved.
+
+### Sources and limits
+
+Checked the current roadmap and preserved pre-reorganisation snapshot against
+the language-issue log, decision register, original 22-theme conversation
+extraction, owning specifications, validation records and relevant active and
+archived chats returned by the app. The machine-readable
+[audit evidence](../tests/validation/roadmap-context-audit.json) records source IDs,
+retrieved page/turn counts, file hashes, issue coverage, task/dependency checks,
+and per-epic counts/effort at inspection time. Raw/private chat transcripts are
+not copied into the repository.
+
+Relevant Codex chat pages were followed until their API reported no further
+pages. ChatGPT retrieval returned short follow-up windows, sometimes only a few
+turns even when the original discussion was longer; a `hasMore: false` response
+is not proof of a complete lifetime transcript. The original shared discussion
+is covered by this document's existing extraction, not a fresh full-transcript
+revalidation. Tool turn summaries and truncated text cannot establish that no
+unseen idea exists. This audit accounts for the recovered material and names
+that access limitation rather than promising omniscience. Messages arriving in
+other chats after this audit's source capture require normal intake.
+
+### Recovered context and dispositions
+
+| Source discussion | What must survive | Active destination |
+|---|---|---|
+| Inspect revset.dev | Explicit request to add focused graphs; relationships/new reachability, revision comparison, evidence, unchanged-graph behaviour and comprehension experiment; implement within Jadpo without Revset dependency | RM-601/RM-602/RM-605/RM-704 and the active full brief |
+| Review project documentation | Human inability to reconstruct AI diffs, side effects and relationships; custom web UI; assurance critique and consistent nominal/enum syntax | E06/E07, original P10R rationale, type/failure specifications |
+| LLM Backend Language Idea follow-ups | Jev for development guidance, debugging, health/min-max prediction; possible paid monitoring/provider proxy; deterministic compiler remains independent | RM-1106/RM-1107 and [preserved strategy context](product-strategy.md#9-optional-advisory-intelligence-and-hosted-observability) |
+| Name the language and domain / Rename language to Jadpo | Owner adoption of Jadpo/jadpo.dev, reported repository rename, optional future .com and still-unverified external domain setup | [Superseding naming decision](decision-register.md#jadpo-name-and-canonical-domain--2026-09-25), RM-1005; old naming restraint is historical advice |
+| Find top developer websites | Every named benchmark, evidence strength, shared rubric, real journeys, prototypes and maintenance cost | RM-1001–RM-1004 and linked full website brief |
+| Continue through the roadmap | Formatter rules/tests for every grammar variation and whitespace perturbation; reserved words in type/variable positions, case, characters, leading digits | RM-201/RM-202/RM-203; partial tests do not close the whole request |
+| Find roadmap for compiler IDE / Continue next task / Implement P10.6 and DX2 | Hand-written learning loop, watch/health/restart, beautiful human terminal plus rich machine packets, useful contextual diagnostics, every public error and IDE parity | Completed DX foundations; RM-210/RM-211/RM-219/RM-508/RM-704 |
+| Discuss next part / Implement roadmap tasks | Non-persistent entity power, entity dossiers/operations, restricted named reads, graph/cache representations, automatic local safety versus explicit multi-owner intent | DATA-007/TX/CONSISTENCY authority; RM-205/RM-206/RM-212/RM-405–RM-407/E08 |
+| Plan next work / Build unblocked Jadpo roadmap items | All auth strategies including APIs and server-to-server; optional pinned JWT dependency; company/field policy; Temporal/Zone/friendly dates; secret prompts; consistency across naming | AUTH/POLICY/CONFIG/TIME plans, E01–E04, RM-504/RM-220 |
+| Recall Rust enum formatting | Payload variants and exhaustive matches; no automatic display/method/trait feature; defer five external sessions until implementation is complete, not forever | TYPE-006, RM-801/RM-408, E07 |
+| Review shared ChatGPT conversation / Continue current task / Continue task / Continue the build | Nominal field identity, nested objects, auth defaults, joins, immutability, imports, transactions, index acceptance, deterministic scaffold, config readiness and fair comparison | Original extraction/specs, E01–E08 and issue coverage |
+| Find remaining roadmap items / Run bounded native Rust experiment / Cloudflare Workers Runtimes / Roadmap And WebAssembly Feasibility | Rust/Wasm capability and host limits, source/compiler-owned lowering versus fixtures, native/Workers choices, boundary enforcement, large rows, performance metrics, simple build commands and deferred embedded stack ideas | E09, compiler/runtime and retained experiment plans/results; no automatic target promotion |
+| Build verifiers for agent loops | Separate verification of Jadpo from applications authored with it; measured robustness rather than hoping code works | E05, TEST-001, golden acceptance and reusable verify-loop workflow |
+| Reorganize roadmap into epics | Complete idea capture, stable epic/task dependencies, honest measured estimates, uninterrupted eligible work, model suitability, user questions, progress artifacts and useful documentation; later console/MCP/job history idea | Workflow/timing/reporting, E11 and coverage-preservation rule |
+
+The issue index also restores explicit visibility for migrations beyond bounded
+SQL, precise constraint identities, workload-aware indexes, ordinary logic/type
+extensions, source identity/maps, resource limits, HTTP streaming/cancellation,
+durable intent/docs, failure/localisation decisions and future config/time/test
+extensions. Existing constraints and speculative status are retained rather
+than silently selecting language designs. Newly counted rows represent recovered
+or clarified scope, not newly completed functionality.
+
+Verification and timing: `META-ROADMAP-RECONCILIATION-c50aee9fe93b`. Completion of
+this documentation run does not close any recovered implementation task.
+
+## 5. Component events, syntax and application graph intake — 2026-10-04
+
+Source: the visible conversation in **Assess event-driven architecture**, thread
+`01a105c2-7987-7571-86c8-2a4804c75f53`, including the owner's latest withdrawal
+of postfix `?` and request for options/examples/effects. This supplements the
+original extraction; it is not a re-audit of unseen conversations. Read-only
+delivery records established a concurrent golden scope; no message, new Goal,
+delegation or implementation was authorised by this planning intake.
+
+| Theme / correction | Owning destination |
+|---|---|
+| Monolith rationale; LLM reaction wiring; one enforceable pattern; imports must not confer side-effect authority | RM-309/RM-310 and [context plus effect/bypass matrix](work-plans/roadmap-assessment.md#rm-309--one-enforced-interaction-model) |
+| Mandatory publication across all mutation paths, generated typed catalogue, payload sufficiency/privacy and business-intent limits | Same contract plan; RM-311 durability, RM-312 successor golden evidence |
+| Multi-event handlers; optional execution keys/defaults; private actions across files; stateful subscribers instead of redundant workflow syntax | RM-309, reconciled WORKFLOW-001/RM-802–RM-804; no frozen contract silently replaced |
+| Durable fan-out, per-subscriber recovery, retries/backoff, uncertainty, enrollment, capacity, versioning/replay | RM-309/RM-311; reuse frozen ASYNC-001/SERVICE-001 and current worker instead of another engine |
+| Language-wide syntax before event/graph work; rejection of stacked `attempt send`; postfix preference then withdrawal; full option/effect comparison | RM-222 [syntax plan and reopened comparison](work-plans/roadmap-assessment.md#rm-222--language-wide-syntax-decision-and-migration-brief), conditional RM-223 migration |
+| Hierarchical documented graphs for UI/LLM, live paths/logs/timing/errors and filtering, measured bottleneck repair | RM-1108 [graph contract/probe](work-plans/developer-console-mcp.md#hierarchical-application-graph-plan--2026-10-04), existing RM-1101–RM-1105 consumers |
+| Production graph attribution, immutable incident deployment, branch divergence/graph-changing fixes, stable versus build-local IDs | Expanded RM-219; graph plan and existing standard/restricted failure channels |
+| Preserve complete session context, plan now, report remaining issues honestly, protect other session | [Session/planning checkpoint](work-plans/roadmap-assessment.md#session-context-and-planning-entry--2026-10-04), [provisional decision direction](decision-register.md#enforced-component-messaging-and-application-graphs--2026-10-04), conditional successors after RM-110 |
+
+Only documentation consistency checks belong to this planning session. Negative
+compiler cases, crash/adapter traces, independent reviews and overhead experiments
+are planned acceptance work, not passing evidence. No new task completion marker
+is added. Timing: `META-EVENT-GRAPH-PLANNING-644a33831de8`.
+
+**Later owner decision in the same chat:** retain `UpperCamelCase` for named
+types/contracts and `lower_snake_case` for runtime names; retain uppercase
+services/applications and the existing specialised declaration family. Remove
+the redundant authored principal name in a future singleton-block migration,
+with compiler-defined `Principal` and runtime `current_principal`. This
+supersedes suggestions of all-lowercase or lowerCamelCase naming and lowercase
+service/application declarations. The owner also favours prefix `attempt`,
+parenthesised `emit_event(...)` and event-only typed variants over separate
+command/fact APIs; admission/completion/authority rules still need review.
+See the [locked naming/principal decision](decision-register.md#naming-and-principal-direction--2026-10-04)
+and updated RM-222 plan. Decision capture is not compiler implementation or task
+completion. Timing: `META-NAMING-DECISION-aedc99eda0f6`.
+
+
+**Continued design batch:** the owner authorised continuing here, with shared
+implementation waiting for the other delivery session and RM-110. The owner
+selected `attempt query(Todo) { cardinality: required ... }`: one operation with
+query details inside the block, not cardinality-named aliases. No required
+semicolons or change to `attempt` propagation is implied. The
+[syntax inventory](syntax.md#22-successor-syntax-review--2026-10-04),
+[grammar delta](grammar-v0.1.md#18-successor-grammar-candidate--2026-10-04),
+[event contract candidate](event-model.md) and
+[identity/incident candidate](generated-artifacts.md#semantic-identity-and-incident-artifact-candidate--2026-10-04)
+capture the design and its limits. Conditional technical plans now cover
+RM-223/RM-310–RM-312. Required reviews and executable evidence remain pending;
+no frozen contract or implementation task closes. Batch settings were explicitly
+confirmed as `gpt-6-astra/medium`. Timing:
+`META-EVENT-CONTRACT-DESIGN-b62dfe08bb0b`.
+
+
+**Later continuation and independent detail review:** concrete `triggers:`
+restrictions now attach to entity/service effect leaves; explicit event
+invoke/read policy and delegated worker/origin intersection cannot be replaced
+by a trigger match. Bounded publication evaluates typed snapshots before commit.
+The expanded query/mutation candidate covers current cardinalities and paging;
+proposed cursor tuple inference and block-contained create/page metadata remain
+review candidates beyond the owner-selected outer query form. Standalone emission
+uses the existing `Unit` type and always requires `attempt`. The independent
+[review record](../tests/validation/event-design-independent-review.json) preserves
+three additional findings and their accepted corrections, without claiming freeze
+or implementation. Timing: `META-EVENT-CONTRACT-DETAIL-1605fb22931d`.
+
+**2026-10-05 continuation:** the owner selected allowing narrowly scoped,
+compiler-controlled completion-view maintenance after origin revocation, while
+retaining worker authorisation and source visibility/privacy checks. The
+[decision](decision-register.md#completion-projection-after-origin-revocation--2026-10-05)
+does not grant request/provider authority, raw projection writes or bootstrap.
+Independent review corrected compiler-owned replacement, partial coverage and
+read-time incarnation/generation binding. The event owner also records concrete
+persisted-state coordination pressure cases; the syntax owner maps current
+fixtures to future migration comparisons. All remain design evidence, with
+implementation behind RM-110 and the relevant contract gates. Timing:
+`META-EVENT-REACTION-CONTRACT-5d4ac92b09e5`.

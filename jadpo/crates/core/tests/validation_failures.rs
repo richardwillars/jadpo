@@ -124,7 +124,7 @@ route POST /decide {{ auth: none input: Input output: ResultText run: outer(inpu
         .iter()
         .map(|r| (r.failure.as_str(), r.http_status, r.derived))
         .collect();
-    assert_eq!(routes, [("Refused", 422, true)]);
+    assert_eq!(routes, [("Refused", Some(422), true)]);
 }
 
 #[test]
@@ -222,7 +222,7 @@ action deny(safe: Detail, trace: Trace) fails Denied -> ResultText {
     let contract = &project.failures.contracts[0];
     assert_eq!(contract.public_fields, ["safe_reason"]);
     assert_eq!(contract.internal_fields, ["audit_reason"]);
-    assert_eq!(contract.http_status, 403);
+    assert_eq!(contract.http_status, Some(403));
     let missing = analyze(&source.replace("audit_reason: trace", ""));
     error(&missing, "FAIL_MISSING_CONTEXT_FIELD");
     let extra = analyze(&source.replace(
@@ -547,4 +547,39 @@ function halt(flag: Flag) fails Missing -> ResultText {{
         "halt(flag: Flag) fails Missing, Refused",
     ));
     error(&stale, "FAIL_STALE_DECLARATION");
+}
+
+#[test]
+fn unknown_outcome_has_no_semantic_http_default_but_bun_maps_explicitly() {
+    let project = clean(
+        r#"
+output Result { ok: Bool }
+failure Uncertain { kind: OutcomeUnknown code: "uncertain" }
+action perform() fails Uncertain -> Result { reject Uncertain }
+route POST /perform { auth: none output: Result run: perform() }
+"#,
+    );
+    assert_eq!(project.failures.contracts[0].http_status, None);
+    assert_eq!(project.failures.routes[0].http_status, None);
+    let artifacts =
+        jadpo_core::derive_artifacts(std::path::Path::new("validation.jadpo"), &project);
+    let get = |name| {
+        artifacts
+            .iter()
+            .find(|a| a.relative_path == name)
+            .unwrap()
+            .contents
+            .as_str()
+    };
+    let manifest: serde_json::Value = serde_json::from_str(get("app.meta.json")).unwrap();
+    assert_eq!(manifest["semantic_graph"]["schema_version"], 2);
+    assert!(manifest["semantic_graph"]["failure_contracts"][0]["http_status"].is_null());
+    let audit: serde_json::Value = serde_json::from_str(get("audit/failures.json")).unwrap();
+    assert!(audit["failures"][0]["http_status"].is_null());
+    let routes: serde_json::Value = serde_json::from_str(get("inventory/routes.json")).unwrap();
+    assert_eq!(routes["routes"][0]["failures"][0]["http_status"], 500);
+    let api: serde_json::Value = serde_json::from_str(get("openapi/openapi.json")).unwrap();
+    assert!(api["paths"]["/perform"]["post"]["responses"]
+        .get("500")
+        .is_some());
 }

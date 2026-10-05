@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const { diagnosticDetailsHtml, problemMessage } = require("../diagnostic-presentation");
+const { GENERATED_ARTIFACTS } = require("../generated-artifacts");
 
 function authDiagnostic() {
   const choice = (title, replacement, behavioral, publicContract) => ({
@@ -100,4 +101,37 @@ test("Source underlines are reserved for compiler diagnostics", () => {
   assert.ok(!extension.includes("textDocument/documentLink"));
   assert.ok(manifest.contributes.commands.some(command => command.command === "jadpo.openGeneratedOpenApi"));
   assert.ok(manifest.contributes.commands.some(command => command.command === "jadpo.openGeneratedValidators"));
+});
+
+test("Generated artifact picker exposes each stable artifact through a safe relative path", () => {
+  const paths = GENERATED_ARTIFACTS.map(item => item.path);
+  assert.equal(new Set(paths).size, paths.length, "artifact paths must be unique");
+  assert.deepEqual(paths, [
+    "app.meta.json",
+    "inventory/routes.json",
+    "inventory/callables.json",
+    "audit/failures.json",
+    "audit/entities.json",
+    "audit/transactions.json",
+    "audit/configuration.json",
+    "audit/policy.json",
+    "audit/authentication.json",
+    "validators/plan.json",
+    "compatibility/public-failure-codes.json",
+    "openapi/openapi.json",
+    "diagnostics/catalogue.json",
+    "diagnostics/reference.md",
+  ]);
+  for (const { label, path: artifactPath } of GENERATED_ARTIFACTS) {
+    assert.ok(label.trim().length > 0);
+    assert.ok(!artifactPath.startsWith("/"));
+    assert.ok(!artifactPath.split("/").includes(".."));
+    assert.ok(!artifactPath.includes("\\"));
+  }
+});
+
+test("Generated artifact picker is contributed and activated as a command", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../package.json"), "utf8"));
+  assert.ok(manifest.activationEvents.includes("onCommand:jadpo.openGeneratedArtifact"));
+  assert.ok(manifest.contributes.commands.some(command => command.command === "jadpo.openGeneratedArtifact"));
 });

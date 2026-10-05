@@ -114,28 +114,101 @@ fn unterminated_strings_at_eof_and_line_end_are_lexical_errors() {
 fn keywords_only_reserve_the_complete_identifier() {
     for keyword in [
         "type",
+        "enum",
         "entity",
+        "value",
+        "input",
+        "output",
+        "failure",
         "function",
         "action",
-        "return",
+        "fixture",
+        "test",
+        "route",
+        "config",
         "module",
         "import",
+        "persist",
+        "code",
+        "kind",
+        "message",
         "public",
+        "internal",
+        "optional",
+        "required",
+        "many",
+        "missing",
+        "fails",
+        "var",
+        "mut",
+        "return",
+        "reject",
+        "attempt",
+        "call",
+        "async",
+        "await",
+        "if",
+        "else",
+        "match",
+        "success",
+        "propagate",
+        "assert",
+        "advance",
+        "and",
+        "or",
+        "not",
+        "auth",
+        "path",
+        "explicitly",
+        "run",
+        "min",
+        "max",
+        "min_length",
+        "max_length",
+        "pattern",
+        "format",
+        "throw",
+        "create",
+        "query",
+        "where",
+        "order_by",
+        "asc",
+        "desc",
+        "update",
+        "set",
+        "patch",
+        "empty",
+        "conflict",
+        "constraint",
+        "identity",
+        "unique",
+        "index",
+        "references",
+        "as",
+        "on_delete",
+        "restrict",
+        "cascade",
+        "set_null",
+        "inverse",
+        "via",
+        "include",
+        "into",
+        "limit",
+        "offset",
+        "delete",
         "true",
         "false",
         "none",
-        "attempt",
-        "async",
-        "await",
-        "success",
-        "propagate",
-        "advance",
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
     ] {
-        assert_ne!(
-            lex(path(), keyword).tokens[0].kind,
-            TokenKind::Identifier,
-            "{keyword}"
-        );
+        let result = lex(path(), keyword);
+        assert!(result.diagnostics.is_empty(), "{keyword}");
+        assert_eq!(result.tokens[0].text(keyword), keyword);
+        assert_ne!(result.tokens[0].kind, TokenKind::Identifier, "{keyword}");
         for name in [
             format!("{keyword}_value"),
             format!("{keyword}2"),
@@ -148,6 +221,59 @@ fn keywords_only_reserve_the_complete_identifier() {
             assert_eq!(result.tokens[0].text(&name), name);
         }
     }
+
+    for case_variant in ["Type", "TYPE", "Function", "TRUE", "Get", "get", "Patch"] {
+        let result = lex(path(), case_variant);
+        assert!(result.diagnostics.is_empty(), "{case_variant}");
+        assert_eq!(
+            result.tokens[0].kind,
+            TokenKind::Identifier,
+            "keyword matching is exact and case-sensitive: {case_variant}"
+        );
+    }
+}
+
+#[test]
+fn identifier_tokens_obey_the_documented_ascii_boundaries() {
+    for name in [
+        "_",
+        "__",
+        "_leading",
+        "trailing_",
+        "a__b",
+        "A",
+        "z",
+        "name2",
+    ] {
+        let result = lex(path(), name);
+        assert!(
+            result.diagnostics.is_empty(),
+            "{name}: {:?}",
+            result.diagnostics
+        );
+        assert_eq!(result.tokens[0].kind, TokenKind::Identifier, "{name}");
+        assert_eq!(result.tokens[0].text(name), name);
+    }
+
+    let digit_prefix = "9name";
+    let result = lex(path(), digit_prefix);
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(result.tokens[0].kind, TokenKind::IntegerLiteral);
+    assert_eq!(result.tokens[0].text(digit_prefix), "9");
+    assert_eq!(result.tokens[1].kind, TokenKind::Identifier);
+    assert_eq!(result.tokens[1].text(digit_prefix), "name");
+
+    let unicode_prefix = "éclair";
+    let result = lex(path(), unicode_prefix);
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(result.diagnostics[0].code, "SYN_UNEXPECTED_CHARACTER");
+    let span = result.diagnostics[0].primary.as_ref().unwrap();
+    assert_eq!(&unicode_prefix[span.start..span.end], "é");
+    assert!(result
+        .tokens
+        .iter()
+        .any(|token| token.kind == TokenKind::Identifier && token.text(unicode_prefix) == "clair"));
+    assert_valid_spans(unicode_prefix);
 }
 
 #[test]

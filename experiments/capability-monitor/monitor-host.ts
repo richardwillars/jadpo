@@ -2,15 +2,15 @@
 // guest's checked effect sequence, while this adapter only runs the guest and
 // supplies the existing SQLite driver. It never executes the application twice.
 import {Guest} from '../capability-host/wasm-driver.ts';
-import {sqliteHost} from '../capability-host/sqlite-host.ts';
+import {sqliteHost} from './sqlite-host.ts';
 import type {Database} from 'bun:sqlite';
 
 type Reply=(capability:string,args:any)=>any;
 export class MonitorHost {
  #monitor:Guest; #factory:()=>Guest; #sql:ReturnType<typeof sqliteHost>;
  #application:Guest|undefined; #pending:any; #scope=0; #started=false; #poisoned=false;
- constructor(monitor:Guest,factory:()=>Guest,db:Database){
-  this.#monitor=monitor;this.#factory=factory;this.#sql=sqliteHost(db);
+ constructor(monitor:Guest,factory:()=>Guest,db:Database,cacheStatements=false){
+  this.#monitor=monitor;this.#factory=factory;this.#sql=sqliteHost(db,cacheStatements);
  }
  #deny():never{this.#poisoned=true;throw Error('invalid monitor protocol');}
  #reply(capability:string,args:any){

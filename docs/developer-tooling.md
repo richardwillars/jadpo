@@ -1,6 +1,8 @@
 # Developer tooling and LLM presentation workstream
 
-**Status:** DX0.5 and DX1 compiler-backed local tooling implemented
+**Status:** DX0.5 and initial DX1 compiler-backed local tooling implemented;
+generated-artifact navigation and renderer adapter sources implemented;
+renderer-host previews and TOOL-005 formatter conformance remain open
 **Timing:** thin highlighting may begin during P10–P11; DX0.5 is required
 during P10.5 before P11 application authoring; the minimum tooling baseline
 must be frozen before the P12 comparison
@@ -26,9 +28,24 @@ types, and structured diagnostics. Its delivery order is:
    effects, and generated behaviour;
 4. context-aware completion and signature help;
 5. semantic tokens, rename, formatting, and conservative code actions;
-6. explicit commands (and, when added, CodeLens) for opening relevant generated
-   audit or contract artifacts without decorating source declarations or
-   presenting generated target code as the normal review surface.
+6. explicit commands for choosing and opening any relevant generated audit or
+   contract artifact without decorating source declarations or presenting
+   generated target code as the normal review surface.
+
+The VS Code extension's **Jadpo: Open Generated Artifact** command lists the
+compiler artifacts present under the active project's `build/` directory. Its
+curated paths cover all stable inventories, audits, validation and compatibility
+contracts, OpenAPI, and diagnostic references; an authentication audit appears
+only when that artifact exists.
+
+The renderer adapters and canonical fenced examples live in
+[`editors/rendering`](../editors/rendering/README.md). Shiki reuses the TextMate
+grammar, while the Prism, Highlight.js, and Monaco lexical vocabularies are
+derived from it. Cached Prism 1.30.0 and Shiki 4.4.3 engines have rendered all
+six fixtures in an isolated local smoke check, including the expected lexical
+categories and TextMate scopes. Highlight.js and Monaco still have only
+registration-shape checks, and visual previews in the target renderer hosts
+remain required before TOOL-003 can exit.
 
 Hover documentation should be derived from the language reference and semantic
 metadata where possible. Hand-copying descriptions into each editor extension
@@ -231,10 +248,12 @@ fine-tuning, provide agents with a compact, versioned language bundle:
 - small machine-readable queries for symbol information, hover documentation,
   definitions, references, and diagnostics.
 
-This bundle may later be packaged as a Codex skill/plugin or exposed through an
-MCP server, but both must call the same compiler-backed service. They should
-help an agent retrieve the right context on demand, not inject the entire
-language manual into every prompt.
+The current packaged interface is
+[`skills/jadpo-agent/SKILL.md`](../skills/jadpo-agent/SKILL.md), backed by the
+CLI and standard LSP. A future plugin or MCP adapter may expose the same
+compiler-backed queries, but it must not duplicate language semantics. These
+interfaces should help an agent retrieve relevant context on demand rather than
+inject the entire language manual into every prompt.
 
 Agent-facing evaluation should measure whether a fresh model can:
 
@@ -379,6 +398,50 @@ compiler checks after a valid frontend pass. Initial declaration-to-artifact
 links cover validation plans, callable inventories, failure audits, and OpenAPI.
 Diagnostic documentation is generated from the compiler-owned DX2 catalogue;
 the editor remains a presentation client rather than an independent authority.
+
+### DX1 formatter conformance follow-up
+
+The formatter ships through the compiler and LSP. Its conformance follow-up is
+tracked as [`TOOL-005`](language-issues.md#active-issues), with current rules in
+the [formatter rule matrix](formatter-rules.md):
+
+- maintain a rule matrix that maps every production and syntactic alternative
+  in the accepted grammar to its canonical layout and at least one unit case;
+- cover all declaration families, type and expression forms, statements,
+  route/auth/config syntax, comments, tests and fixtures, and bounded
+  module/import syntax, updating the matrix whenever the grammar changes;
+- define exact rules for indentation, token spacing, delimiter layout,
+  blank-line grouping, line endings, and the final newline;
+- for every syntax case, test valid whitespace variations including excess or
+  trailing spaces, tabs and mixed indentation, extra/missing blank lines, and
+  additional/missing line breaks, then compare byte-for-byte with canonical
+  output; and
+- assert idempotence, preserve parsed structure for valid files, and retain
+  string-literal bytes plus comment text and order.
+
+The unit suite should exercise every formatter syntax branch, not enumerate
+every possible whitespace byte string. Whitespace perturbations should be
+table-driven by rule and remain valid token separators where the grammar
+requires them. The LSP protocol suite continues to cover transport and editor
+integration; it does not substitute for this formatter rule matrix.
+
+The first implementation slice normalizes token spacing while preserving
+string/comment bytes and covers eight unit tests plus all 56 current compile-pass
+and 127 compile-fail source fixtures. Positive cases receive tab, spacing,
+indentation, excess blank-line, removed-line-break, and LF/CRLF perturbations;
+negative cases verify token preservation and stable syntax diagnostic codes,
+including unknown characters. A whitespace split across the route header also
+verifies compact context-sensitive path tokens.
+
+Canonical route-item reordering is implemented, including comments attached to
+their items. The rule matrix names the EBNF productions and maps them to
+canonical rules plus fixture or unit evidence. TOOL-005 remains open: for
+removed-line-break cases, corpus checks preserve tokens, parseability, and
+idempotence but do not compare exact canonical output. The owner selected syntax-derived canonical layout on 2026-10-01 in
+[FMT-005](formatter-rules.md#canonical-output-rules), superseding the previous
+source-line-preservation rule. AST-guided line reconstruction and exact-output
+assertions remain RM-203 work; token/comment/string and syntax-tree preservation
+must remain intact.
 
 ### DX2 — guided diagnostics, agent context, and documentation
 

@@ -156,6 +156,11 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
         return experimental_build::run(&arguments[1..]);
     }
 
+    if command == "approval" {
+        println!("{}", approval_export(&arguments[1..])?);
+        return Ok(());
+    }
+
     let project = arguments
         .get(1)
         .ok_or_else(|| Diagnostic::error("CLI_PROJECT_REQUIRED"))?;
@@ -920,7 +925,12 @@ fn incident_packet(
     let classification = event
         .get("classification")
         .and_then(serde_json::Value::as_str)
-        .filter(|value| matches!(*value, "RUNTIME_UNHANDLED_FAULT" | "RUNTIME_STARTUP_FAILED"))
+        .filter(|value| {
+            matches!(
+                *value,
+                "RUNTIME_UNHANDLED_FAULT" | "RUNTIME_OUTCOME_UNKNOWN" | "RUNTIME_STARTUP_FAILED"
+            )
+        })
         .ok_or_else(|| Diagnostic::error("CLI_INCIDENT_INVALID"))?;
     let request_id = event
         .get("requestId")
@@ -2128,6 +2138,81 @@ fn require_valid_frontend(project: &AnalyzedProject) -> Result<(), Diagnostic> {
     Ok(())
 }
 
+fn approval_export(arguments: &[String]) -> Result<String, Diagnostic> {
+    let invalid = || {
+        Diagnostic::error("CLI_PRESENTATION_ARGUMENTS").with_note(
+        "expected: jadpo approval <project> [--before <source-project>] [--expected-before <sha256:digest>] [--expected-before-state <sha256:digest>] [--intent <text-file>] [--text]"
+    )
+    };
+    let path = arguments
+        .first()
+        .filter(|s| !s.starts_with('-'))
+        .ok_or_else(invalid)?;
+    let mut before = None;
+    let mut expected = None;
+    let mut expected_state = None;
+    let mut intent = None;
+    let mut text = false;
+    let mut index = 1;
+    while index < arguments.len() {
+        match arguments[index].as_str() {
+            "--text" if !text => {
+                text = true;
+                index += 1;
+                continue;
+            }
+            "--before" if before.is_none() => {
+                before = Some(arguments.get(index + 1).ok_or_else(invalid)?.clone())
+            }
+            "--expected-before" if expected.is_none() => {
+                expected = Some(arguments.get(index + 1).ok_or_else(invalid)?.clone())
+            }
+            "--expected-before-state" if expected_state.is_none() => {
+                expected_state = Some(arguments.get(index + 1).ok_or_else(invalid)?.clone())
+            }
+            "--intent" if intent.is_none() => {
+                intent = Some(arguments.get(index + 1).ok_or_else(invalid)?.clone())
+            }
+            _ => return Err(invalid()),
+        }
+        index += 2;
+    }
+    let analyzed = analyze_project(Path::new(path))?;
+    require_valid_frontend(&analyzed)?;
+    validate_schema_identities(Path::new(path), &analyzed)?;
+    let baseline = before
+        .as_ref()
+        .map(|p| analyze_project(Path::new(p)))
+        .transpose()?;
+    if let (Some(path), Some(project)) = (&before, &baseline) {
+        require_valid_frontend(project)?;
+        validate_schema_identities(Path::new(path), project)?;
+    }
+    let intent = intent
+        .map(|p| {
+            fs::read_to_string(p)
+                .map_err(|_| invalid().with_note("intent file must be readable UTF-8"))
+        })
+        .transpose()?;
+    let subject = jadpo_core::derive_approval_subject_with_state_pin(
+        Path::new(path),
+        &analyzed,
+        before
+            .as_ref()
+            .zip(baseline.as_ref())
+            .map(|(p, a)| (Path::new(p), a)),
+        intent.as_deref(),
+        expected.as_deref(),
+        expected_state.as_deref(),
+    )
+    .map_err(|message| invalid().with_note(message))?;
+    Ok(if text {
+        jadpo_core::approval_text(&subject)
+    } else {
+        subject
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -2499,5 +2584,60 @@ mod tests {
             assert!(!diagnostic.reason.is_empty(), "{code}");
             assert!(!diagnostic.message.contains("value"), "{code}");
         }
+    }
+    #[test]
+    fn approval_cli_compares_pinned_source_and_preserves_text_facts() {
+        let root = std::env::temp_dir().join(format!("jadpo-approval-cli-{}", std::process::id()));
+        fs::create_dir_all(root.join("before")).unwrap();
+        fs::create_dir_all(root.join("after")).unwrap();
+        let source = |value| {
+            format!("type Greeting = Text {{}}\nfunction greet() -> Greeting {{ return Greeting(\"{value}\") }}\n")
+        };
+        fs::write(root.join("before/app.jadpo"), source("old")).unwrap();
+        fs::write(root.join("after/app.jadpo"), source("new")).unwrap();
+        fs::write(root.join("intent.txt"), "Change the greeting").unwrap();
+        let before = root.join("before").to_string_lossy().into_owned();
+        let after = root.join("after").to_string_lossy().into_owned();
+        let baseline: serde_json::Value =
+            serde_json::from_str(&super::approval_export(&[before.clone()]).unwrap()).unwrap();
+        let mut args = vec![
+            after,
+            "--before".into(),
+            before,
+            "--expected-before".into(),
+            baseline["canonical"]["after"]["source_digest"]
+                .as_str()
+                .unwrap()
+                .into(),
+            "--intent".into(),
+            root.join("intent.txt").to_string_lossy().into_owned(),
+        ];
+        args.extend([
+            "--expected-before-state".into(),
+            baseline["canonical"]["after"]["state_digest"]
+                .as_str()
+                .unwrap()
+                .into(),
+        ]);
+        let json = super::approval_export(&args).unwrap();
+        args.push("--text".into());
+        let text = super::approval_export(&args).unwrap();
+        assert!(jadpo_core::validate_approval_export(&json, text.lines().last().unwrap()).is_ok());
+        assert!(
+            !root.join("after/build").exists(),
+            "inspection must not replace a build"
+        );
+        let checked = jadpo_core::analyze_project(&root.join("before")).unwrap();
+        let registry =
+            jadpo_core::initialize_schema_identities(&root.join("before"), &checked).unwrap();
+        assert!(
+            super::approval_export(&args).is_err(),
+            "registry-only changes invalidate the full state pin"
+        );
+        fs::remove_file(registry).unwrap();
+        assert!(super::approval_export(&args).is_ok());
+        fs::write(root.join("before/app.jadpo"), source("changed baseline")).unwrap();
+        assert!(super::approval_export(&args).is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 }

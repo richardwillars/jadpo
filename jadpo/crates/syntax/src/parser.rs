@@ -4,6 +4,8 @@ use jadpo_diagnostics::{Diagnostic, DiagnosticFact, SourceSpan, TextEdit};
 use std::collections::BTreeSet;
 use std::path::Path;
 
+mod delivery;
+
 pub type ParseResult = ParsedSyntax;
 
 pub fn parse(source_name: &Path, source: &str) -> ParseResult {
@@ -44,6 +46,7 @@ struct ParsedEntityPersistence {
 
 struct ParsedFieldOptions {
     constraints: Vec<Constraint>,
+    generated: Option<GeneratedFieldRole>,
     role: Option<RoleBinding>,
     immutable: bool,
     policy: Option<PolicyDeclaration>,
@@ -88,6 +91,7 @@ impl<'source> Parser<'source> {
         let mut declarations = Vec::new();
         let mut exports = Vec::new();
         let mut persistence = Vec::new();
+        let mut services = Vec::new();
 
         while !self.at(TokenKind::Eof) {
             let before = self.cursor;
@@ -107,13 +111,33 @@ impl<'source> Parser<'source> {
             } else {
                 false
             };
+            if self.at_contextual("service") {
+                if public {
+                    let token = self.current();
+                    let diagnostic = Diagnostic::error("SYN_UNEXPECTED_TOKEN")
+                        .with_fact(DiagnosticFact::Expected(
+                            "a declaration kind that supports public visibility".to_owned(),
+                        ))
+                        .with_fact(DiagnosticFact::FoundValue("service".to_owned()));
+                    self.diagnostic_at(diagnostic, token.range);
+                }
+                if let Some(service) = self.parse_service_declaration() {
+                    services.push(service);
+                }
+                if self.cursor == before {
+                    self.bump();
+                }
+                continue;
+            }
             if self.at(TokenKind::Async) {
                 let unsupported = self.bump();
                 self.error_at("EFFECT_AUTHORED_ASYNC", unsupported.range);
             }
             if let Some(declaration) = self.parse_declaration() {
                 if public {
-                    if let Some(name) = declaration_name(&declaration) {
+                    if matches!(declaration, Declaration::Job(_)) {
+                        self.error_at("SYN_JOB_EXPORT_INVALID", declaration.range());
+                    } else if let Some(name) = declaration_name(&declaration) {
                         exports.push(name.clone());
                     } else {
                         self.error_at("SYN_ROUTE_EXPORT_INVALID", declaration.range());
@@ -149,6 +173,7 @@ impl<'source> Parser<'source> {
                 exports,
                 persistence,
                 declarations,
+                services,
                 range: TextRange::new(0, self.source.len()),
             },
             tokens: self.tokens,
@@ -203,6 +228,9 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_declaration(&mut self) -> Option<Declaration> {
+        if self.at_contextual("job") {
+            return self.parse_job_declaration().map(Declaration::Job);
+        }
         if self.at_contextual("locales") {
             return self.parse_locales_declaration().map(Declaration::Locales);
         }
@@ -252,6 +280,155 @@ impl<'source> Parser<'source> {
             TokenKind::Route => self.parse_route_declaration().map(Declaration::Route),
             _ => None,
         }
+    }
+
+    fn parse_job_declaration(&mut self) -> Option<JobDeclaration> {
+        let start = self.bump().range.start;
+        let name = self.expect_name("expected job name")?;
+        let every_name = self.expect_contextual_name("expected `every` after job name")?;
+        if every_name.text != "every" {
+            self.error_at("SYN_JOB_EVERY_REQUIRED", every_name.range);
+        }
+        let Some(duration) = self.parse_config_default() else {
+            self.error_current("SYN_JOB_DURATION_REQUIRED");
+            return None;
+        };
+        if duration.kind != ConfigDefaultKind::Duration {
+            self.error_at("SYN_JOB_DURATION_REQUIRED", duration.range);
+        }
+        let every = DurationLiteral {
+            text: duration.text,
+            range: duration.range,
+        };
+        self.expect(TokenKind::LeftBrace, "expected `{` after job interval")?;
+        let mut seen = BTreeSet::new();
+        let mut concurrency = None;
+        let mut run = None;
+        let mut retry = None;
+        let mut delivery = None;
+        while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
+            if seen.contains("delivery") && self.delivery_declaration_ahead() {
+                break;
+            }
+            let before = self.cursor;
+            let item = self.bump();
+            let key = item.text(self.source).to_owned();
+            if !seen.insert(key.clone()) {
+                self.error_at("SYN_JOB_ITEM_DUPLICATE", item.range);
+            }
+            match key.as_str() {
+                "concurrency" | "retry" => {
+                    self.expect(TokenKind::Colon, "expected `:` after job clause")?;
+                    let value = self.expect_contextual_name("expected closed job clause value")?;
+                    match (key.as_str(), value.text.as_str()) {
+                        ("concurrency", "singleton") => {
+                            concurrency = Some(JobConcurrency::Singleton)
+                        }
+                        ("retry", "next_schedule") => retry = Some(JobRetry::NextSchedule),
+                        _ => self.error_at("SYN_JOB_CLAUSE_VALUE_INVALID", value.range),
+                    }
+                }
+                "run" => {
+                    self.expect(TokenKind::Colon, "expected `:` after job run")?;
+                    match self.parse_named_expression() {
+                        Expression::Invocation(value) => run = Some(value),
+                        other => self.error_at("SYN_JOB_RUN_INVOCATION_REQUIRED", other.range()),
+                    }
+                }
+                "delivery" => {
+                    delivery = self.parse_job_delivery(item.range.start);
+                }
+                _ => {
+                    self.error_at("SYN_JOB_ITEM_UNKNOWN", item.range);
+                    self.recover_job_item();
+                }
+            }
+            if self.cursor == before {
+                self.bump();
+            }
+        }
+        let end = match self.expect(TokenKind::RightBrace, "expected `}` after job clauses") {
+            Some(token) => token.range.end,
+            None if seen.contains("delivery") && self.delivery_declaration_ahead() => {
+                self.previous_significant_end()
+            }
+            None => return None,
+        };
+        if concurrency.is_none() || run.is_none() || retry.is_none() {
+            self.error_at("SYN_JOB_CLAUSE_REQUIRED", TextRange::new(start, end));
+        }
+        Some(JobDeclaration {
+            name,
+            every,
+            concurrency,
+            run,
+            retry,
+            delivery,
+            range: TextRange::new(start, end),
+        })
+    }
+
+    fn recover_job_item(&mut self) {
+        let mut depth = 0usize;
+        while !self.at(TokenKind::Eof) {
+            if depth == 0
+                && (self.at(TokenKind::RightBrace)
+                    || self.at_contextual("concurrency")
+                    || self.at_contextual("retry")
+                    || self.at_contextual("delivery")
+                    || self.at(TokenKind::Run))
+            {
+                break;
+            }
+            match self.bump().kind {
+                TokenKind::LeftBrace | TokenKind::LeftParen | TokenKind::LeftBracket => depth += 1,
+                TokenKind::RightBrace | TokenKind::RightParen | TokenKind::RightBracket => {
+                    depth = depth.saturating_sub(1)
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn parse_service_declaration(&mut self) -> Option<ServiceDeclaration> {
+        let start = self.bump().range.start;
+        let name = self.expect_contextual_name("expected service name")?;
+        let open = self.expect(TokenKind::LeftBrace, "expected `{` after service name")?;
+        let body_start = open.range.end;
+        let mut depth = 1usize;
+        let mut close = None;
+
+        while !self.at(TokenKind::Eof) {
+            let token = self.bump();
+            match token.kind {
+                TokenKind::LeftBrace => depth += 1,
+                TokenKind::RightBrace => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        close = Some(token);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let Some(close) = close else {
+            let eof = self.current().range;
+            let diagnostic = Diagnostic::error("SYN_UNEXPECTED_TOKEN")
+                .with_fact(DiagnosticFact::Expected(
+                    "`}` to close the service declaration".to_owned(),
+                ))
+                .with_fact(DiagnosticFact::FoundValue("end of file".to_owned()));
+            self.diagnostic_at(diagnostic, TextRange::new(start, eof.start));
+            return None;
+        };
+
+        Some(ServiceDeclaration {
+            name,
+            items: parse_service_items(self.source, TextRange::new(body_start, close.range.start)),
+            range: TextRange::new(start, close.range.end),
+        })
     }
 
     fn parse_locales_declaration(&mut self) -> Option<LocalesDeclaration> {
@@ -450,7 +627,7 @@ impl<'source> Parser<'source> {
             let mut fields = Vec::new();
             while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
                 let field_before = self.cursor;
-                if let Some(field) = self.parse_field_declaration() {
+                if let Some(field) = self.parse_field_declaration(false) {
                     fields.push(field);
                 }
                 if self.cursor == field_before {
@@ -492,6 +669,7 @@ impl<'source> Parser<'source> {
             "expected `{` before authentication strategy settings",
         )?;
         let mut transport = None;
+        let mut exchange = None;
         let mut validators = None;
         let mut claims = Vec::new();
         let mut resolutions = Vec::new();
@@ -504,6 +682,9 @@ impl<'source> Parser<'source> {
                 }
                 "validators" if validators.is_none() => {
                     validators = self.parse_authentication_validators();
+                }
+                "exchange" if exchange.is_none() => {
+                    exchange = self.parse_authentication_exchange(item.range.start);
                 }
                 "claims" if !claims_seen => {
                     claims_seen = true;
@@ -536,9 +717,57 @@ impl<'source> Parser<'source> {
         Some(AuthenticationStrategyDeclaration {
             name,
             transport,
+            exchange,
             validators,
             claims,
             resolutions,
+            range: TextRange::new(start, end),
+        })
+    }
+
+    fn parse_authentication_exchange(
+        &mut self,
+        start: usize,
+    ) -> Option<AuthenticationExchangeDeclaration> {
+        self.expect(
+            TokenKind::LeftBrace,
+            "expected `{` before exchange settings",
+        )?;
+        let path_name = self.expect_contextual_name("expected `path` in exchange")?;
+        if path_name.text != "path" {
+            self.error_at("SYN_UNEXPECTED_TOKEN", path_name.range);
+            return None;
+        }
+        self.expect(TokenKind::Colon, "expected `:` after exchange path")?;
+        let path = self.parse_literal_of(TokenKind::StringLiteral)?;
+        let key_name = self.expect_contextual_name("expected `key` in exchange")?;
+        if key_name.text != "key" {
+            self.error_at("SYN_UNEXPECTED_TOKEN", key_name.range);
+            return None;
+        }
+        self.expect(TokenKind::Colon, "expected `:` after exchange key")?;
+        let key = self.expect_name("expected service key validator name")?;
+        let signed_name = self.expect_contextual_name("expected `signed` in exchange")?;
+        if signed_name.text != "signed" {
+            self.error_at("SYN_UNEXPECTED_TOKEN", signed_name.range);
+            return None;
+        }
+        self.expect(
+            TokenKind::Colon,
+            "expected `:` after exchange signed validator",
+        )?;
+        let signed = self.expect_name("expected service signed validator name")?;
+        let end = self
+            .expect(
+                TokenKind::RightBrace,
+                "expected `}` after exchange settings",
+            )?
+            .range
+            .end;
+        Some(AuthenticationExchangeDeclaration {
+            path,
+            key,
+            signed,
             range: TextRange::new(start, end),
         })
     }
@@ -654,8 +883,16 @@ impl<'source> Parser<'source> {
             }
             let principal = self.expect_contextual_name("expected principal variant")?;
             let mut settings = Vec::new();
+            let mut credentials = None;
             while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
                 let name = self.expect_contextual_name("expected validator setting")?;
+                if name.text == "credentials" {
+                    if credentials.is_some() {
+                        self.error_at("SYN_UNEXPECTED_TOKEN", name.range);
+                    }
+                    credentials = Some(self.parse_authentication_credentials(name.range.start)?);
+                    continue;
+                }
                 self.expect(TokenKind::Colon, "expected `:` after validator setting")?;
                 let value = self.parse_expression();
                 let range = TextRange::new(name.range.start, value.range().end);
@@ -673,6 +910,7 @@ impl<'source> Parser<'source> {
                 mode,
                 principal,
                 settings,
+                credentials,
                 range: TextRange::new(start, end),
             });
         }
@@ -681,6 +919,60 @@ impl<'source> Parser<'source> {
             "expected `}` after authentication validators",
         )?;
         Some(validators)
+    }
+
+    fn parse_authentication_credentials(
+        &mut self,
+        start: usize,
+    ) -> Option<AuthenticationCredentialBinding> {
+        self.expect(TokenKind::LeftBrace, "expected `{` after credentials")?;
+        let mut fields = std::collections::BTreeMap::new();
+        let mut active = None;
+        while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
+            let key = self.expect_contextual_name("expected credential binding field")?;
+            self.expect(
+                TokenKind::Colon,
+                "expected `:` after credential binding field",
+            )?;
+            if key.text == "active" {
+                if active.is_some() {
+                    self.error_at("SYN_UNEXPECTED_TOKEN", key.range);
+                }
+                active = Some(self.parse_expression());
+            } else {
+                if !matches!(
+                    key.text.as_str(),
+                    "identity" | "principal" | "verifier" | "expires" | "revoked"
+                ) {
+                    self.error_at("SYN_UNEXPECTED_TOKEN", key.range);
+                }
+                let value = self.parse_name_expression_reference()?;
+                if fields.insert(key.text, value).is_some() {
+                    self.error_at("SYN_UNEXPECTED_TOKEN", key.range);
+                }
+            }
+        }
+        let end = self
+            .expect(TokenKind::RightBrace, "expected `}` after credentials")?
+            .range
+            .end;
+        if active.is_none()
+            || ["identity", "principal", "verifier", "expires", "revoked"]
+                .iter()
+                .any(|key| !fields.contains_key(*key))
+        {
+            self.error_at("SYN_UNEXPECTED_TOKEN", TextRange::new(start, end));
+            return None;
+        }
+        Some(AuthenticationCredentialBinding {
+            identity: fields.remove("identity")?,
+            principal: fields.remove("principal")?,
+            verifier: fields.remove("verifier")?,
+            active: active?,
+            expires: fields.remove("expires")?,
+            revoked: fields.remove("revoked")?,
+            range: TextRange::new(start, end),
+        })
     }
 
     fn parse_authentication_transport(&mut self, start: usize) -> Option<AuthenticationTransport> {
@@ -1038,6 +1330,7 @@ impl<'source> Parser<'source> {
         self.expect(TokenKind::LeftBrace, "expected `{` after fixture name")?;
         let mut clock = None;
         let mut configuration = None;
+        let mut service_fakes = Vec::new();
         while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
             if self.at_contextual("clock") {
                 let item = self.bump();
@@ -1089,6 +1382,10 @@ impl<'source> Parser<'source> {
                 if configuration.replace(values).is_some() {
                     self.error_at("SYN_UNEXPECTED_TOKEN", config_token.range);
                 }
+            } else if self.at_contextual("service") {
+                if let Some(fake) = self.parse_fixture_service_fake() {
+                    service_fakes.push(fake);
+                }
             } else {
                 let unexpected = self.bump();
                 self.error_at("SYN_UNEXPECTED_TOKEN", unexpected.range);
@@ -1102,6 +1399,56 @@ impl<'source> Parser<'source> {
             name,
             clock,
             configuration,
+            service_fakes,
+            range: TextRange::new(start, end),
+        })
+    }
+
+    fn parse_fixture_service_fake(&mut self) -> Option<FixtureServiceFake> {
+        let start = self.bump().range.start;
+        let service = self.expect_name("expected service name in fixture fake")?;
+        self.expect(TokenKind::Colon, "expected `:` after fixture service name")?;
+        let fake = self.expect_contextual_name("expected `fake` after fixture service name")?;
+        if fake.text != "fake" {
+            self.error_at("SYN_UNEXPECTED_TOKEN", fake.range);
+        }
+        self.expect(
+            TokenKind::LeftBrace,
+            "expected `{` before service fake outcomes",
+        )?;
+        let mut outcomes = Vec::new();
+        while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
+            let operation = self.expect_name("expected service operation in fixture fake")?;
+            self.expect(
+                TokenKind::FatArrow,
+                "expected `=>` after fixture service operation",
+            )?;
+            let value = if self.at_contextual("accept") {
+                self.bump();
+                FixtureServiceFakeValue::Accepted(self.parse_expression())
+            } else {
+                FixtureServiceFakeValue::Declared(self.parse_name_expression_reference()?)
+            };
+            let end = match &value {
+                FixtureServiceFakeValue::Accepted(expression) => expression.range().end,
+                FixtureServiceFakeValue::Declared(name) => name.range.end,
+            };
+            outcomes.push(FixtureServiceFakeOutcome {
+                range: TextRange::new(operation.range.start, end),
+                operation,
+                value,
+            });
+        }
+        let end = self
+            .expect(
+                TokenKind::RightBrace,
+                "expected `}` after service fake outcomes",
+            )?
+            .range
+            .end;
+        Some(FixtureServiceFake {
+            service,
+            outcomes,
             range: TextRange::new(start, end),
         })
     }
@@ -1210,7 +1557,11 @@ impl<'source> Parser<'source> {
                 range: TextRange::new(start, body.end),
             }));
         }
-        let (constraints, end) = self.parse_constraint_block()?;
+        let (constraints, end) = if self.at(TokenKind::LeftBrace) {
+            self.parse_constraint_block()?
+        } else {
+            (Vec::new(), parent.range.end)
+        };
 
         Some(Declaration::Type(TypeDeclaration {
             name,
@@ -1256,6 +1607,7 @@ impl<'source> Parser<'source> {
         let mut identity = None;
         let mut persistence = None;
         let mut representations = Vec::new();
+        let mut lifecycle = None;
         let mut membership = None;
         let mut policy = None;
         let owner_name = Name {
@@ -1301,6 +1653,15 @@ impl<'source> Parser<'source> {
                 if let Some(representation) = self.parse_derived_representation() {
                     representations.push(representation);
                 }
+            } else if self.at_contextual("lifecycle") {
+                if kind != RecordKind::Entity {
+                    self.error_current("SYN_LIFECYCLE_NON_ENTITY");
+                }
+                let parsed = self.parse_entity_lifecycle()?;
+                let parsed_range = parsed.range;
+                if lifecycle.replace(parsed).is_some() {
+                    self.error_at("SYN_LIFECYCLE_DUPLICATE", parsed_range);
+                }
             } else if kind == RecordKind::Entity
                 && matches!(
                     self.current_kind(),
@@ -1343,7 +1704,9 @@ impl<'source> Parser<'source> {
                 if let Some(constraint) = self.parse_persistence_constraint() {
                     persistence_constraints.push(constraint);
                 }
-            } else if let Some(field) = self.parse_field_declaration() {
+            } else if let Some(field) =
+                self.parse_field_declaration(matches!(kind, RecordKind::Input | RecordKind::Value))
+            {
                 fields.push(field);
             } else {
                 self.recover_until(&[TokenKind::RightBrace]);
@@ -1366,6 +1729,7 @@ impl<'source> Parser<'source> {
                 identity,
                 persistence,
                 representations,
+                lifecycle,
             }),
             _ => None,
         };
@@ -1377,6 +1741,137 @@ impl<'source> Parser<'source> {
             membership,
             policy,
             end,
+        })
+    }
+
+    fn parse_entity_lifecycle(&mut self) -> Option<EntityLifecycle> {
+        let start = self.bump().range.start;
+        self.expect(TokenKind::LeftBrace, "expected `{` after `lifecycle`")?;
+        let mut initial = None;
+        let mut visible = None;
+        let mut transitions = Vec::new();
+        let mut purge = None;
+        while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
+            let before = self.cursor;
+            if self.at_contextual("initial") {
+                let declaration = self.bump();
+                self.expect(TokenKind::Colon, "expected `:` after `initial`")?;
+                let (fields, _) = self.parse_object_body()?;
+                if initial.replace(fields).is_some() {
+                    self.error_at("SYN_LIFECYCLE_INITIAL_DUPLICATE", declaration.range);
+                }
+            } else if self.at_contextual("visible") {
+                let declaration = self.bump();
+                if self
+                    .expect_contextual_name("expected `when` after `visible`")?
+                    .text
+                    != "when"
+                {
+                    self.error_at("SYN_LIFECYCLE_VISIBLE_WHEN_REQUIRED", declaration.range);
+                }
+                let predicate = self.parse_expression();
+                if visible.replace(predicate).is_some() {
+                    self.error_at("SYN_LIFECYCLE_VISIBLE_DUPLICATE", declaration.range);
+                }
+            } else if self.at_contextual("transition") {
+                let transition_start = self.bump().range.start;
+                let name = self.expect_contextual_name("expected transition name")?;
+                self.expect(TokenKind::LeftBrace, "expected `{` after transition name")?;
+                let mut from = None;
+                let mut set = None;
+                while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
+                    let item = self.expect_contextual_name("expected transition setting")?;
+                    self.expect(TokenKind::Colon, "expected `:` after transition setting")?;
+                    match item.text.as_str() {
+                        "from" => {
+                            let predicate = self.parse_expression();
+                            if from.replace(predicate).is_some() {
+                                self.error_at("SYN_LIFECYCLE_TRANSITION_DUPLICATE", item.range);
+                            }
+                        }
+                        "set" => {
+                            let (fields, _) = self.parse_object_body()?;
+                            if set.replace(fields).is_some() {
+                                self.error_at("SYN_LIFECYCLE_TRANSITION_DUPLICATE", item.range);
+                            }
+                        }
+                        _ => {
+                            self.error_at("SYN_LIFECYCLE_TRANSITION_SETTING_INVALID", item.range);
+                            self.recover_until(&[TokenKind::RightBrace]);
+                        }
+                    }
+                }
+                let end = self
+                    .expect(TokenKind::RightBrace, "expected `}` after transition")?
+                    .range
+                    .end;
+                let Some(from) = from else {
+                    self.error_at("SYN_LIFECYCLE_TRANSITION_FROM_REQUIRED", name.range);
+                    if self.cursor == before {
+                        self.bump();
+                    }
+                    continue;
+                };
+                let Some(set) = set else {
+                    self.error_at("SYN_LIFECYCLE_TRANSITION_SET_REQUIRED", name.range);
+                    if self.cursor == before {
+                        self.bump();
+                    }
+                    continue;
+                };
+                if transitions
+                    .iter()
+                    .any(|transition: &LifecycleTransition| transition.name.text == name.text)
+                {
+                    self.error_at("SYN_LIFECYCLE_TRANSITION_DUPLICATE", name.range);
+                }
+                transitions.push(LifecycleTransition {
+                    name,
+                    from,
+                    set,
+                    range: TextRange::new(transition_start, end),
+                });
+            } else if self.at_contextual("purge") {
+                let purge_start = self.bump().range.start;
+                let after_keyword =
+                    self.expect_contextual_name("expected `after` after `purge`")?;
+                if after_keyword.text != "after" {
+                    self.error_at("SYN_LIFECYCLE_PURGE_AFTER_REQUIRED", after_keyword.range);
+                }
+                let after = self.parse_expression();
+                let from_keyword =
+                    self.expect_contextual_name("expected `from` after purge duration")?;
+                if from_keyword.text != "from" {
+                    self.error_at("SYN_LIFECYCLE_PURGE_FROM_REQUIRED", from_keyword.range);
+                }
+                let from = self.expect_contextual_name("expected lifecycle timestamp field")?;
+                let value = LifecyclePurge {
+                    after,
+                    from,
+                    range: TextRange::new(purge_start, self.previous_significant_end()),
+                };
+                let value_range = value.range;
+                if purge.replace(value).is_some() {
+                    self.error_at("SYN_LIFECYCLE_PURGE_DUPLICATE", value_range);
+                }
+            } else {
+                self.error_current("SYN_LIFECYCLE_SETTING_INVALID");
+                self.recover_until(&[TokenKind::RightBrace]);
+            }
+            if self.cursor == before {
+                self.bump();
+            }
+        }
+        let end = self
+            .expect(TokenKind::RightBrace, "expected `}` after lifecycle")?
+            .range
+            .end;
+        Some(EntityLifecycle {
+            initial,
+            visible,
+            transitions,
+            purge,
+            range: TextRange::new(start, end),
         })
     }
 
@@ -2577,7 +3072,14 @@ impl<'source> Parser<'source> {
         match self.current_kind() {
             TokenKind::Match => self.parse_outcome_match_expression(),
             TokenKind::Create => self.parse_create_expression(),
-            TokenKind::Query => self.parse_query_expression(),
+            TokenKind::Query
+                if matches!(
+                    self.next_significant_kind(),
+                    Some(TokenKind::Optional | TokenKind::Required | TokenKind::Many)
+                ) || self.next_significant_is_contextual("page") =>
+            {
+                self.parse_query_expression()
+            }
             TokenKind::Update => self.parse_update_expression(),
             TokenKind::Delete => self.parse_delete_expression(),
             TokenKind::StringLiteral
@@ -2593,7 +3095,11 @@ impl<'source> Parser<'source> {
             | TokenKind::Input
             | TokenKind::Output
             | TokenKind::Value
-            | TokenKind::Path => self.parse_named_expression_with_construction(allow_construction),
+            | TokenKind::Path
+            | TokenKind::Query
+            | TokenKind::Headers => {
+                self.parse_named_expression_with_construction(allow_construction)
+            }
             TokenKind::LeftParen => {
                 let start = self.bump().range.start;
                 let value = self.parse_expression();
@@ -2607,7 +3113,10 @@ impl<'source> Parser<'source> {
             }
             TokenKind::LeftBrace => {
                 let start = self.current().range.start;
-                let (fields, end) = self.parse_object_body().unwrap_or_default();
+                let Some((fields, end)) = self.parse_object_body() else {
+                    let end = self.previous_significant_end().max(start);
+                    return Expression::Missing(TextRange::new(start, end));
+                };
                 Expression::Object(ObjectExpression {
                     fields,
                     range: TextRange::new(start, end),
@@ -2656,7 +3165,10 @@ impl<'source> Parser<'source> {
             path,
             range: target_range,
         };
-        let (fields, fields_end) = self.parse_object_body().unwrap_or_default();
+        let Some((fields, fields_end)) = self.parse_object_body() else {
+            let end = self.previous_significant_end().max(start);
+            return Expression::Missing(TextRange::new(start, end));
+        };
         let conflicts = self.parse_conflict_bindings();
         let end = conflicts
             .last()
@@ -2671,6 +3183,10 @@ impl<'source> Parser<'source> {
 
     fn parse_query_expression(&mut self) -> Expression {
         let start = self.bump().range.start;
+        if self.at_contextual("page") {
+            self.bump();
+            return self.parse_query_page_expression(start);
+        }
         let cardinality = match self.current_kind() {
             TokenKind::Optional => {
                 self.bump();
@@ -2938,9 +3454,262 @@ impl<'source> Parser<'source> {
             value,
             order,
             pagination,
+            page: None,
             includes,
             missing,
             range: TextRange::new(start, end),
+        })
+    }
+
+    fn parse_query_page_expression(&mut self, start: usize) -> Expression {
+        let Some(path) = self.parse_qualified_name() else {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        };
+        let target_end = path.last().map_or(start, |name| name.range.end);
+        let target = NameExpression {
+            range: TextRange::new(
+                path.first().map_or(start, |name| name.range.start),
+                target_end,
+            ),
+            path,
+        };
+        if self
+            .expect(
+                TokenKind::Arrow,
+                "expected `->` and a page result after query target",
+            )
+            .is_none()
+        {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        }
+        let Some(result) = self.parse_type_reference() else {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        };
+        if self
+            .expect(TokenKind::LeftBrace, "expected `{` after page result")
+            .is_none()
+        {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        }
+        if self
+            .expect(TokenKind::Where, "expected `where` in page query")
+            .is_none()
+            || self
+                .expect(TokenKind::Colon, "expected `:` after `where`")
+                .is_none()
+        {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        }
+        let Some(first) = self.parse_query_page_predicate() else {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        };
+        let mut predicates = vec![first];
+        while self.at(TokenKind::And) {
+            self.bump();
+            if self
+                .expect(TokenKind::Colon, "expected `:` after page predicate `and`")
+                .is_none()
+            {
+                return Expression::Missing(TextRange::new(start, self.current().range.end));
+            }
+            let Some(predicate) = self.parse_query_page_predicate() else {
+                return Expression::Missing(TextRange::new(start, self.current().range.end));
+            };
+            predicates.push(predicate);
+        }
+
+        if self
+            .expect(TokenKind::OrderBy, "expected `order_by` in page query")
+            .is_none()
+            || self
+                .expect(TokenKind::Colon, "expected `:` after `order_by`")
+                .is_none()
+        {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        }
+        let mut order = Vec::new();
+        loop {
+            let order_start = self.current().range.start;
+            let Some(field) = self.expect_contextual_name("expected entity field after `order_by`")
+            else {
+                return Expression::Missing(TextRange::new(start, self.current().range.end));
+            };
+            let direction = match self.current_kind() {
+                TokenKind::Asc => QueryOrderDirection::Ascending,
+                TokenKind::Desc => QueryOrderDirection::Descending,
+                _ => {
+                    self.error_current("SYN_EXPECTED_ORDER_DIRECTION");
+                    return Expression::Missing(TextRange::new(start, self.current().range.end));
+                }
+            };
+            let order_end = self.bump().range.end;
+            order.push(QueryOrder {
+                field,
+                direction,
+                range: TextRange::new(order_start, order_end),
+            });
+            if !self.at(TokenKind::Comma) {
+                break;
+            }
+            self.bump();
+        }
+
+        if !self.at_contextual("after") {
+            self.error_current("SYN_QUERY_PAGE_AFTER_REQUIRED");
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        }
+        self.bump();
+        if self
+            .expect(TokenKind::Colon, "expected `:` after `after`")
+            .is_none()
+        {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        }
+        let after_optional = if self.at(TokenKind::Optional) {
+            self.bump();
+            true
+        } else {
+            false
+        };
+        let after = Box::new(self.parse_expression());
+
+        if self
+            .expect(TokenKind::Limit, "expected `limit` in page query")
+            .is_none()
+            || self
+                .expect(TokenKind::Colon, "expected `:` after `limit`")
+                .is_none()
+        {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        }
+        let limit = Box::new(self.parse_expression());
+        if !self.at_contextual("project") {
+            self.error_current("SYN_QUERY_PAGE_PROJECT_REQUIRED");
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        }
+        self.bump();
+        if self
+            .expect(TokenKind::Colon, "expected `:` after `project`")
+            .is_none()
+        {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        }
+        let Some(projection) = self.parse_type_reference() else {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        };
+        if !self.at_contextual("cursor") {
+            self.error_current("SYN_QUERY_PAGE_CURSOR_REQUIRED");
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        }
+        self.bump();
+        if self
+            .expect(TokenKind::Colon, "expected `:` after `cursor`")
+            .is_none()
+        {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        }
+        let Some(cursor_path) = self.parse_qualified_name() else {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        };
+        let cursor_start = cursor_path.first().map_or(start, |name| name.range.start);
+        let cursor_end = cursor_path.last().map_or(start, |name| name.range.end);
+        let cursor = TypeReference {
+            path: cursor_path,
+            arguments: Vec::new(),
+            nullable: false,
+            range: TextRange::new(cursor_start, cursor_end),
+        };
+        if self
+            .expect(
+                TokenKind::LeftParen,
+                "expected cursor fields in parentheses",
+            )
+            .is_none()
+        {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        }
+        let mut cursor_fields = Vec::new();
+        loop {
+            let Some(field) = self.expect_contextual_name("expected cursor field") else {
+                return Expression::Missing(TextRange::new(start, self.current().range.end));
+            };
+            cursor_fields.push(field);
+            if !self.at(TokenKind::Comma) {
+                break;
+            }
+            self.bump();
+        }
+        if self
+            .expect(TokenKind::RightParen, "expected `)` after cursor fields")
+            .is_none()
+        {
+            return Expression::Missing(TextRange::new(start, self.current().range.end));
+        }
+        let end = self
+            .expect(TokenKind::RightBrace, "expected `}` after page query")
+            .map_or(self.previous_significant_end(), |token| token.range.end);
+        let page = QueryPage {
+            result: result.clone(),
+            predicates: predicates.clone(),
+            order: order.clone(),
+            after,
+            after_optional,
+            limit: limit.clone(),
+            projection,
+            cursor,
+            cursor_fields,
+            range: TextRange::new(start, end),
+        };
+        let first = &predicates[0];
+        Expression::Query(QueryExpression {
+            cardinality: QueryCardinality::Many,
+            target,
+            field: first.field.clone(),
+            value: first.value.clone(),
+            order: order.first().cloned(),
+            pagination: None,
+            page: Some(page),
+            includes: Vec::new(),
+            missing: None,
+            range: TextRange::new(start, end),
+        })
+    }
+
+    fn parse_query_page_predicate(&mut self) -> Option<QueryPagePredicate> {
+        let start = self.current().range.start;
+        let field = self.expect_contextual_name("expected entity field in page predicate")?;
+        let (operator, value) = if self.at(TokenKind::EqualEqual) {
+            self.bump();
+            (
+                QueryPagePredicateOperator::Equal,
+                self.parse_binary_expression(3, true),
+            )
+        } else if self.at(TokenKind::LessEqual) {
+            self.bump();
+            self.expect(
+                TokenKind::Optional,
+                "expected `optional` after `<=` in page predicate",
+            )?;
+            (
+                QueryPagePredicateOperator::OptionalLessEqual,
+                self.parse_binary_expression(3, true),
+            )
+        } else if self.at_contextual("matches") {
+            self.bump();
+            self.expect(TokenKind::Optional, "expected `optional` after `matches`")?;
+            (
+                QueryPagePredicateOperator::OptionalEqual,
+                self.parse_binary_expression(3, true),
+            )
+        } else {
+            self.error_current("SYN_QUERY_PAGE_PREDICATE_OPERATOR");
+            return None;
+        };
+        Some(QueryPagePredicate {
+            field,
+            operator,
+            range: TextRange::new(start, value.range().end),
+            value: Box::new(value),
         })
     }
 
@@ -2992,7 +3761,83 @@ impl<'source> Parser<'source> {
         let Some((field, value)) = self.parse_mutation_predicate(start, "update") else {
             return Expression::Missing(TextRange::new(start, self.current().range.end));
         };
-        let (changes, conditional_changes, patch, empty) = if self.at(TokenKind::Set) {
+        let (transition, changes, conditional_changes, patch, empty) = if self
+            .at_contextual("transition")
+        {
+            self.bump();
+            if self
+                .expect(TokenKind::Colon, "expected `:` after `transition`")
+                .is_none()
+            {
+                return Expression::Missing(TextRange::new(start, self.current().range.end));
+            }
+            let Some(transition) =
+                self.expect_contextual_name("expected lifecycle transition name")
+            else {
+                return Expression::Missing(TextRange::new(start, self.current().range.end));
+            };
+            let (changes, conditional_changes, patch, empty) = if self.at(TokenKind::Set) {
+                self.bump();
+                if self
+                    .expect(TokenKind::Colon, "expected `:` after `set`")
+                    .is_none()
+                {
+                    return Expression::Missing(TextRange::new(start, self.current().range.end));
+                }
+                let Some((changes, _)) = self.parse_object_body() else {
+                    return Expression::Missing(TextRange::new(start, self.current().range.end));
+                };
+                (changes, Vec::new(), None, None)
+            } else if self.at(TokenKind::Patch) {
+                self.bump();
+                if self
+                    .expect(TokenKind::Colon, "expected `:` after `patch`")
+                    .is_none()
+                {
+                    return Expression::Missing(TextRange::new(start, self.current().range.end));
+                }
+                let Some(path) = self.parse_qualified_name() else {
+                    self.error_current("SYN_EXPECTED_PATCH_INPUT");
+                    return Expression::Missing(TextRange::new(start, self.current().range.end));
+                };
+                let patch = NameExpression {
+                    range: TextRange::new(
+                        path.first().map_or(start, |name| name.range.start),
+                        path.last().map_or(start, |name| name.range.end),
+                    ),
+                    path,
+                };
+                let Some(empty) = self.parse_named_failure_binding("empty", TokenKind::Empty)
+                else {
+                    return Expression::Missing(TextRange::new(start, self.current().range.end));
+                };
+                let (changes, conditional_changes) = if self.at(TokenKind::Set) {
+                    self.bump();
+                    if self
+                        .expect(TokenKind::Colon, "expected `:` after `set`")
+                        .is_none()
+                    {
+                        return Expression::Missing(TextRange::new(
+                            start,
+                            self.current().range.end,
+                        ));
+                    }
+                    let Some(changes) = self.parse_patch_set_body() else {
+                        return Expression::Missing(TextRange::new(
+                            start,
+                            self.current().range.end,
+                        ));
+                    };
+                    changes
+                } else {
+                    (Vec::new(), Vec::new())
+                };
+                (changes, conditional_changes, Some(patch), Some(empty))
+            } else {
+                (Vec::new(), Vec::new(), None, None)
+            };
+            (Some(transition), changes, conditional_changes, patch, empty)
+        } else if self.at(TokenKind::Set) {
             self.bump();
             if self
                 .expect(TokenKind::Colon, "expected `:` after `set`")
@@ -3003,7 +3848,7 @@ impl<'source> Parser<'source> {
             let Some((changes, _)) = self.parse_object_body() else {
                 return Expression::Missing(TextRange::new(start, self.current().range.end));
             };
-            (changes, Vec::new(), None, None)
+            (None, changes, Vec::new(), None, None)
         } else if self.at(TokenKind::Patch) {
             self.bump();
             if self
@@ -3041,7 +3886,7 @@ impl<'source> Parser<'source> {
             } else {
                 (Vec::new(), Vec::new())
             };
-            (changes, conditional_changes, Some(patch), Some(empty))
+            (None, changes, conditional_changes, Some(patch), Some(empty))
         } else {
             self.error_current("SYN_EXPECTED_UPDATE_BODY");
             return Expression::Missing(TextRange::new(start, self.current().range.end));
@@ -3064,6 +3909,7 @@ impl<'source> Parser<'source> {
             target,
             field,
             value,
+            transition,
             changes,
             conditional_changes,
             patch,
@@ -3252,7 +4098,10 @@ impl<'source> Parser<'source> {
         };
 
         if self.at(TokenKind::LeftParen) {
-            let (arguments, named_arguments, end) = self.parse_arguments().unwrap_or_default();
+            let Some((arguments, named_arguments, end)) = self.parse_arguments() else {
+                let end = self.previous_significant_end().max(name_range.end);
+                return Expression::Missing(TextRange::new(name_range.start, end));
+            };
             Expression::Invocation(InvocationExpression {
                 callee: target,
                 arguments,
@@ -3260,7 +4109,10 @@ impl<'source> Parser<'source> {
                 range: TextRange::new(name_range.start, end),
             })
         } else if allow_construction && self.at(TokenKind::LeftBrace) {
-            let (fields, end) = self.parse_object_body().unwrap_or_default();
+            let Some((fields, end)) = self.parse_object_body() else {
+                let end = self.previous_significant_end().max(name_range.end);
+                return Expression::Missing(TextRange::new(name_range.start, end));
+            };
             Expression::Construction(ConstructionExpression {
                 target,
                 fields,
@@ -3454,7 +4306,7 @@ impl<'source> Parser<'source> {
 
         while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
             let before = self.cursor;
-            if let Some(field) = self.parse_field_declaration() {
+            if let Some(field) = self.parse_field_declaration(false) {
                 fields.push(field);
             } else {
                 self.recover_until(&[TokenKind::RightBrace]);
@@ -3471,7 +4323,7 @@ impl<'source> Parser<'source> {
         Some((fields, end))
     }
 
-    fn parse_field_declaration(&mut self) -> Option<FieldDeclaration> {
+    fn parse_field_declaration(&mut self, allow_default: bool) -> Option<FieldDeclaration> {
         let start = self.current().range.start;
         let name = self.expect_contextual_name("expected field name")?;
         self.expect(TokenKind::Colon, "expected `:` after field name")?;
@@ -3487,12 +4339,25 @@ impl<'source> Parser<'source> {
         } else {
             ParsedFieldOptions {
                 constraints: Vec::new(),
+                generated: None,
                 role: None,
                 immutable: false,
                 policy: None,
             }
         };
-        let generated = if self.at_contextual("generated") {
+        let default = if allow_default
+            && self.current_is_on_same_line(self.previous_significant_end())
+            && self.at_contextual("default")
+        {
+            self.bump();
+            Some(self.parse_any_literal().or_else(|| {
+                self.error_current("SYN_EXPECTED_LITERAL");
+                None
+            })?)
+        } else {
+            None
+        };
+        let generated_on = if self.at_contextual("generated") {
             self.bump();
             self.expect(TokenKind::LeftBrace, "expected `{` after `generated`")?;
             let on = self.expect_contextual_name("expected `on`")?;
@@ -3516,6 +4381,14 @@ impl<'source> Parser<'source> {
             Some(role)
         } else {
             None
+        };
+        let generated = match (options.generated, generated_on) {
+            (Some(identity), Some(_)) => {
+                self.error_at("SYN_DUPLICATE_FIELD_MODIFIER", name.range);
+                Some(identity)
+            }
+            (Some(identity), None) => Some(identity),
+            (None, generated_on) => generated_on,
         };
         let postfix_anchor = self.previous_significant_end();
         let mut persistence = Vec::new();
@@ -3577,6 +4450,7 @@ impl<'source> Parser<'source> {
             name,
             field_type,
             constraints: options.constraints,
+            default,
             persistence,
             generated,
             reference,
@@ -3591,6 +4465,7 @@ impl<'source> Parser<'source> {
     fn parse_field_options(&mut self) -> Option<ParsedFieldOptions> {
         self.expect(TokenKind::LeftBrace, "expected `{` before field options")?;
         let mut constraints = Vec::new();
+        let mut generated = None;
         let mut role = None;
         let mut immutable = false;
         let mut policy = None;
@@ -3611,6 +4486,19 @@ impl<'source> Parser<'source> {
                 };
                 if role.replace(binding).is_some() {
                     self.error_at("POLICY_BINDING_DUPLICATE", range);
+                }
+            } else if self.at_contextual("generated") {
+                let start = self.bump().range.start;
+                self.expect(TokenKind::Colon, "expected `:` after `generated`")?;
+                let identity = self.expect(
+                    TokenKind::Identity,
+                    "expected `identity` after `generated:`",
+                )?;
+                if generated.replace(GeneratedFieldRole::Identity).is_some() {
+                    self.error_at(
+                        "SYN_DUPLICATE_FIELD_MODIFIER",
+                        TextRange::new(start, identity.range.end),
+                    );
                 }
             } else if self.at_contextual("immutable") {
                 self.bump();
@@ -3636,6 +4524,7 @@ impl<'source> Parser<'source> {
         self.expect(TokenKind::RightBrace, "expected `}` after field options")?;
         Some(ParsedFieldOptions {
             constraints,
+            generated,
             role,
             immutable,
             policy,
@@ -3809,8 +4698,15 @@ impl<'source> Parser<'source> {
         let mut auth_seen = false;
         let mut path_fields = Vec::new();
         let mut path_seen = false;
+        let mut query = None;
+        let mut headers = Vec::new();
+        let mut headers_seen = false;
         let mut input = None;
         let mut output = None;
+        let mut success = RouteSuccess::default();
+        let mut success_seen = false;
+        let mut deadline: Option<DurationLiteral> = None;
+        let mut deadline_seen = false;
         let mut run = None;
         let mut inline_action = None;
 
@@ -3836,8 +4732,12 @@ impl<'source> Parser<'source> {
                             invalid.kind,
                             TokenKind::Auth
                                 | TokenKind::Path
+                                | TokenKind::Query
+                                | TokenKind::Headers
                                 | TokenKind::Input
                                 | TokenKind::Output
+                                | TokenKind::Success
+                                | TokenKind::Deadline
                                 | TokenKind::Run
                                 | TokenKind::Action
                                 | TokenKind::RightBrace
@@ -3937,6 +4837,53 @@ impl<'source> Parser<'source> {
                     self.expect_route_item_colon(item.range);
                     input = self.parse_type_reference();
                 }
+                TokenKind::Query => {
+                    let item = self.bump();
+                    if query.is_some() {
+                        self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
+                    }
+                    self.expect_route_item_colon(item.range);
+                    query = self.parse_type_reference();
+                }
+                TokenKind::Headers => {
+                    let item = self.bump();
+                    if headers_seen {
+                        self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
+                    }
+                    headers_seen = true;
+                    self.expect_route_item_colon(item.range);
+                    self.expect(TokenKind::LeftBrace, "expected `{` after route headers")?;
+                    while !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
+                        let field_start = self.current().range.start;
+                        let name =
+                            self.expect_contextual_name("expected route header binding name")?;
+                        self.expect(
+                            TokenKind::Colon,
+                            "expected `:` after route header binding name",
+                        )?;
+                        let field_type = self.parse_type_reference()?;
+                        let from =
+                            self.expect_contextual_name("expected `from` before HTTP header name")?;
+                        if from.text != "from" {
+                            self.error_at("ROUTE_HEADER_FROM_REQUIRED", from.range);
+                        }
+                        let wire_name = self.parse_literal_of(TokenKind::StringLiteral)?;
+                        let optional = if self.at(TokenKind::Optional) {
+                            self.bump();
+                            true
+                        } else {
+                            false
+                        };
+                        headers.push(RouteHeaderBinding {
+                            name,
+                            field_type,
+                            wire_name,
+                            optional,
+                            range: TextRange::new(field_start, self.previous_significant_end()),
+                        });
+                    }
+                    self.expect(TokenKind::RightBrace, "expected `}` after route headers")?;
+                }
                 TokenKind::Output => {
                     let item = self.bump();
                     if output.is_some() {
@@ -3944,6 +4891,38 @@ impl<'source> Parser<'source> {
                     }
                     self.expect_route_item_colon(item.range);
                     output = self.parse_type_reference();
+                }
+                TokenKind::Success => {
+                    let item = self.bump();
+                    if success_seen {
+                        self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
+                    }
+                    success_seen = true;
+                    self.expect_route_item_colon(item.range);
+                    if self.at_contextual("created") {
+                        self.bump();
+                        success = RouteSuccess::Created;
+                    } else if self.at_contextual("no_content") {
+                        self.bump();
+                        success = RouteSuccess::NoContent;
+                    } else {
+                        self.error_current("SYN_UNEXPECTED_TOKEN");
+                        if !self.at(TokenKind::RightBrace) && !self.at(TokenKind::Eof) {
+                            self.bump();
+                        }
+                    }
+                }
+                TokenKind::Deadline => {
+                    let item = self.bump();
+                    if deadline_seen {
+                        self.error_at("ROUTE_ITEM_DUPLICATE", item.range);
+                    }
+                    deadline_seen = true;
+                    self.expect_route_item_colon(item.range);
+                    deadline = self.parse_config_default().map(|value| DurationLiteral {
+                        text: value.text,
+                        range: value.range,
+                    });
                 }
                 TokenKind::Run => {
                     let item = self.bump();
@@ -3997,8 +4976,12 @@ impl<'source> Parser<'source> {
                     self.recover_until(&[
                         TokenKind::Auth,
                         TokenKind::Path,
+                        TokenKind::Query,
+                        TokenKind::Headers,
                         TokenKind::Input,
                         TokenKind::Output,
+                        TokenKind::Success,
+                        TokenKind::Deadline,
                         TokenKind::Run,
                         TokenKind::Action,
                         TokenKind::RightBrace,
@@ -4085,8 +5068,12 @@ impl<'source> Parser<'source> {
             public,
             fresh_authority,
             path_fields,
+            query,
+            headers,
             input,
             output,
+            success,
+            deadline,
             run,
             inline_action,
             range: TextRange::new(start, end),
@@ -4176,6 +5163,13 @@ impl<'source> Parser<'source> {
             .iter()
             .find(|token| !token.kind.is_trivia())
             .map(|token| token.kind)
+    }
+
+    fn next_significant_is_contextual(&self, value: &str) -> bool {
+        self.tokens[self.cursor + 1..]
+            .iter()
+            .find(|token| !token.kind.is_trivia())
+            .is_some_and(|token| token.text(self.source) == value)
     }
 
     fn is_object_keyword_typo(&self, parent: &TypeReference) -> bool {
@@ -4347,6 +5341,48 @@ fn edit_distance(left: &str, right: &str) -> usize {
     previous.last().copied().unwrap_or_default()
 }
 
+fn parse_service_items(source: &str, range: TextRange) -> Vec<ServiceItem> {
+    let mut items = Vec::new();
+    let mut sections = Vec::new();
+    let mut offset = range.start;
+    for raw_line in source[range.start..range.end].split_inclusive('\n') {
+        let line = raw_line
+            .strip_suffix('\n')
+            .unwrap_or(raw_line)
+            .trim_end_matches('\r');
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            offset += raw_line.len();
+            continue;
+        }
+        let leading = line.len() - line.trim_start().len();
+        let item_start = offset + leading;
+        let item_end = offset + line.trim_end().len();
+        if trimmed == "}" {
+            sections.pop();
+        } else if let Some(section) = trimmed.strip_suffix('{') {
+            sections.push(section.trim().to_owned());
+        } else {
+            let (key, value) = trimmed
+                .split_once(':')
+                .or_else(|| {
+                    trimmed
+                        .find(char::is_whitespace)
+                        .map(|index| (&trimmed[..index], trimmed[index..].trim()))
+                })
+                .unwrap_or((trimmed, ""));
+            items.push(ServiceItem {
+                path: sections.clone(),
+                key: key.trim().to_owned(),
+                value: value.trim().to_owned(),
+                range: TextRange::new(item_start, item_end),
+            });
+        }
+        offset += raw_line.len();
+    }
+    items
+}
+
 fn diagnostic_token_label(token: Token, source: &str) -> String {
     let text = token.text(source);
     if !text.is_empty()
@@ -4437,6 +5473,7 @@ fn declaration_name(declaration: &Declaration) -> Option<&Name> {
         Declaration::Fixture(declaration) => Some(&declaration.name),
         Declaration::Test(_) => None,
         Declaration::Route(_) => None,
+        Declaration::Job(_) => None,
     }
 }
 
@@ -4446,7 +5483,7 @@ mod tests {
     use crate::{
         CallableKind, CredentialLocation, Declaration, HttpMethod, PersistenceConstraintKind,
         PersistenceModifier, PrincipalVariantKind, QueryOrderDirection, RecordKind,
-        ReferenceDeleteAction, Statement,
+        ReferenceDeleteAction, RouteSuccess, Statement,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -4456,6 +5493,30 @@ mod tests {
             .ancestors()
             .nth(3)
             .expect("syntax crate should be inside the repository")
+    }
+
+    #[test]
+    fn captures_balanced_service_contract_without_confusing_nested_blocks() {
+        let path = repository_root().join("tests/assurance/service-successor-v0.1.jadpo");
+        let full_source = fs::read_to_string(&path).expect("service contract should be readable");
+        let parsed = parse(&path, &full_source);
+
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        assert_eq!(parsed.file.services.len(), 1);
+        assert_eq!(parsed.file.services[0].name.text, "ReminderMail");
+        let items = &parsed.file.services[0].items;
+        assert!(items.iter().any(|item| {
+            item.path.len() == 1
+                && item.path[0] == "import"
+                && item.key == "file"
+                && item.value == "\"tests/assurance/service-reference-mail-v0.1.json\""
+        }));
+        assert!(items
+            .iter()
+            .any(|item| item.key == "POST" && item.value == "/v1/messages"));
+        assert!(items
+            .iter()
+            .any(|item| item.value.contains("OutcomeUnknown")));
     }
 
     #[test]
@@ -4554,6 +5615,80 @@ output PrivateResult { todo: Todo }
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "ROUTE_AUTH_VALUE_INVALID"));
+    }
+
+    #[test]
+    fn parses_typed_route_query_and_explicit_header_bindings() {
+        let source = r#"
+type PageSize = Int { min: 1 max: 100 }
+type ListTodos = Object { page_size: PageSize default 25 }
+route GET /todos {
+    auth: none
+    query: ListTodos
+    headers: { trace_id: Text from "X-Trace" optional }
+    action: { return true }
+}
+"#;
+        let parsed = parse(Path::new("route-inputs.jadpo"), source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        let route = parsed
+            .file
+            .declarations
+            .iter()
+            .find_map(|declaration| match declaration {
+                Declaration::Route(route) => Some(route),
+                _ => None,
+            })
+            .expect("route");
+        assert_eq!(route.query.as_ref().unwrap().path[0].text, "ListTodos");
+        assert_eq!(route.headers.len(), 1);
+        assert_eq!(route.headers[0].name.text, "trace_id");
+        assert_eq!(route.headers[0].wire_name.text, "\"X-Trace\"");
+        assert!(route.headers[0].optional);
+        let list = parsed
+            .file
+            .declarations
+            .iter()
+            .find_map(|declaration| match declaration {
+                Declaration::Record(record) if record.name.text == "ListTodos" => Some(record),
+                _ => None,
+            })
+            .expect("query record");
+        assert_eq!(list.fields[0].default.as_ref().unwrap().text, "25");
+    }
+
+    #[test]
+    fn route_header_binding_requires_from_keyword() {
+        let parsed = parse(
+            Path::new("route-header-from.jadpo"),
+            "route GET /items { auth: none headers: { trace: Text wire \"X-Trace\" } action: { return true } }",
+        );
+        assert!(parsed
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "ROUTE_HEADER_FROM_REQUIRED"));
+    }
+
+    #[test]
+    fn parses_explicit_created_and_no_content_route_successes() {
+        let source = r#"output CreatedItem { id: Uuid }
+action make_item() -> CreatedItem { return CreatedItem { id: Uuid("00000000-0000-4000-8000-000000000001") } }
+route POST /items { auth: none output: CreatedItem run: make_item() success: created }
+route DELETE /items { auth: none action: {} success: no_content }
+"#;
+        let parsed = parse(Path::new("route-success.jadpo"), source);
+
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        let successes = parsed
+            .file
+            .declarations
+            .iter()
+            .filter_map(|declaration| match declaration {
+                Declaration::Route(route) => Some(route.success),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(successes, [RouteSuccess::Created, RouteSuccess::NoContent]);
     }
 
     #[test]
@@ -4696,6 +5831,108 @@ route POST /registrations {
             diagnostic.code == "SYN_UNEXPECTED_TOKEN"
                 && diagnostic.message == "Expected `:` after `where`"
         }));
+    }
+
+    #[test]
+    fn parses_typed_keyset_page_queries() {
+        let source = r#"
+entity Todo { owner_id: Uuid id: Uuid identity created_at: Instant deleted_at: Instant? status: Text }
+input ListTodos { owner_id: Uuid status: Text optional after: TodoCursor optional page_size: Int }
+value TodoCursor { created_at: Todo.created_at id: Todo.id }
+output TodoView { id: Todo.id created_at: Todo.created_at status: Todo.status }
+output TodoPage { items: List<TodoView> next: TodoCursor? }
+action list(input: ListTodos) -> TodoPage {
+    return attempt query page Todo -> TodoPage {
+        where: owner_id == input.owner_id
+        and: deleted_at == none
+        and: status matches optional input.status
+        order_by: created_at desc, id desc
+        after: optional input.after
+        limit: input.page_size
+        project: TodoView
+        cursor: TodoCursor(created_at, id)
+    }
+}
+"#;
+        let parsed = parse(Path::new("keyset-page.jadpo"), source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        let action = parsed
+            .file
+            .declarations
+            .iter()
+            .find_map(|declaration| match declaration {
+                Declaration::Callable(callable) if callable.name.text == "list" => Some(callable),
+                _ => None,
+            })
+            .expect("page action");
+        let Statement::Return(returned) = &action.body.statements[0] else {
+            panic!("expected page return");
+        };
+        let crate::Expression::Attempt(attempt) = &returned.value else {
+            panic!("expected query attempt");
+        };
+        let crate::Expression::Query(query) = attempt.value.as_ref() else {
+            panic!("expected query expression");
+        };
+        let page = query.page.as_ref().expect("page query AST");
+        assert_eq!(page.predicates.len(), 3);
+        assert_eq!(page.order.len(), 2);
+        assert_eq!(
+            page.cursor_fields
+                .iter()
+                .map(|field| field.text.as_str())
+                .collect::<Vec<_>>(),
+            ["created_at", "id"]
+        );
+        assert_eq!(page.order[0].direction, QueryOrderDirection::Descending);
+    }
+
+    #[test]
+    fn reports_required_keyset_page_clauses_and_predicate_operators() {
+        let cases = [
+            (
+                "where: id == input.id\n        order_by: id desc\n        limit: 10\n        project: TodoView\n        cursor: TodoCursor(id)",
+                "SYN_QUERY_PAGE_AFTER_REQUIRED",
+            ),
+            (
+                "where: id == input.id\n        order_by: id desc\n        after: optional input.after\n        limit: 10\n        cursor: TodoCursor(id)",
+                "SYN_QUERY_PAGE_PROJECT_REQUIRED",
+            ),
+            (
+                "where: id == input.id\n        order_by: id desc\n        after: optional input.after\n        limit: 10\n        project: TodoView",
+                "SYN_QUERY_PAGE_CURSOR_REQUIRED",
+            ),
+            (
+                "where: id != input.id\n        order_by: id desc\n        after: optional input.after\n        limit: 10\n        project: TodoView\n        cursor: TodoCursor(id)",
+                "SYN_QUERY_PAGE_PREDICATE_OPERATOR",
+            ),
+        ];
+
+        for (clauses, expected_code) in cases {
+            let source = format!(
+                r#"
+entity Todo {{ id: Uuid identity }}
+input ListTodos {{ id: Uuid optional after: TodoCursor optional }}
+value TodoCursor {{ id: Todo.id }}
+output TodoView {{ id: Todo.id }}
+output TodoPage {{ items: List<TodoView> next: TodoCursor? }}
+action list(input: ListTodos) -> TodoPage {{
+    return attempt query page Todo -> TodoPage {{
+        {clauses}
+    }}
+}}
+"#
+            );
+            let parsed = parse(Path::new("keyset-page-diagnostic.jadpo"), &source);
+            assert!(
+                parsed
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == expected_code),
+                "expected {expected_code}, received {:#?}",
+                parsed.diagnostics
+            );
+        }
     }
 
     #[test]
@@ -4888,6 +6125,176 @@ route POST /registrations {
             Some("owner")
         );
         assert_eq!(reference.on_delete, ReferenceDeleteAction::Cascade);
+    }
+
+    #[test]
+    fn parses_entity_lifecycle_initial_visibility_transition_and_purge() {
+        let source = r#"
+enum UserStatus { active disabled }
+entity User {
+    id: Uuid identity
+    identity: id
+    status: UserStatus
+    disabled_at: Instant?
+    lifecycle {
+        initial: { status: User.status(UserStatus.active) disabled_at: none }
+        visible when status == UserStatus.active
+        transition disable {
+            from: status == UserStatus.active
+            set: { status: User.status(UserStatus.disabled) disabled_at: clock.now }
+        }
+    }
+}
+entity Todo {
+    id: Uuid identity
+    identity: id
+    deleted_at: Instant?
+    lifecycle {
+        initial: { deleted_at: none }
+        visible when deleted_at == none
+        transition delete {
+            from: deleted_at == none
+            set: { deleted_at: clock.now }
+        }
+        purge after config.soft_delete_retention from deleted_at
+    }
+}
+"#;
+        let parsed = parse(Path::new("lifecycle.jadpo"), source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+
+        let Declaration::Record(user) = &parsed.file.declarations[1] else {
+            panic!("expected User entity");
+        };
+        let lifecycle = &user.dossier.as_ref().unwrap().lifecycle;
+        let lifecycle = lifecycle.as_ref().expect("User lifecycle should parse");
+        assert_eq!(lifecycle.initial.as_ref().unwrap().len(), 2);
+        assert!(lifecycle.visible.is_some());
+        assert_eq!(lifecycle.transitions.len(), 1);
+        assert_eq!(lifecycle.transitions[0].name.text, "disable");
+        assert_eq!(lifecycle.transitions[0].set.len(), 2);
+
+        let Declaration::Record(todo) = &parsed.file.declarations[2] else {
+            panic!("expected Todo entity");
+        };
+        let lifecycle = todo.dossier.as_ref().unwrap().lifecycle.as_ref().unwrap();
+        assert_eq!(lifecycle.transitions[0].name.text, "delete");
+        let purge = lifecycle.purge.as_ref().expect("purge clause should parse");
+        assert_eq!(purge.from.text, "deleted_at");
+        assert_eq!(
+            purge.after.range().start,
+            source.find("config.soft_delete_retention").unwrap()
+        );
+    }
+
+    #[test]
+    fn reports_specific_lifecycle_declaration_errors() {
+        let cases = [
+            (
+                "SYN_LIFECYCLE_DUPLICATE",
+                "entity Todo { id: Uuid identity: id lifecycle { initial: {} } lifecycle { initial: {} } }",
+            ),
+            (
+                "SYN_LIFECYCLE_INITIAL_DUPLICATE",
+                "entity Todo { id: Uuid identity: id lifecycle { initial: {} initial: {} } }",
+            ),
+            (
+                "SYN_LIFECYCLE_NON_ENTITY",
+                "input TodoFilter { lifecycle { initial: {} } }",
+            ),
+            (
+                "SYN_LIFECYCLE_PURGE_AFTER_REQUIRED",
+                "entity Todo { id: Uuid identity: id lifecycle { initial: {} purge before config.retention from deleted_at } }",
+            ),
+            (
+                "SYN_LIFECYCLE_PURGE_DUPLICATE",
+                "entity Todo { id: Uuid identity: id lifecycle { initial: {} purge after config.retention from deleted_at purge after config.retention from deleted_at } }",
+            ),
+            (
+                "SYN_LIFECYCLE_PURGE_FROM_REQUIRED",
+                "entity Todo { id: Uuid identity: id lifecycle { initial: {} purge after config.retention using deleted_at } }",
+            ),
+            (
+                "SYN_LIFECYCLE_SETTING_INVALID",
+                "entity Todo { id: Uuid identity: id lifecycle { initial: {} unsupported: true } }",
+            ),
+            (
+                "SYN_LIFECYCLE_TRANSITION_DUPLICATE",
+                "entity Todo { id: Uuid identity: id lifecycle { initial: {} transition delete { from: true from: false set: {} } } }",
+            ),
+            (
+                "SYN_LIFECYCLE_TRANSITION_FROM_REQUIRED",
+                "entity Todo { id: Uuid identity: id lifecycle { initial: {} transition delete { set: {} } } }",
+            ),
+            (
+                "SYN_LIFECYCLE_TRANSITION_SETTING_INVALID",
+                "entity Todo { id: Uuid identity: id lifecycle { initial: {} transition delete { when: true from: true set: {} } } }",
+            ),
+            (
+                "SYN_LIFECYCLE_TRANSITION_SET_REQUIRED",
+                "entity Todo { id: Uuid identity: id lifecycle { initial: {} transition delete { from: true } } }",
+            ),
+            (
+                "SYN_LIFECYCLE_VISIBLE_DUPLICATE",
+                "entity Todo { id: Uuid identity: id lifecycle { initial: {} visible when true visible when false } }",
+            ),
+            (
+                "SYN_LIFECYCLE_VISIBLE_WHEN_REQUIRED",
+                "entity Todo { id: Uuid identity: id lifecycle { initial: {} visible if true } }",
+            ),
+        ];
+
+        for (expected, source) in cases {
+            let parsed = parse(Path::new("lifecycle-invalid.jadpo"), source);
+            assert!(
+                parsed
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == expected),
+                "expected {expected} for source {source:?}, got {:#?}",
+                parsed.diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn parses_transition_as_the_only_update_write_marker() {
+        let source = r#"
+action disable(id: User.id) -> Bool {
+    var user = attempt update required User {
+        where: id == id
+        transition: disable
+        missing: UserMissing
+        conflict: UserConflict
+    }
+    return true
+}
+"#;
+        let parsed = parse(Path::new("lifecycle-transition.jadpo"), source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        let action = parsed
+            .file
+            .declarations
+            .iter()
+            .find_map(|declaration| match declaration {
+                Declaration::Callable(callable) if callable.name.text == "disable" => {
+                    Some(callable)
+                }
+                _ => None,
+            })
+            .expect("disable action");
+        let Statement::Binding(binding) = &action.body.statements[0] else {
+            panic!("expected result binding");
+        };
+        let crate::Expression::Attempt(attempt) = &binding.value else {
+            panic!("expected attempt expression");
+        };
+        let crate::Expression::Update(update) = attempt.value.as_ref() else {
+            panic!("expected update expression");
+        };
+        assert_eq!(update.transition.as_ref().unwrap().text, "disable");
+        assert!(update.changes.is_empty());
+        assert!(update.patch.is_none());
     }
 
     #[test]
@@ -5260,6 +6667,25 @@ value Result {
     }
 
     #[test]
+    fn parses_none_default_on_nullable_input_fields_only() {
+        let source = "input CreateTodo { due_at: Instant? default none }";
+        let parsed = parse(Path::new("input-default.jadpo"), source);
+        assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+        let Declaration::Record(input) = &parsed.file.declarations[0] else {
+            panic!("expected input declaration");
+        };
+        assert_eq!(input.kind, RecordKind::Input);
+        assert_eq!(input.fields[0].default.as_ref().unwrap().text, "none");
+        assert!(!input.fields[0].optional);
+
+        let invalid = parse(
+            Path::new("entity-default.jadpo"),
+            "entity Todo { id: Uuid default none }",
+        );
+        assert!(!invalid.diagnostics.is_empty());
+    }
+
+    #[test]
     fn parses_application_authentication_and_closed_principal() {
         let source = r#"application TodoApplication {
     authentication {
@@ -5311,7 +6737,9 @@ principal Principal {
     validators {
         opaque_user { mode: opaque principal: user }
         service_key { mode: api_key principal: service }
+        service_signed { mode: signed principal: service }
     }
+    exchange { path: "/auth/exchange" key: service_key signed: service_signed }
 }"#;
         let parsed = parse(Path::new("authentication-strategy.jadpo"), source);
         assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
@@ -5323,9 +6751,13 @@ principal Principal {
             &strategy.transport.location,
             CredentialLocation::Bearer(location) if location.text == "authorization_header"
         ));
-        assert_eq!(strategy.validators.len(), 2);
+        assert_eq!(strategy.validators.len(), 3);
         assert_eq!(strategy.validators[0].mode.text, "opaque");
         assert_eq!(strategy.validators[1].principal.text, "service");
+        let exchange = strategy.exchange.as_ref().expect("exchange declaration");
+        assert_eq!(exchange.path.text, "\"/auth/exchange\"");
+        assert_eq!(exchange.key.text, "service_key");
+        assert_eq!(exchange.signed.text, "service_signed");
     }
 
     #[test]
@@ -5419,6 +6851,7 @@ principal Principal {
                 format!("fixture {}", declaration.name.text)
             }
             Declaration::Test(declaration) => format!("test {}", declaration.name.text),
+            Declaration::Job(declaration) => format!("job {}", declaration.name.text),
             Declaration::Route(declaration) => {
                 let method = match declaration.method {
                     HttpMethod::Get => "GET",

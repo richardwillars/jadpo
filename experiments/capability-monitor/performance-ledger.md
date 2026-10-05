@@ -73,3 +73,28 @@ Workers pending a workerd-specific campaign.
   exploratory local variability and excludes HTTP/socket scheduling.
 - Decision: retain the typed ABI, make no remaining-payload rewrite, and wait
   for a permitted end-to-end campaign.
+
+## 2026-10-01 — prepared statement cache probe
+
+- Candidate: monitor-local SQLite adapter with an opt-in prepared statement
+  cache. The default monitor path remains uncached so this probe cannot change
+  the frozen measurement path accidentally.
+- Workload: 1,000 authorized reads after 50 warmups, three repetitions in each
+  execution order, fresh SQLite file and fresh application guest per request.
+- Command: `bun --no-install --env-file=/dev/null
+  experiments/capability-monitor/sqlite-cache-bench.mjs` and the same command
+  with `ORDER=cached-first`.
+- Evidence: `sqlite-cache-bench-results.json`.
+- Result: pooled throughput 366.49 → 373.11 requests/second (1.8% higher),
+  mean CPU 7,763.3 → 7,706.3 microseconds/request (0.7% lower). This is an
+  in-process probe and excludes HTTP/socket scheduling, workerd and native
+  executable measurements.
+- Guardrails: the monitor conformance suite, including its cache-enabled
+  revocation and rollback case, covers authentication, validation, policy,
+  freshness, redaction, failures and transaction recovery; the cache probe also
+  checks the complete authorized response on every iteration.
+- Decision: retain the cache only as an explicit experiment (`cacheStatements`
+  must be passed as `true`), keep the default path unchanged, and do not claim
+  this small local result as a production performance gain. The campaign stop
+  condition is reached: this candidate does not approach the 2x scoped-WASM
+  acceptance threshold and has no guardrail win.

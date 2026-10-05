@@ -7,7 +7,7 @@ is an acceptable experiment outcome, not a reason to weaken the checks.
 
 ## 1. Authority and start gate
 
-This implements the protocol in [WASM-EXP1](implementation-roadmap.md#wasm-exp1--bounded-wasm-runtime-experiment)
+This implements the protocol in [WASM-EXP1](implementation-history.md#wasm-exp1--bounded-wasm-runtime-experiment)
 and [compiler/runtime architecture](compiler-runtime.md#33-scheduled-wasm-target-experiment).
 The [semantic model](semantic-model.md), [types](type-system.md),
 [failures](failure-model.md), [entity/query contract](entity-query-model.md),

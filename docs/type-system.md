@@ -470,6 +470,12 @@ The second performs an explicit narrowing and checks any additional
 `Customer.email` constraints. The compiler may remove duplicate runtime work
 that is already proven, but it must preserve the explicit semantic transition.
 
+A field constructor also accepts a value of the exact type declared by that
+field, or a refinement of that type. For example,
+`Todo.status(TodoStatus.open)` makes the transition from a closed enum variant
+to the nominal `Todo.status` field type explicit; sibling field types remain
+incompatible.
+
 Dynamic construction is fallible. It introduces a compiler-visible typed
 validation failure for the target type. The containing callable must declare,
 map, or handle that failure under the [failure model](failure-model.md). The

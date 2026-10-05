@@ -2,6 +2,10 @@
 
 **Status:** workflow hypothesis
 
+This document describes Jadpo's intended product workflow. For developing this
+repository now, use the [adaptive roadmap workflow](roadmap-workflow.md), routed
+through [AGENTS.md](../AGENTS.md).
+
 ## 1. Intended collaboration
 
 The environment is built around three collaborators with different authority:
@@ -151,3 +155,17 @@ Generated target code is excluded from ordinary review.
 - How are changes to generated external contracts reviewed?
 - What is the minimal IDE/CLI experience for structured compiler tasks?
 - How are multiple agents coordinated without weakening policy ownership?
+
+## 11. Measure roadmap work
+
+For implementation tasks, follow the [task-timing workflow](task-timing/README.md)
+and repository `AGENTS.md`. Record the task ID, original estimate, UTC start/end,
+work/verification/review phases, pauses and blockers, actor, and completion
+or partial-work evidence using `python3 tools/task-time.py`. Store each run in
+`docs/task-timing/runs/`; keep later attempts under the same task ID.
+
+Compare comparable completed tasks using total active time including rework.
+Human effort, external wait and overlapping agent time remain separate. A
+completed chat turn is historical session evidence, not automatically the full
+duration of a roadmap task. Never reconstruct missing timestamps from commit
+gaps or count an interrupted timer's unattended tail as active work.

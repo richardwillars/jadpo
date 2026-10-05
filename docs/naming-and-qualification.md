@@ -223,3 +223,61 @@ Return to owner review if implementation would require:
 - adding a standard namespace for a single convenience function;
 - exposing target-language naming in authored source; or
 - changing public external codes merely to match source casing.
+
+## 9. Reserved-word policy direction — 2026-10-01
+
+The owner selected hard reservation for control-flow and declaration words,
+with explicitly enumerated contextual names allowed only where both their
+binding/declaration and their reference forms work. A word such as `return`
+must not be accepted as a variable that cannot subsequently be read. This is
+an accepted direction for RM-201; the exhaustive word-by-position matrix,
+stable diagnostics and implementation remain work. Broader keyword-as-name
+parsing was considered and not selected.
+
+The accepted section-2 contract and its digest remain unchanged. RM-201 must
+classify every current lexer keyword and identifier-bearing grammar production,
+record exact safe contextual exceptions, preserve accepted casing/ASCII rules
+and test declaration/reference pairs before claiming conformance. Until that
+change passes its required review and gates, the checked implementation remains
+the recorded baseline. See the [decision](decision-register.md#keyword-names-and-canonical-formatting--2026-10-01)
+and [assessment](work-plans/roadmap-assessment.md) for sequencing.
+
+## 10. Naming reaffirmation and principal simplification — 2026-10-04
+
+The owner locked in the existing two-convention direction after comparing
+uniform lowercase, mixed camel case and the current conventions:
+
+- `UpperCamelCase` for named types and declarative contracts: `Todo`,
+  `TodoEvent`, `TodoNotFound`, `ReminderMail`, `TodoConfiguration` and
+  `TodoApplication`.
+- `lower_snake_case` for values, fields, parameters, variants and executable
+  operations: `todo`, `todo_id`, `completion_requested`, `emit_event` and
+  `complete_todo`. Existing jobs and runtime entry-point naming follow NAME-D02;
+  no special extra casing category is introduced for the event work.
+
+Keep `event TodoEvent { ... }`, `entity Todo { ... }`,
+`failure TodoNotFound { ... }` and `service ReminderMail { ... }` as one readable
+declaration family. General types retain `type Name = Base { ... }`; specialised
+keywords already identify their declaration kind. Uppercase identifies a named
+type or contract, not necessarily an ordinary freely constructible data record.
+Construction, effects and authority still come from checked declarations.
+
+The rationale is the inexpensive visual distinction between a type/contract
+and a value, for example `var todo: Todo = attempt Todo.by_id(id)`. One canonical
+spelling, compiler diagnostics, formatting and completion should enforce it.
+No measured LLM accuracy improvement is claimed. The proposals to lowercase
+service/application names, switch operations to lowerCamelCase or make all
+identifiers lowercase were considered and not selected.
+
+The owner also selected an **unnamed singleton principal block** for the
+successor grammar: `principal { user { ... } service { ... } }`, providing the
+compiler-defined `Principal` type and existing `current_principal` value.
+References such as `Principal.user` remain explicit. Remove the redundant
+authored principal name and principal-selector configuration; do not introduce
+an `Actor` alias. Authentication remains the trusted producer, with the existing
+closed variants, policy boundaries and protection against forged principals.
+This is an accepted design direction pending RM-222 grammar/migration review
+and RM-223 implementation. The current named principal grammar and frozen
+authentication/naming contracts remain the implemented baseline until that
+successor is reviewed and verified. Section 2 and its historical digest are
+unchanged. See the [decision](decision-register.md#naming-and-principal-direction--2026-10-04).

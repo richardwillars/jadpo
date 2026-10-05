@@ -97,10 +97,11 @@ pretending commercial validation has occurred.
 
 ## 7. Naming restraint
 
-Do not name the language during the hypothesis phase. Naming creates attachment
-and can turn a testable idea into a project that feels obliged to survive. The
-working identity should remain descriptive until the golden programs and
-comparison demonstrate a real reason to exist.
+The original advice was to postpone naming during the hypothesis phase. The owner
+later adopted Jadpo and jadpo.dev ([recorded decision](decision-register.md#jadpo-name-and-canonical-domain--2026-09-25)).
+The underlying caution remains: naming creates attachment and can turn a
+testable idea into a project that feels obliged to survive. Preserve that
+rationale without treating it as an instruction to undo the adopted name.
 
 ## 8. Strategic upside if proven
 
@@ -117,3 +118,45 @@ If the validation succeeds, possible strategic value includes:
   implementation review.
 
 These are outcomes to validate, not assumptions.
+
+## 9. Optional advisory intelligence and hosted observability
+
+**Status:** recovered exploratory discussion; not an approved dependency or
+business plan. Source: “LLM Backend Language Idea”, 2026-09-25 follow-up turns
+`d96d3a2f-e8ab-4e36-91ad-236af2ae564b`,
+`72d783f6-dccd-4c97-939e-a4ac6e2966e5` and
+`b51b72e0-569c-4207-abfe-e240080c8d09`. Roadmap owners: **RM-1106/RM-1107**.
+
+The user raised **Jev** for development assistance, debugging and monitoring,
+including health prediction and min/max thresholds, and asked whether it could
+be self-hosted or bundled. They also raised proxying such a service through
+their website as a paid offering. Preserve the idea without treating historical
+claims about Jev availability, prices, latency or commercial terms as current
+verified facts; those need checking if the idea is selected.
+
+The discussed advisory uses include prioritising root causes among cascading
+compiler errors; choosing useful human/agent explanations; detecting possible
+intent drift; classifying semantic-change/migration risk; prioritising additional
+tests; and identifying when an agent loop needs a human decision. Runtime uses
+include failure clustering, likely causes, deployment regressions, operation-level
+health, anomalies, capacity risk and predicted SLO/threshold breaches from
+latency/error/load/queue/database signals and historical baselines.
+
+The proposed boundary keeps compilation, policy checks and required tests
+deterministic and usable offline. Advisory judgements retain confidence,
+provenance and underlying facts, cannot validate an invalid program or authorise
+a repair, and supplement deterministic hard limits. A replaceable provider
+interface could support a hosted API, a future local model or no model; source,
+customer data, logs and secrets do not acquire permission to leave the system.
+These are evaluation constraints, not a committed Jev integration or model.
+
+A possible commercial service would consume opt-in compiler-derived semantic
+telemetry: route/action/entity/effect identity, source/deployment changes and
+bounded incident evidence. Potential value includes monitoring/debugging,
+longer history, comparisons, alerts, incident timelines and assistance preparing
+reviewable fixes. Hosted builds/deployments were a separate later possibility.
+The local language/compiler should remain useful without a subscription. A
+provider proxy alone does not establish differentiation; customer demand,
+cost/privacy/retention, provider terms, portability and support burden remain
+unvalidated. E11's requested console/MCP functionality does not require this
+commercial or probabilistic layer.

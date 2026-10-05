@@ -89,8 +89,10 @@ pub enum TokenKind {
     Not,
     Auth,
     Path,
+    Headers,
     Explicitly,
     Run,
+    Deadline,
     Min,
     Max,
     MinLength,
@@ -531,8 +533,10 @@ fn keyword_kind(text: &str) -> TokenKind {
         "not" => TokenKind::Not,
         "auth" => TokenKind::Auth,
         "path" => TokenKind::Path,
+        "headers" => TokenKind::Headers,
         "explicitly" => TokenKind::Explicitly,
         "run" => TokenKind::Run,
+        "deadline" => TokenKind::Deadline,
         "min" => TokenKind::Min,
         "max" => TokenKind::Max,
         "min_length" => TokenKind::MinLength,
@@ -623,7 +627,7 @@ mod tests {
         let mut paths = Vec::new();
         collect_sources(&root, &mut paths);
 
-        assert_eq!(paths.len(), 180);
+        assert_eq!(paths.len(), 216);
         for path in paths {
             let source = fs::read_to_string(&path).expect("fixture should be readable");
             let result = lex(&path, &source);

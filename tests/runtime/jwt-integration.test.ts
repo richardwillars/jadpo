@@ -214,7 +214,7 @@ test.skipIf(Boolean(postgresUrl))("ordinary and fresh JWT each execute exactly o
   const originalPrepare = Database.prototype.prepare;
   let calls = 0;
   Database.prototype.prepare = function (sql: string, ...arguments_: any[]) {
-    if (/^SELECT \* FROM "jwt_user" WHERE "authentication_subject" =/u.test(sql)) calls++;
+    if (/^SELECT "id", "authentication_subject", "enabled", "private_profile" FROM "jwt_user" WHERE "authentication_subject" =/u.test(sql)) calls++;
     return originalPrepare.call(this, sql, ...arguments_);
   } as typeof originalPrepare;
   try {

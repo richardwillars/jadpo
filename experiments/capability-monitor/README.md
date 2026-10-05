@@ -40,18 +40,18 @@ prototype.
 
 ## Current result
 
-The nine conformance tests include the typed ABI frame, live revocation and row
-policy, transaction rollback, four hostile guest modes, fresh guest memory and
-forged completion rejection. The three-repetition follow-up uses twelve clients
-and 300 ms cells.
+The ten conformance tests include the typed ABI frame, live revocation and row
+policy, transaction rollback, the cache-enabled revocation/rollback path, four
+hostile guest modes, fresh guest memory and forged completion rejection. The
+three-repetition follow-up uses twelve clients and 300 ms cells.
 The persisted measurements are in `build/capability-monitor/breakdown.json`.
 The checked-in copy is `results.json`.
-The monitor reaches roughly 1,235 authorized reads/s and 1,105 denied pairs/s;
-the same short run measured scoped WASM at roughly 1,203 and 1,001, raw WASM at
-7,427 and 4,875, and native at 10,868 and 6,239. CPU falls from about 1,823 to
-1,667 microseconds/request for authorized reads and from 1,745 to 1,510 for
-denied pairs. The short cells vary with local host load; the frozen capability
-host campaign remains the primary comparison.
+The latest refreshed run reaches roughly 1,577 authorized reads/s and 1,366
+denied pairs/s; scoped WASM reaches 1,434 and 1,248, raw WASM 7,792 and 4,950,
+and native 17,907 and 10,949. Monitor CPU is about 1,309 microseconds/request
+for reads and 1,280 for denied pairs, versus 1,504 and 1,458 for scoped WASM.
+The short cells vary with local host load; the frozen capability-host campaign
+remains the primary comparison.
 
 The follow-up ABI slice uses numeric status/request/operation/capability fields
 and reuses the WASM adapter's input/output buffers. In a 50,000-iteration guest
@@ -68,6 +68,12 @@ The append-only experiment ledger and resume checkpoint are in
 The in-process monitor confirmation is in `in-process-bench-results.json`; it
 exercises the real auth/policy/SQLite path without opening a socket and is kept
 separate from the HTTP capacity table.
+
+The prepared-statement cache probe is in `sqlite-cache-bench.mjs`, with paired
+results in `sqlite-cache-bench-results.json`. It improved this in-process cell
+by 1.8% and reduced CPU by 0.7%; caching is therefore opt-in for the experiment
+and remains disabled on the default monitor path. It is not a production
+capacity result and does not justify changing the adapter contract.
 
 The modest improvement is expected. The guest still has a fresh instance per
 request and JSON monitor/guest round trips. The next performance work is

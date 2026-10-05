@@ -106,6 +106,7 @@ declaration         = type_declaration
                     | action_declaration
                     | query_declaration
                     | route_declaration
+                    | job_declaration
                     | fixture_declaration
                     | test_declaration ;
 ```
@@ -149,6 +150,14 @@ one. Strategy selection and typed principal resolution are implemented. Fully
 configured first-party user strategies can generate protected routes; unsupported
 strategies and principal mappings remain fail-closed.
 
+**Selected successor, not implemented here (2026-10-04):** the owner selected
+`principal { ... }` without an authored name, supplying the compiler-defined
+`Principal` type and existing `current_principal` value. Remove the redundant
+principal-selector configuration in the same reviewed migration. The EBNF above
+still describes the current named form. RM-222/RM-223 must specify and verify the
+successor while preserving authenticated provenance, closed variants and frozen
+baseline evidence; see the [naming/principal decision](decision-register.md#naming-and-principal-direction--2026-10-04).
+
 ```ebnf
 authentication_strategy = "authentication", identifier, "{",
                           { authentication_item }, "}" ;
@@ -159,8 +168,15 @@ transport           = "transport", "{",
 validators          = "validators", "{", { validator }, "}" ;
 validator           = identifier, "{", "mode", ":", identifier,
                       "principal", ":", ( "user" | "service" ),
-                      { validator_setting }, "}" ;
+                      { validator_setting | credential_binding }, "}" ;
 validator_setting   = identifier, ":", expression ;
+credential_binding  = "credentials", "{",
+                      "identity", ":", qualified_name,
+                      "principal", ":", qualified_name,
+                      "verifier", ":", qualified_name,
+                      "active", ":", expression,
+                      "expires", ":", qualified_name,
+                      "revoked", ":", qualified_name, "}" ;
 claims              = "claims", "{", { authentication_mapping }, "}" ;
 authentication_mapping = identifier, "->", qualified_name ;
 resolution          = "resolution", ( "user" | "service" ), "{",
@@ -180,13 +196,21 @@ the trusted host issuance boundary. See the
 [first-party example](../examples/first-party-authentication/README.md) for the
 supported runtime subset and remaining gates.
 
+A service `api_key` validator may declare one `credentials` binding. Its six
+roles are required exactly once and may appear in any order. Duplicate, unknown
+or missing roles are errors. The [service runtime boundary](auth-runtime-extensions.md#service-credentials)
+owns the supported field types, authority/reference checks and constructible
+active-predicate subset; other validator modes cannot declare the binding.
+
 ### 4.2 Bounded entity dossier and named query extension
 
 ```ebnf
 entity_declaration  = "entity", identifier, "{",
                       { entity_field | entity_dossier_item | entity_operation },
                       "}" ;
-entity_field        = identifier, ":", type_expression ;
+entity_field        = identifier, ":", type_expression,
+                      [ entity_field_options ] ;
+entity_field_options = "{", "generated", ":", "identity", "}" ;
 entity_dossier_item = "identity", ":", identifier
                     | persistence_capability
                     | representation_declaration ;
@@ -321,7 +345,8 @@ transparent alias.
 object_body         = "{", { field_declaration }, "}" ;
 
 field_declaration   = identifier, ":", type_expression,
-                      [ constraint_block ], [ "optional" ] ;
+                      [ constraint_block ], [ "default", none_literal ],
+                      [ "optional" ] ;
 
 persistence_declaration = "persist", identifier, "{",
                             { persistence_item },
@@ -340,9 +365,17 @@ inverse_declaration = "inverse", identifier, ":", inverse_cardinality, identifie
 inverse_cardinality = "many" | "optional" ;
 ```
 
+On a persistent entity's required `Uuid` identity field, `generated: identity`
+assigns the identity in compiler-generated create code. It is reserved for the
+field named by the entity's `identity` item; callers cannot supply it.
+
 `optional` is meaningful when an object is used as route input. It means the
 field may be omitted from that boundary shape and is distinct from `?`, which
-means a supplied value may be `none`.
+means a supplied value may be `none`. An `input` field may instead use
+`default none` when its type is nullable. The decoder then materializes `none`
+when the request omits that field; the normalized input always has the field.
+This default form is not accepted on entities, values, outputs, enums,
+principals, failures, or route-path schemas.
 
 Every field declaration creates a nominal field type refining the written type.
 Field constraints, if present, further refine intrinsic value validation.
@@ -766,12 +799,18 @@ route_path          = path_token ;
 
 route_item          = "auth", ":", "none"
                     | "path", ":", route_path_schema
+                    | "query", ":", type_expression
+                    | "headers", ":", route_header_schema
+                    | "deadline", ":", duration_literal
                     | "input", ":", type_expression
                     | "output", ":", type_expression
+                    | "success", ":", ("created" | "no_content")
                     | "run", ":", qualified_name, invocation_suffix
                     | inline_action ;
 
 route_path_schema   = "{", { field_declaration }, "}" ;
+route_header_schema = "{", { identifier, ":", type_expression,
+                              "from", string_literal, [ "optional" ] }, "}" ;
 inline_action       = "action", ":", [ fails_clause ], block ;
 ```
 
@@ -793,16 +832,58 @@ Handler expressions access those bindings as `path.name`. Matching is exact;
 each matched segment is percent-decoded and nominally validated before the
 handler runs.
 
+`query:` references one named closed Object and exposes its validated fields as
+`query.name`. Query wire keys are the exact lower-snake field names. The target
+validates percent escapes and UTF-8 before form decoding, decodes once, rejects
+unknown or duplicate keys, and treats structured field values as one JSON value.
+Malformed encoding, scalar spelling, or JSON is a 400 `invalid_request`;
+well-formed values that fail the declared shape or constraints are a 422
+`invalid_value`. `Int` values outside the JavaScript safe-integer range are
+well-formed but rejected with 422 before a lossy conversion. Optional fields remain absent and source defaults apply only
+when the key is absent; an empty present value never selects a default.
+
+`headers:` declares an anonymous group with an explicit HTTP wire name for each
+binding and exposes fields as `headers.name`. Header wire names must be valid
+ASCII field names. Static checking rejects duplicate names case-insensitively,
+structured or nullable header fields, cross-boundary binding-name collisions,
+and credential, CSRF, trusted-identity, or compiler-owned `X-Jadpo-*` headers.
+The Bun Fetch request loses ordinary repeated-header multiplicity. A generated
+application containing `headers:` therefore starts through Bun's built-in
+`node:http` compatibility layer, counts `IncomingMessage.rawHeaders` before
+constructing a Fetch `Request`, and rejects a repeated declared name before
+binding its value. Non-GET/HEAD bodies remain streamed through that adapter so
+authentication and CSRF checks precede body consumption. Calling the exported Fetch handler without that raw metadata
+fails closed for a route that declares ordinary headers.
+
 Every route item uses `:` between its name and value. Space-only forms such as
 `input CreateOrder` are syntax errors rather than alternate spellings.
 
-A core route has at most one path, input, and output item and exactly one
-behaviour: either `run:` or one inline `action:`, never both. Their textual order
-is not semantic; the formatter chooses a canonical order.
+A core route has at most one path, query, headers, input, output, and success item and exactly
+one behaviour: either `run:` or one inline `action:`, never both. Their textual
+order is not semantic; the formatter chooses a canonical order.
+
+`deadline:` optionally sets a positive fixed execution budget for that route's
+handler operation. It has no implicit default. The monotonic budget begins when
+the handler behavior starts and follows nested calls, transactions, retries and
+checked service calls. It stops new work and prevents a transaction from
+committing after its database work returns late; it does not promise interruption
+of an active database call or a hard response-time bound. Confirmed commits and
+uncertain external effects keep their ordinary outcome rules.
+
+Successful responses default to 200. `success: created` selects 201 and
+requires an output type matching the action result. `success: no_content`
+selects an empty 204 response and requires a `Unit` result with no route output.
+The compiler emits these statuses in route inventory and OpenAPI; failures
+retain their kind-derived statuses.
+
+Protected routes expose the authenticated sum as `current_principal`. Selecting
+`current_principal.user` or `current_principal.service` narrows it to the
+corresponding principal variant before it is passed to a typed query or action.
+Generated handlers enforce the selected variant and return the standard 403
+authorization fault when the authenticated principal has a different kind.
 
 Reachable failures are derived through `run` or the inline action's exact
-`fails` set. Routes do not contain numeric status mappings. Query, header, and
-body binding grammar remains unresolved and is not inferred from the path form.
+`fails` set. Routes do not contain numeric status mappings.
 
 ## 14. Core prelude
 
@@ -884,6 +965,65 @@ remain unsupported rather than receiving implicit semantics.
 Legacy projects with no module headers retain the original single ambient
 namespace so existing core fixtures and the Jadpo seed remain valid.
 
+### Checked scheduled-job frontend — 2026-10-04
+
+The independently reviewed ASYNC-001 frontend slice recognises this closed
+schedule entry; it does **not** implement worker execution. Jobs are lower_snake_case,
+non-callable and non-exported. Body clauses may be reordered, but each is required
+exactly once. An optional closed delivery descriptor is parsed as described below,
+but its checked analysis is explicitly unsupported. No other job properties or
+inline action bodies are accepted.
+
+```ebnf
+job_declaration     = "job", identifier, "every", duration_literal, "{",
+                      { job_item }, "}" ;
+job_item            = "concurrency", ":", "singleton"
+                    | "run", ":", invocation_expression
+                    | "retry", ":", "next_schedule"
+                    | "delivery", ":", "reminder_v1", reminder_descriptor ;
+```
+
+The interval must represent positive, finite integral milliseconds within the
+runtime's safe integer range, with ms/s/m/h units. Integrality is validated from
+the exact authored decimal spelling; floating-point rounding cannot make an
+otherwise invalid interval valid. Exact fractional units such as `0.001s` are
+supported. Run names resolve exactly to a
+checked action with one nonnullable, unconstrained named scalar directly based on
+Instant, and builtin Unit result. Its sole positional argument explicitly
+constructs that exact nominal type from intrinsic `clock.now`, for example
+`scan(JobRunAt(clock.now))` with `type JobRunAt = Instant {}`. Bare primitives,
+implicit conversion, sibling/constrained/indirect/nullable wrappers, unknown
+receivers, functions/queries, named/extra/arbitrary-nested/principal
+arguments and authored delivery authority reject. The semantic graph and job
+audit derive static calls, failure contracts, constructor-validation proof and
+reachable external effects;
+`next_schedule` is only a wake-up choice. Durable dispositions, finite profiles
+and checked worker bindings remain pending, so target/build returns
+`JADPO_TARGET_JOB_NOT_IMPLEMENTED`, never silently omits or executes a job.
+Event/subscriber successor grammar below remains separate and unimplemented.
+
+**Closed delivery descriptor syntax stage — 2026-10-05:** the parser accepts
+exactly one optional `delivery: reminder_v1 { ... }` with all five sections
+`selection`, `hooks`, `service`, `authority`, `completion` exactly once. Every
+section uses its closed required-key catalogue, specified in the
+[reviewed exact source recipe](work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders).
+Keys/sections may be reordered; unknown, missing or duplicate keys reject. No
+semicolons or arbitrary expression/config/record map is accepted. Direct references
+are qualified names, open is `field(enum.variant)`, cursor is exactly two ordered
+qualified fields with `asc` and one comma, limit is literal500, and payload version
+is exactly `"reminder.v1"`. Generated intent, operation-time, continuation, narrow
+permit and compiler-observation terms are closed and position-specific; they are
+not ordinary intrinsics or capabilities. Formatter canonicalizes section/key order
+while preserving tokens, comments and cursor order. Recovery preserves later jobs
+and declarations, including after an unterminated descriptor.
+
+This stage is source syntax only. `TYPE_JOB_DELIVERY_BINDING_NOT_IMPLEMENTED`
+rejects normal checked analysis before a checked job binding/export can omit the
+descriptor. The typed sealed-origin/hook/phase-policy successor and independent
+implementation review remain required; neither syntactic names nor the grammar
+grant authority or execution. Worker build stays fail-closed, execution profile
+unset, and no scheduler/registry/no-op is generated.
+
 ## 16. Explicitly unsupported in the first slice
 
 The parser or semantic checker produces a stable unsupported-feature diagnostic
@@ -895,7 +1035,8 @@ for:
 - assignment outside a bare, fixed-type `var mut` local;
 - failure-context binding in outcome arms;
 - compound many-result predicates and general patch-condition expressions;
-- services, events, and jobs;
+- services, events, and jobs in the original first slice; the later checked
+  service and non-executing scheduled-job subsets are specified separately;
 - policies and `require`;
 - query/header/body route bindings;
 - defaults and compound non-unique indexes;
@@ -932,3 +1073,177 @@ The [Jadpo seed](../examples/jadpo-seed/app.jadpo) exercises:
 Every token in that file is covered by this grammar. Its semantic expectations
 are recorded separately so parser success cannot be mistaken for compiler
 correctness.
+
+## 18. Successor grammar candidate — 2026-10-04
+
+**Not implemented or frozen.** These candidate productions belong to RM-222/
+RM-309 and do not replace the current grammar above. The
+[syntax inventory](syntax.md#22-successor-syntax-review--2026-10-04) records owner
+choices and the selected query form; the [event model](event-model.md)
+owns effects, payload and delivery rules.
+
+The plain `text` fence keeps this proposed EBNF delta separate from the
+implemented `ebnf` productions checked by the formatter coverage matrix.
+
+```text
+event_declaration   = "event", type_identifier, "{",
+                      event_variant, { event_variant }, "}" ;
+event_variant       = runtime_identifier, "{", { field_declaration },
+                      [ event_policy_candidate ], "}" ;
+event_policy_candidate
+                    = "policy", "{", [ "scope", ":", runtime_identifier ],
+                      event_permission_entry, { event_permission_entry }, "}" ;
+event_permission_entry
+                    = qualified_name, ":", "[", event_permission,
+                      { ",", event_permission }, "]" ;
+event_permission    = "invoke" | "read" ;
+trigger_clause      = "triggers", ":", "[", event_variant_reference,
+                      { ",", event_variant_reference }, "]" ;
+subscriber_declaration
+                    = "subscriber", runtime_identifier, "{",
+                      event_handler, { event_handler }, "}" ;
+event_handler       = "on", event_variant_reference,
+                      "(", runtime_identifier, ")", block ;
+event_emission      = "emit_event", "(", expression, ")" ;
+principal_successor = "principal", "{",
+                      { principal_variant }, "}" ;
+
+component_candidate = "component", type_identifier, "{",
+                      "modules", ":", module_path, "}" ;
+
+query_candidate_a   = "query", "(", entity_reference, ")", "{",
+                      ( required_query_body | optional_query_body
+                      | many_query_body | page_query_body ), "}" ;
+required_query_body = "cardinality", ":", "required", equality_where,
+                      { include_clause }, "missing", ":", failure_binding ;
+optional_query_body = "cardinality", ":", "optional", equality_where,
+                      { include_clause } ;
+many_query_body     = "cardinality", ":", "many", equality_where,
+                      "order_by", ":", identifier, order_direction,
+                      [ pagination_clause ], { include_clause } ;
+page_query_body     = "cardinality", ":", "page",
+                      "into", ":", type_reference,
+                      "where", ":", page_predicate,
+                      { "and", ":", page_predicate },
+                      "order_by", ":", page_order, { ",", page_order },
+                      "after", ":", "optional", expression,
+                      "limit", ":", expression,
+                      "project", ":", type_reference,
+                      "cursor", ":", type_reference ;
+equality_where      = "where", ":", identifier, "==", expression ;
+page_predicate      = identifier,
+                      ( "==", expression
+                      | "matches", "optional", expression
+                      | "<=", "optional", expression ) ;
+page_order          = identifier, order_direction ;
+
+update_candidate    = "update", "(", entity_reference, ")", "{",
+                      equality_where, update_change,
+                      "missing", ":", failure_binding,
+                      conflict_clause, { conflict_clause }, "}" ;
+update_change       = "set", ":", object_body
+                    | patch_change
+                    | "transition", ":", runtime_identifier,
+                      [ "set", ":", object_body | patch_change ] ;
+patch_change        = "patch", ":", qualified_name,
+                      "empty", ":", failure_binding,
+                      [ "set", ":", patch_set_body ] ;
+delete_candidate    = "delete", "(", entity_reference, ")", "{",
+                      equality_where, "missing", ":", failure_binding,
+                      conflict_clause, { conflict_clause }, "}" ;
+create_candidate    = "create", "(", entity_reference, ")", "{",
+                      "values", ":", object_body,
+                      { conflict_clause }, "}" ;
+conflict_clause     = "conflict", [ qualified_name ], ":", failure_binding ;
+
+effect_statement    = "attempt", event_emission
+                    | [ "attempt" ], qualified_name, invocation_suffix ;
+
+transition_publication_candidate
+                    = "publish", ":", event_variant_reference, object_body ;
+```
+
+`type_identifier` and `runtime_identifier` mean the accepted casing categories,
+not new lexical token types. `event_variant_reference`, `module_path` and
+`entity_reference` use existing qualified-name syntax with checked resolution.
+An unqualified variant is rejected. Event payload fields use typed declarations, distinct from value construction’s
+`object_body`; the optional policy block is metadata, not a payload field. Empty payload records
+are allowed. Event registration/version/envelope fields are generated, not
+authored as payload properties.
+
+Handler payload bindings (for example `payload`) are inferred from their selectors.
+Declaration keywords such as `event` remain hard-reserved in bindings/references;
+the candidate adds no contextual-keyword exception. Their reachable
+failure/effect sets are computed for the durable boundary and must have reviewed
+dispositions; normal subscriber source does not need an execution-key or
+authored retry loop. Unlike an ordinary action, a handler is not callable and
+does not expose a public caller-return/failure signature. Ordinary helper
+actions retain exact `fails` declarations and prefix `attempt`.
+
+The query bodies expand the implemented required/optional/many forms and the
+later page parser rather than inventing a generic predicate language. The existing
+`include_clause`, relationship depth, output-shape, ordering, bounded child-load
+and cardinality restrictions still apply; being syntactically representable does
+not make an unsupported combination legal. Current direct `many` queries may omit
+pagination; this migration must not claim to have added a bound absent from the
+baseline. RM-218 owns any new numeric collection bound. Page predicates preserve
+`matches optional` and `<= optional` presence semantics; `after: optional` still
+requires the existing optional input-field provenance, not just a nullable value.
+`page_predicate` uses the current bounded predicate operand parser, not an
+arbitrary boolean expression that absorbs subsequent clauses.
+
+The page result moves from `-> PageType` into `into: PageType`. The cursor is a
+type reference; its field tuple is derived from `order_by`, matching the current
+requirement that the two tuples are identical. Preserve existing cursor shape,
+nominal checks, codec/versioning and runtime ordering rules; do not infer fields
+from incidental record declaration order. Unsupported cursor shapes still fail.
+The `type_reference` nonterminal here denotes the existing checked type-reference
+parser (including the same qualified and generic form); it is not a value call.
+
+Creation puts authored values under `values:` so normal field names cannot be
+confused with conflict-handling clauses. Specific constraint mappings precede at
+most one fallback and retain exact typed failures. Updates/deletes remain
+identity-bounded, exactly-one mutations without an authored cardinality choice.
+Transition plus set/patch is allowed only for other writable fields: existing
+lifecycle ownership rejects writes to transition-controlled fields. Generated
+fields, patch presence/empty handling and failure bindings retain their checks.
+The production fixes clause order for one canonical formatter output; arbitrary
+field reordering/duplicate metadata is not a second default dialect.
+
+`effect_statement` is new successor syntax: the current parser rejects general
+expression statements. It is checked only for an admitted invocation/emission
+whose success type is exactly `Unit`. `emit_event` is a reserved intrinsic,
+excluded from the ordinary qualified-call branch, and always requires prefix
+`attempt`, including when its only possible failures are operational boundary
+faults. The expression form has the same acknowledgement requirement. Direct
+`match emit_event(...)` is unsupported; this delta creates no intrinsic outcome
+API. Ordinary calls keep existing exact-failure acknowledgement/matching rules. Values/receipts require a binding, return or applicable
+match. Pure expressions, constructors, non-`Unit` results and unsupported calls
+cannot be silently discarded. Blocks remain delimiter-based with no semicolons;
+this introduces neither arbitrary callbacks nor trailing-closure syntax.
+
+Event policies add event-local `invoke`/`read` applicability and a bounded scope
+binding as specified in the event candidate; they do not modify frozen entity
+policy. `field_declaration` uses the existing typed payload-field form without
+storage/generated/entity metadata. `trigger_clause` is allowed on entity/service
+contracts and as a narrowing clause on their protected transition/operation.
+No body-local trigger annotation or helper may grant effect authority.
+
+The component candidate maps one explicit logical module subtree to an owner;
+overlapping mappings fail, and no file path determines authority. This avoids
+changing the existing single-file module rule merely to support cross-file
+private actions. Component declarations and ownership changes need semantic/
+policy review; the spelling is a candidate, not an owner-selected addition.
+
+`publish:` would extend an existing entity lifecycle transition declaration,
+not create another callable or require a manual emission. Its payload may use
+checked `before`/`after` snapshots under the event contract. The current closed
+transition grammar does not yet include publication. The candidate
+`triggers` clause supplies a restriction at entity/service leaves, including
+same-component reactions; effect, policy and publication checks remain separate.
+These extensions still require qualification against their owning contracts.
+
+The new singleton principal still requires the accepted closed variants. The
+compiler supplies `Principal` and rejects conflicting declarations/imports;
+existing custom-name references and selector configuration migrate together.
+The reviewed current grammar remains active until RM-223 qualifies conversion.

@@ -56,6 +56,132 @@ fn reject(source: &str, code: &str, excerpt: Option<&str>) {
 }
 const DIRECT: &str = "enum NoteRole { owner }\nentity User { id: Uuid identity }\nentity Note { id: Uuid identity owner_id: User.id { role: NoteRole.owner immutable: true } policy { NoteRole.owner: [read] } }";
 const MEMBERSHIP: &str = "enum AppRole { member }\nentity User { id: Uuid identity }\nentity Membership { id: Uuid identity user_id: User.id role: AppRole membership { scope: application member: user_id role: role } }";
+const SELF_IDENTITY: &str = "enum UserRole { self }\nentity User { id: Uuid { role: UserRole.self immutable: true } identity: id persistence { store: primary role: authority } policy { UserRole.self: [read] } }";
+const NAMED_SERVICE_FIELD: &str = r#"
+enum NoteRole { owner }
+enum ReminderRole { worker }
+entity User { id: Uuid identity }
+entity Service { id: Uuid identity }
+entity ServiceMembership { id: Uuid identity service_id: Service.id role: ReminderRole membership { scope: application member: service_id role: role } }
+input Change { id: Note.id sent: Note.sent }
+failure Missing { kind: NotFound code: "missing" }
+failure MutationConflict { kind: Conflict code: "mutation_conflict" }
+entity Note {
+    id: Uuid identity
+    owner_id: User.id { role: NoteRole.owner immutable: true }
+    sent: Text? { policy { ReminderRole.worker: [update] } }
+    policy { NoteRole.owner: [read, update] operations { complete { ReminderRole.worker: [update] } } }
+    action complete(input: Change) fails Missing, MutationConflict -> Unit {
+        var changed = attempt update required Note { where: id == input.id set: { sent: input.sent } missing: Missing conflict: MutationConflict }
+    }
+}
+"#;
+
+#[test]
+fn named_service_field_grant_preserves_resource_scope_and_exact_operation_authority() {
+    clean(NAMED_SERVICE_FIELD);
+    let project = analyze_sources(vec![SourceFile::new(
+        "policy-diagnostics.jadpo".into(),
+        NAMED_SERVICE_FIELD.into(),
+    )])
+    .unwrap();
+    let entity = project
+        .policy
+        .entities
+        .iter()
+        .find(|entity| entity.entity == "Note")
+        .unwrap();
+    assert_eq!(entity.scope.as_deref(), Some("Note"));
+    assert!(!entity
+        .rules
+        .iter()
+        .any(|rule| rule.subject == "ReminderRole.worker"));
+    let operation = project
+        .policy
+        .operations
+        .iter()
+        .find(|operation| operation.operation == "Note.complete")
+        .unwrap();
+    assert_eq!(operation.obligations[0].source, "operation_exception");
+    assert_eq!(
+        operation.obligations[0].subjects,
+        vec!["ReminderRole.worker"]
+    );
+    reject(
+        &NAMED_SERVICE_FIELD.replace(
+            "operations { complete { ReminderRole.worker: [update] } }",
+            "",
+        ),
+        "POLICY_FIELD_WIDENS_ENTITY",
+        None,
+    );
+}
+
+#[test]
+fn exception_only_roles_require_real_bindings() {
+    let source = NAMED_SERVICE_FIELD.replace("entity ServiceMembership { id: Uuid identity service_id: Service.id role: ReminderRole membership { scope: application member: service_id role: role } }", "");
+    reject(&source, "POLICY_ROLE_UNBOUND", None);
+}
+
+#[test]
+fn entity_identity_can_bind_the_same_entity_as_its_self_role() {
+    let project = analyze_sources(vec![SourceFile::new(
+        "self-policy.jadpo".into(),
+        SELF_IDENTITY.into(),
+    )])
+    .unwrap();
+    assert!(
+        project.syntax.diagnostics().next().is_none(),
+        "{:#?}",
+        project.syntax.diagnostics().collect::<Vec<_>>()
+    );
+    assert!(
+        project.semantics.diagnostics.is_empty(),
+        "{:#?}",
+        project.semantics.diagnostics
+    );
+    assert!(
+        project.typing.diagnostics.is_empty(),
+        "{:#?}",
+        project.typing.diagnostics
+    );
+    assert!(
+        project.failures.diagnostics.is_empty(),
+        "{:#?}",
+        project.failures.diagnostics
+    );
+    assert_eq!(project.policy.bindings.len(), 1);
+    assert_eq!(project.policy.bindings[0].entity, "User");
+    assert_eq!(project.policy.bindings[0].field, "id");
+    assert_eq!(project.policy.bindings[0].role, "UserRole.self");
+    assert_eq!(project.policy.bindings[0].scope, "User");
+    assert_eq!(project.policy.bindings[0].principal, "User");
+    let user_policy = project
+        .policy
+        .entities
+        .iter()
+        .find(|policy| policy.entity == "User")
+        .expect("User policy");
+    assert_eq!(user_policy.scope.as_deref(), Some("User"));
+    assert!(user_policy.rules.iter().any(|rule| {
+        rule.subject == "UserRole.self" && rule.effects.iter().any(|effect| effect == "read")
+    }));
+}
+
+#[test]
+fn same_entity_role_requires_the_declared_identity_field() {
+    let source = SELF_IDENTITY.replace(
+        "id: Uuid { role: UserRole.self immutable: true } identity: id",
+        "id: Uuid identity: id principal_id: Uuid { role: UserRole.self immutable: true }",
+    );
+    let found = diagnostics(&source);
+    assert!(
+        found
+            .iter()
+            .any(|diagnostic| diagnostic.code == "POLICY_BINDING_INVALID"),
+        "{found:#?}"
+    );
+}
 
 #[test]
 fn direct_role_binding_is_unique() {

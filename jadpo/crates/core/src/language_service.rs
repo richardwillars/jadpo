@@ -574,6 +574,14 @@ fn collect_explicit_references(
                     }
                 }
             }
+            Declaration::Job(job) => {
+                if let Some(run) = &job.run {
+                    collect_name_expression(source, &run.callee, globals, output);
+                    for argument in &run.arguments {
+                        collect_expression_references(source, argument, globals, output);
+                    }
+                }
+            }
             Declaration::Route(route) => {
                 if let Some(run) = &route.run {
                     collect_name_expression(source, &run.callee, globals, output);
@@ -707,6 +715,43 @@ fn collect_expression_references(
                 output,
             );
             collect_expression_references(source, &query.value, globals, output);
+            if let Some(page) = &query.page {
+                for predicate in &page.predicates {
+                    insert_explicit(
+                        source,
+                        predicate.field.range,
+                        format!("{target}.{}", predicate.field.text),
+                        globals,
+                        output,
+                    );
+                    collect_expression_references(source, &predicate.value, globals, output);
+                }
+                for order in &page.order {
+                    insert_explicit(
+                        source,
+                        order.field.range,
+                        format!("{target}.{}", order.field.text),
+                        globals,
+                        output,
+                    );
+                }
+                for reference in [&page.result, &page.projection, &page.cursor] {
+                    for name in &reference.path {
+                        insert_explicit(source, name.range, name.text.clone(), globals, output);
+                    }
+                }
+                for field in &page.cursor_fields {
+                    insert_explicit(
+                        source,
+                        field.range,
+                        format!("{target}.{}", field.text),
+                        globals,
+                        output,
+                    );
+                }
+                collect_expression_references(source, &page.after, globals, output);
+                collect_expression_references(source, &page.limit, globals, output);
+            }
             if let Some(order) = &query.order {
                 insert_explicit(
                     source,

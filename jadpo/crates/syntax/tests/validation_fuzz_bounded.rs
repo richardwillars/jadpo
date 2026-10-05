@@ -1,7 +1,8 @@
 //! Deterministic small malformed-input campaign, isolated behind a deadline.
 //! This checks termination, determinism and UTF-8 ranges, not complete parsing.
 use jadpo_syntax::{lex, parse, TokenKind};
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -15,7 +16,10 @@ fn check(source: &str) {
     for token in &parsed.tokens {
         assert!(
             source.get(token.range.start..token.range.end).is_some(),
-            "invalid token range in {source:?}"
+            "invalid token range {}..{} of {} bytes in {source:?}",
+            token.range.start,
+            token.range.end,
+            source.len()
         );
     }
     for diagnostic in &parsed.diagnostics {
@@ -26,7 +30,10 @@ fn check(source: &str) {
         assert_eq!(span.source, "generated.jadpo");
         assert!(
             source.get(span.start..span.end).is_some(),
-            "invalid diagnostic range in {source:?}"
+            "invalid diagnostic range {}..{} of {} bytes in {source:?}",
+            span.start,
+            span.end,
+            source.len()
         );
     }
     let eof = parsed.tokens.last().unwrap();
@@ -96,6 +103,72 @@ fn corpus() {
             let mut mutation = source.to_owned();
             mutation.replace_range(token.range.start..token.range.end, replacement);
             check(&mutation);
+        }
+    }
+
+    let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let mut mutations = 0usize;
+    for (corpus, expect_valid, minimum_files) in [("pass", true, 50), ("fail", false, 100)] {
+        let fixtures = repository.join("tests/compile").join(corpus);
+        let mut sources = Vec::new();
+        collect_sources(&fixtures, &mut sources);
+        sources.sort();
+        assert!(
+            sources.len() >= minimum_files,
+            "compile-{corpus} syntax corpus unexpectedly shrank"
+        );
+
+        for path in sources {
+            let source = fs::read_to_string(&path).unwrap();
+            let parsed = parse(&path, &source);
+            if expect_valid {
+                assert!(
+                    parsed.diagnostics.is_empty(),
+                    "accepted fixture {} stopped parsing: {:?}",
+                    path.display(),
+                    parsed.diagnostics
+                );
+            }
+            let significant = lex(&path, &source)
+                .tokens
+                .into_iter()
+                .filter(|token| !token.kind.is_trivia() && token.kind != TokenKind::Eof)
+                .collect::<Vec<_>>();
+            if significant.is_empty() {
+                continue;
+            }
+
+            // Sample across every fixture rather than spending the deadline
+            // on large files. Each selected token is deleted and replaced by
+            // both a structural delimiter and a multibyte unexpected character.
+            let stride = significant.len().div_ceil(12).max(1);
+            for index in (0..significant.len()).step_by(stride).take(12) {
+                let token = &significant[index];
+                for replacement in ["", "}", "🦀"] {
+                    let mut mutation = source.clone();
+                    mutation.replace_range(token.range.start..token.range.end, replacement);
+                    check(&mutation);
+                    mutations += 1;
+                }
+            }
+        }
+    }
+    assert!(
+        mutations >= 3_000,
+        "compile corpus mutation campaign was too small: {mutations}"
+    );
+}
+
+fn collect_sources(directory: &Path, sources: &mut Vec<PathBuf>) {
+    for entry in fs::read_dir(directory).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            collect_sources(&path, sources);
+        } else if path
+            .extension()
+            .is_some_and(|extension| extension == "jadpo")
+        {
+            sources.push(path);
         }
     }
 }

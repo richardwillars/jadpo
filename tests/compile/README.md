@@ -47,7 +47,7 @@ Diagnostic codes in these fixtures are part of the compiler-facing contract.
 Renaming one requires updating the roadmap, relevant specification, and all
 affected fixture expectations together.
 
-The current 180 pairs comprise the original ten type/failure cases plus
+The current 216 pairs comprise the original ten type/failure cases plus
 coverage for optional omission, nullable widening, implicit narrowing,
 semantic-to-primitive unwrapping, incomplete records, invariant collections,
 transitive failure propagation, function/action separation, missing failure
@@ -67,6 +67,12 @@ empty-patch failure derives from `InvalidValue`, patch-derived writes and
 overlap rejection, and valid optional owning-parent traversal with rejection of
 a required traversal over a nullable reference, plus unique-backed optional
 inverse-one loading.
+Fixture 173 adds the checked, non-executing scheduled-job frontend with an
+explicit nominal clock snapshot. Its matching formatter snapshot preserves
+the closed clauses. Parameterized hostile cases, constructor proof, transitive
+service-effect audit and fail-closed target checks are registered in
+`jadpo/crates/core/tests/validation_jobs.rs`; this fixture is not a working worker
+or ASYNC runtime-conformance claim.
 The latest fixtures also cover the bounded owning-parent/optional-inverse
 depth-two path, its exact nested output type, and an explicit logical owning
 relationship name that remains distinct from its stored foreign-key field.
@@ -91,6 +97,19 @@ inheritance, field/output/relationship proofs, application invoke policy, and
 derived restricted-field disclosure rejection. Recursive multi-file fixtures
 remain one pair each.
 
+Fixtures 161–162 close recent generated UUID identity and public principal
+access contracts. Fixture 138 covers typed `current_principal.user` and
+`current_principal.service` projection; the grammar-corpus formatter test
+automatically includes it in whitespace perturbation coverage.
+
+Fixtures 170–183 add lifecycle lowering coverage: compiler-owned initial
+values, identity-bounded transitions, rejection of restore, hard-delete,
+caller-initialization and purge-without-clock cases, plus direct-write and
+policy-predicate failures. Source-authored purge calls and forged maintenance
+capability lookalikes are also rejected. Audit assertions keep policy,
+lifecycle, generated-field provenance, guarded SQL and logical delete effect
+separate.
+
 Fixtures 59–70 establish the executable P10.6 subset: explicit `kind` members,
 flat failure context, exact `fails` sets, mandatory `attempt` at fallible call
 sites, typed and exactly matched route placeholders, `auth: none`, and exactly
@@ -99,6 +118,9 @@ overlapping public/internal context names, and unacknowledged persistence
 expressions. They also cover function-level failure propagation, fallible pure
 calls, inline-action exact failure sets, multi-placeholder typed paths, and the
 authenticated route default.
+Fixture 68 covers explicit `201 Created` and `204 No Content` responses and
+requires a typed response value for created routes and no declared body for
+no-content routes.
 Path fields also reject nullable, optional, constraint, reference, and
 persistence modifiers so transport decoding cannot silently acquire entity
 storage semantics.
@@ -203,3 +225,22 @@ aliases through diagnostic schema version 2.
 The first-party authentication secret-sink fixture rejects literal signing keys;
 the generated first-party example and focused core test cover configured adapters
 and the protected-route generation gate.
+
+Fixture 163 proposes a compiler-owned service-key exchange declaration on a
+bearer authentication strategy; fixture 164 checks the same binding with mixed
+user and service validators. Negative fixtures 163–168 cover unbound and
+user-only validator pairs, an unsafe path, cross-strategy references and overlap
+with an authored parameterised POST route. This is checked source syntax only:
+target generation rejects the declaration until the language/security review
+and HTTP lowering recorded in the RM-104 contract packet are complete.
+
+Fixture 169 keeps an undeclared provider dispatch inside a mutating action at
+compile time: it must fail as `SEM_UNKNOWN_CALLEE` before any generated action
+can run. This records the current unsupported boundary; any future provider
+callable must declare its external effect and preserve RM-402's replay rules.
+
+Fixture 170 accepts one checked service operation with a pinned local contract,
+closed egress authority, declared secret slot, typed request/receipt, stable
+idempotency key and explicit failure mapping. Its exact formatter expectation
+and core audit assertion keep the authored contract, parsed service body and
+generated effect inventory aligned.

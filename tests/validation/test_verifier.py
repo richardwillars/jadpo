@@ -87,5 +87,22 @@ class EvidenceInventoryTests(unittest.TestCase):
             verify.inventory(self.manifest)
 
 
+class VerificationEnvironmentTests(unittest.TestCase):
+    def test_caller_database_and_component_output_canaries_never_reach_subprocesses(self):
+        # Exercise the real function used before every subprocess, without any
+        # connection, component output write or broad verifier invocation.
+        unsafe = ['DATABASE_URL', 'SQLITE_PATH', 'JADPO_DELIVERY_HOOK_DATABASE_URL',
+                  'JADPO_DELIVERY_HOOK_COMPONENT_OUTPUT', 'JADPO_DELIVERY_HOOK_COMPONENT_VARIANT', 'JADPO_BIN']
+        canaries = {name: 'canary-no-connection-or-write' for name in unsafe}
+        canaries['RETAINED_VERIFICATION_CONTROL'] = 'retained'
+        with patch.dict(verify.os.environ, canaries, clear=True):
+            environment = verify.verification_environment()
+            for name in unsafe[:-1]:
+                self.assertNotIn(name, environment)
+            self.assertEqual(environment['JADPO_BIN'], str(verify.COMPILER))
+            self.assertEqual(environment['RETAINED_VERIFICATION_CONTROL'], 'retained')
+            self.assertEqual(verify.os.environ['JADPO_DELIVERY_HOOK_DATABASE_URL'], canaries['JADPO_DELIVERY_HOOK_DATABASE_URL'])
+
+
 if __name__ == '__main__':
     unittest.main()

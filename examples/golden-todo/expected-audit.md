@@ -95,8 +95,14 @@ User.disable
   ordinary bounded credential       rejected at expiry, no later than 5m
 ```
 
-`GET /users/:user_id/todos` must expose an exact query plan: one bounded parent
-query plus one ordered child query, with no N+1 path and no cross-parent mixing.
+`GET /users/:user_id/todos` must expose an exact query plan: one self-scoped
+parent lookup plus one ordered child query, with no N+1 path and no
+cross-parent mixing. Apply owner and soft-delete filters in SQL before the
+100-child cap. Its `UserWithTodos` projection contains `user_id` and at most 100
+ordered `TodoView` values. It must not expose `User.email`, which remains
+provisioning-only under the human-owned policy. The migrated route now uses the
+existing indexed keyset-page lowering to meet those conditions; focused SQLite,
+PostgreSQL and JWT HTTP evidence is recorded under RM-107.
 
 ## Patch semantics
 
@@ -114,6 +120,14 @@ owner/generated/lifecycle fields   not representable in PatchTodo
 ```
 
 ## Jobs and external effects
+
+The following job wording describes the retained pressure source. The frozen
+[2026-10-02 lifecycle/service successors](../../docs/service-plan.md) require
+clause-bound generated retention maintenance, a durable UUID per reminder
+schedule, private intent state, revision guards and compiler receipt observation.
+Future generated audit must represent those reviewed successors and distinguish
+provider evidence from application time; the historical `Todo.id` key below is
+not the new service identity.
 
 `overdue_reminders` reads at most 500 open, undeleted, unreminded todos whose
 due date is strictly before the injected clock, in deterministic order,

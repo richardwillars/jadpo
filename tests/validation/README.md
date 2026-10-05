@@ -58,7 +58,9 @@ migration/deprecation and public example alignment remain work in the validation
 phase; passing compatibility fixtures does not resolve that work.
 
 The [golden obligation map](golden-obligations.json) retains all 44 candidate
-case IDs and their execution gaps. No case is marked passed because a related
+case IDs, migrated declarations, responsible tasks and required observations.
+The [RM-101 baseline](golden-baseline/provenance.json) preserves original
+candidate diagnostics and informational contract digests. No case is marked passed because a related
 unit test exists. The [2026-09-30 review](../../examples/golden-todo/REVIEW.md#2026-09-30-authentication-reconciliation)
 resolved the four recorded auth conflicts and query-budget ambiguity against
 approved AUTH-001 and the owner's explicit principal/credential accounting
@@ -68,9 +70,23 @@ until the full application and harness implement them.
 The legacy `examples/test1` scratch source has old syntax and is explicitly
 excluded from executable examples. The golden todo is a design contract with
 unsupported capabilities, not a passing application. Both classifications are
-visible in the manifest/report. Migration work must preserve intended behaviour.
+visible in the manifest/report. The separate `examples/golden-todo-migration`
+package is also classified as a design contract while its source migration is
+incomplete; its source-check result is never counted as runtime or acceptance
+evidence. Migration work must preserve intended behaviour.
 
 ## Independent test-authoring work packages
+
+The cross-area evidence gaps selected for the next validation wave are tracked
+in the [RM-501 roadmap gap inventory](roadmap-gap-inventory.md). It separates
+repository-executable tests from semantic decisions and external evidence, so
+later campaigns do not encode unsupported expectations.
+
+The reproducible [RM-502 parser/type/failure campaign](fuzz-campaign.md) runs
+as a Cargo integration test and consumes the registered compile-fixture corpus.
+
+The [RM-503 mutation findings](rm503-mutation-findings.md) record five killed
+targeted mutations and identify the additional obligation areas still to review.
 
 Agents should derive cases from accepted specifications before consulting the
 implementation, state expected results, and cite the contract for each claim.

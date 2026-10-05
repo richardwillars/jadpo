@@ -17,6 +17,25 @@ pub struct SyntaxFile {
     pub exports: Vec<Name>,
     pub persistence: Vec<PersistenceDeclaration>,
     pub declarations: Vec<Declaration>,
+    /// Parsed top-level service contracts. Kept separate while their public
+    /// grammar is introduced in a deliberately narrow, checked slice.
+    pub services: Vec<ServiceDeclaration>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ServiceDeclaration {
+    pub name: Name,
+    pub items: Vec<ServiceItem>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ServiceItem {
+    /// Names of enclosing service sections, such as `import` or `credential`.
+    pub path: Vec<String>,
+    pub key: String,
+    pub value: String,
     pub range: TextRange,
 }
 
@@ -67,6 +86,7 @@ pub enum Declaration {
     Fixture(FixtureDeclaration),
     Test(TestDeclaration),
     Route(RouteDeclaration),
+    Job(JobDeclaration),
 }
 
 impl Declaration {
@@ -85,6 +105,7 @@ impl Declaration {
             Self::Fixture(declaration) => declaration.range,
             Self::Test(declaration) => declaration.range,
             Self::Route(declaration) => declaration.range,
+            Self::Job(declaration) => declaration.range,
         }
     }
 }
@@ -107,9 +128,18 @@ pub enum LocaleUnsupported {
 pub struct AuthenticationStrategyDeclaration {
     pub name: Name,
     pub transport: AuthenticationTransport,
+    pub exchange: Option<AuthenticationExchangeDeclaration>,
     pub validators: Vec<AuthenticationValidatorDeclaration>,
     pub claims: Vec<AuthenticationMappingDeclaration>,
     pub resolutions: Vec<AuthenticationResolutionDeclaration>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthenticationExchangeDeclaration {
+    pub path: Literal,
+    pub key: Name,
+    pub signed: Name,
     pub range: TextRange,
 }
 
@@ -119,6 +149,18 @@ pub struct AuthenticationValidatorDeclaration {
     pub mode: Name,
     pub principal: Name,
     pub settings: Vec<FieldInitialiser>,
+    pub credentials: Option<AuthenticationCredentialBinding>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthenticationCredentialBinding {
+    pub identity: NameExpression,
+    pub principal: NameExpression,
+    pub verifier: NameExpression,
+    pub active: Expression,
+    pub expires: NameExpression,
+    pub revoked: NameExpression,
     pub range: TextRange,
 }
 
@@ -251,6 +293,66 @@ pub struct ConfigDefault {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DurationLiteral {
+    pub text: String,
+    pub range: TextRange,
+}
+
+impl DurationLiteral {
+    pub fn milliseconds(&self) -> Option<u64> {
+        const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+        let (number, multiplier) = if let Some(number) = self.text.strip_suffix("ms") {
+            (number, 1_u64)
+        } else if let Some(number) = self.text.strip_suffix('s') {
+            (number, 1_000)
+        } else if let Some(number) = self.text.strip_suffix('m') {
+            (number, 60_000)
+        } else if let Some(number) = self.text.strip_suffix('h') {
+            (number, 3_600_000)
+        } else {
+            return None;
+        };
+        let (whole, fraction) = number.split_once('.').unwrap_or((number, ""));
+        if whole.is_empty()
+            || !whole.bytes().all(|digit| digit.is_ascii_digit())
+            || !fraction.bytes().all(|digit| digit.is_ascii_digit())
+            || (number.contains('.') && fraction.is_empty())
+        {
+            return None;
+        }
+        // Multiply the authored decimal coefficient exactly, least-significant
+        // digit first. Carry stays below the bounded unit multiplier, so even
+        // very long spellings cannot overflow or lose fractional information.
+        let mut scaled_digits = Vec::with_capacity(number.len() + 7);
+        let mut carry = 0_u64;
+        for digit in whole.bytes().chain(fraction.bytes()).rev() {
+            carry += u64::from(digit - b'0') * multiplier;
+            scaled_digits.push((carry % 10) as u8);
+            carry /= 10;
+        }
+        while carry > 0 {
+            scaled_digits.push((carry % 10) as u8);
+            carry /= 10;
+        }
+        if scaled_digits
+            .iter()
+            .take(fraction.len())
+            .any(|digit| *digit != 0)
+        {
+            return None;
+        }
+        let milliseconds = scaled_digits
+            .iter()
+            .skip(fraction.len())
+            .rev()
+            .try_fold(0_u64, |value, digit| {
+                value.checked_mul(10)?.checked_add(u64::from(*digit))
+            })?;
+        (milliseconds > 0 && milliseconds <= MAX_SAFE_INTEGER).then_some(milliseconds)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EnumDeclaration {
     pub name: Name,
     pub variants: Vec<EnumVariantDeclaration>,
@@ -314,6 +416,31 @@ pub struct EntityDossier {
     pub identity: Name,
     pub persistence: Option<EntityPersistence>,
     pub representations: Vec<DerivedRepresentation>,
+    pub lifecycle: Option<EntityLifecycle>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EntityLifecycle {
+    pub initial: Option<Vec<FieldInitialiser>>,
+    pub visible: Option<Expression>,
+    pub transitions: Vec<LifecycleTransition>,
+    pub purge: Option<LifecyclePurge>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LifecycleTransition {
+    pub name: Name,
+    pub from: Expression,
+    pub set: Vec<FieldInitialiser>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LifecyclePurge {
+    pub after: Expression,
+    pub from: Name,
+    pub range: TextRange,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -383,6 +510,7 @@ pub struct FieldDeclaration {
     pub name: Name,
     pub field_type: TypeReference,
     pub constraints: Vec<Constraint>,
+    pub default: Option<Literal>,
     pub persistence: Vec<PersistenceModifier>,
     pub generated: Option<GeneratedFieldRole>,
     pub reference: Option<ReferenceDeclaration>,
@@ -452,6 +580,7 @@ impl PolicyEffect {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GeneratedFieldRole {
+    Identity,
     Create,
     CreateOrChange,
 }
@@ -579,6 +708,7 @@ pub struct FixtureDeclaration {
     pub name: Name,
     pub clock: Option<Expression>,
     pub configuration: Option<Vec<FixtureConfigValue>>,
+    pub service_fakes: Vec<FixtureServiceFake>,
     pub range: TextRange,
 }
 
@@ -588,6 +718,26 @@ pub struct FixtureConfigValue {
     pub value: Expression,
     pub secret: bool,
     pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FixtureServiceFake {
+    pub service: Name,
+    pub outcomes: Vec<FixtureServiceFakeOutcome>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FixtureServiceFakeOutcome {
+    pub operation: Name,
+    pub value: FixtureServiceFakeValue,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum FixtureServiceFakeValue {
+    Accepted(Expression),
+    Declared(NameExpression),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -903,8 +1053,38 @@ pub struct QueryExpression {
     pub value: Box<Expression>,
     pub order: Option<QueryOrder>,
     pub pagination: Option<QueryPagination>,
+    pub page: Option<QueryPage>,
     pub includes: Vec<QueryInclude>,
     pub missing: Option<RejectStatement>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QueryPagePredicateOperator {
+    Equal,
+    OptionalEqual,
+    OptionalLessEqual,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QueryPagePredicate {
+    pub field: Name,
+    pub operator: QueryPagePredicateOperator,
+    pub value: Box<Expression>,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QueryPage {
+    pub result: TypeReference,
+    pub predicates: Vec<QueryPagePredicate>,
+    pub order: Vec<QueryOrder>,
+    pub after: Box<Expression>,
+    pub after_optional: bool,
+    pub limit: Box<Expression>,
+    pub projection: TypeReference,
+    pub cursor: TypeReference,
+    pub cursor_fields: Vec<Name>,
     pub range: TextRange,
 }
 
@@ -913,6 +1093,7 @@ pub struct UpdateExpression {
     pub target: NameExpression,
     pub field: Name,
     pub value: Box<Expression>,
+    pub transition: Option<Name>,
     pub changes: Vec<FieldInitialiser>,
     pub conditional_changes: Vec<PatchConditionalChange>,
     pub patch: Option<NameExpression>,
@@ -1042,6 +1223,14 @@ pub enum HttpMethod {
     Delete,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum RouteSuccess {
+    #[default]
+    Ok,
+    Created,
+    NoContent,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RouteDeclaration {
     pub method: HttpMethod,
@@ -1050,10 +1239,150 @@ pub struct RouteDeclaration {
     pub public: bool,
     pub fresh_authority: bool,
     pub path_fields: Vec<FieldDeclaration>,
+    pub query: Option<TypeReference>,
+    pub headers: Vec<RouteHeaderBinding>,
     pub input: Option<TypeReference>,
     pub output: Option<TypeReference>,
+    pub success: RouteSuccess,
+    pub deadline: Option<DurationLiteral>,
     pub run: Option<InvocationExpression>,
     pub inline_action: Option<InlineAction>,
+    pub range: TextRange,
+}
+
+/// Checked schedule entry, not an authored callable or delivery capability.
+/// Optional clauses retain parser recovery; diagnostics reject missing clauses.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobDeclaration {
+    pub name: Name,
+    pub every: DurationLiteral,
+    pub concurrency: Option<JobConcurrency>,
+    pub run: Option<InvocationExpression>,
+    pub retry: Option<JobRetry>,
+    pub delivery: Option<JobReminderDelivery>,
+    pub range: TextRange,
+}
+
+/// Closed source descriptor only. This is not a checked delivery capability.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobReminderDelivery {
+    pub selection: JobDeliverySelection,
+    pub hooks: JobDeliveryHooks,
+    pub service: JobDeliveryService,
+    pub authority: JobDeliveryAuthority,
+    pub completion: JobDeliveryCompletion,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobDeliveryTerm {
+    StrictBeforeOperationTime,
+    DueIdentityContinuation,
+    GeneratedIntent,
+    ReminderOnly,
+    CompilerReceiptObservation,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobDeliveryLimit {
+    FiveHundred,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobDeliveryPayloadVersion {
+    ReminderV1,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobDeliveryDirection {
+    Ascending,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobDeliveryOrder {
+    pub field: NameExpression,
+    pub direction: JobDeliveryDirection,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobDeliverySelection {
+    pub name: Name,
+    pub entity: Name,
+    pub identity: NameExpression,
+    pub due: NameExpression,
+    pub before: JobDeliveryTerm,
+    pub open_field: NameExpression,
+    pub open_variant: NameExpression,
+    pub visible: Name,
+    pub unsent: NameExpression,
+    pub required_owner: NameExpression,
+    pub owner_visible: Name,
+    pub order_by: [JobDeliveryOrder; 2],
+    pub limit: JobDeliveryLimit,
+    pub continuation: JobDeliveryTerm,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobDeliveryHooks {
+    pub create: NameExpression,
+    pub patch: NameExpression,
+    pub supplied: NameExpression,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobDeliveryPayload {
+    pub idempotency_key: JobDeliveryTerm,
+    pub from: NameExpression,
+    pub to: NameExpression,
+    pub todo_title: NameExpression,
+    pub due_at: NameExpression,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobDeliveryService {
+    pub operation: NameExpression,
+    pub intent: Name,
+    pub input: Name,
+    pub output: Name,
+    pub payload_version: JobDeliveryPayloadVersion,
+    pub payload: JobDeliveryPayload,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobDeliveryAuthority {
+    pub validator: NameExpression,
+    pub membership: Name,
+    pub role: NameExpression,
+    pub permit: JobDeliveryTerm,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobDeliveryCompletion {
+    pub name: Name,
+    pub field: NameExpression,
+    pub time: JobDeliveryTerm,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobConcurrency {
+    Singleton,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobRetry {
+    NextSchedule,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RouteHeaderBinding {
+    pub name: Name,
+    pub field_type: TypeReference,
+    pub wire_name: Literal,
+    pub optional: bool,
     pub range: TextRange,
 }
 

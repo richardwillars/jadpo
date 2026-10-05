@@ -7,6 +7,18 @@ use jadpo_syntax::{
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
+/// The v0.1 lifecycle contract keeps logical policy effects separate from SQL
+/// verbs: the canonical `delete` transition has a logical delete effect even
+/// though its authoritative write is an UPDATE. Other named transitions remain
+/// ordinary update effects.
+pub(crate) fn lifecycle_transition_policy_effect(transition: &str) -> &'static str {
+    if transition == "delete" {
+        "delete"
+    } else {
+        "update"
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct EntityModel {
     pub active: bool,
@@ -467,10 +479,21 @@ fn collect_expression(expression: &Expression, effects: &mut Effects) {
         Expression::Query(operation) => {
             let target = joined(&operation.target.path);
             effects.reads.insert(target.clone());
-            effects
-                .predicate_fields
-                .insert(format!("{target}.{}", operation.field.text));
-            collect_expression(&operation.value, effects);
+            if let Some(page) = &operation.page {
+                for predicate in &page.predicates {
+                    effects
+                        .predicate_fields
+                        .insert(format!("{target}.{}", predicate.field.text));
+                    collect_expression(&predicate.value, effects);
+                }
+                collect_expression(&page.after, effects);
+                collect_expression(&page.limit, effects);
+            } else {
+                effects
+                    .predicate_fields
+                    .insert(format!("{target}.{}", operation.field.text));
+                collect_expression(&operation.value, effects);
+            }
         }
         Expression::Update(operation) => {
             effects.mutations.insert(joined(&operation.target.path));

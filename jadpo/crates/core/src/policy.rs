@@ -162,7 +162,15 @@ pub fn analyze_policy(files: &[ParsedSyntax], typing: &TypeCheckResult) -> Polic
                     field.range,
                 );
             }
-            let Some(principal) = referenced_entity(field) else {
+            let principal = referenced_entity(field).or_else(|| {
+                located
+                    .record
+                    .dossier
+                    .as_ref()
+                    .is_some_and(|dossier| dossier.identity.text == field.name.text)
+                    .then(|| entity_name.clone())
+            });
+            let Some(principal) = principal else {
                 push(
                     &mut model.diagnostics,
                     Diagnostic::error("POLICY_BINDING_INVALID").with_fact(DiagnosticFact::Field(
@@ -272,6 +280,12 @@ pub fn analyze_policy(files: &[ParsedSyntax], typing: &TypeCheckResult) -> Polic
         let scoped_role_types = policy
             .rules
             .iter()
+            .chain(
+                policy
+                    .operations
+                    .iter()
+                    .flat_map(|operation| &operation.rules),
+            )
             .filter(|rule| !is_access_subject(&rule.subject))
             .filter_map(|rule| rule.subject.path.first().map(|part| part.text.clone()))
             .collect::<BTreeSet<_>>();
@@ -288,7 +302,11 @@ pub fn analyze_policy(files: &[ParsedSyntax], typing: &TypeCheckResult) -> Polic
                 continue;
             };
             if scopes.len() == 1 && scopes.contains("application") {
-                contract.scope = Some("application".to_owned());
+                // Application memberships are resolved independently of the
+                // entity's resource scope, including exception-only roles.
+                if contract.scope.is_none() {
+                    contract.scope = Some("application".to_owned());
+                }
                 continue;
             }
             if scopes.len() != 1 {
@@ -384,7 +402,15 @@ pub fn analyze_policy(files: &[ParsedSyntax], typing: &TypeCheckResult) -> Polic
                     .iter()
                     .find(|base| base.subject == rule.subject);
                 for effect in &rule.effects {
-                    if !base.is_some_and(|base| base.effects.contains(effect)) {
+                    let named_grant = policy.operations.iter().any(|operation| {
+                        operation.rules.iter().any(|grant| {
+                            joined(&grant.subject) == rule.subject
+                                && grant.effects.iter().any(|grant| grant.as_str() == effect)
+                        })
+                    });
+                    // Field permission still ANDs the exact operation grant at
+                    // runtime. A named exception is not entity-wide authority.
+                    if !base.is_some_and(|base| base.effects.contains(effect)) && !named_grant {
                         push(
                             &mut model.diagnostics,
                             Diagnostic::error("POLICY_FIELD_WIDENS_ENTITY")
@@ -1312,7 +1338,11 @@ fn collect_expression_effects(
                     .bindings
                     .iter()
                     .any(|binding| binding.entity == entity && binding.field == field.name.text)
-                    && !matches!(&field.value, Expression::Name(name) if name.path.first().is_some_and(|part| part.text == "principal"))
+                    && !role_field_value_is_principal_derived(
+                        &field.value,
+                        &entity,
+                        &field.name.text,
+                    )
                 {
                     push(
                         &mut model.diagnostics,
@@ -1332,7 +1362,15 @@ fn collect_expression_effects(
                 .entry(joined(&value.target))
                 .or_default()
                 .insert(PolicyEffect::Read);
-            collect_expression_effects(&value.value, effects, model, source);
+            if let Some(page) = &value.page {
+                for predicate in &page.predicates {
+                    collect_expression_effects(&predicate.value, effects, model, source);
+                }
+                collect_expression_effects(&page.after, effects, model, source);
+                collect_expression_effects(&page.limit, effects, model, source);
+            } else {
+                collect_expression_effects(&value.value, effects, model, source);
+            }
         }
         Expression::Update(value) => {
             let entity = joined(&value.target);
@@ -1418,6 +1456,28 @@ fn collect_expression_effects(
         }
         Expression::Literal(_) | Expression::Name(_) | Expression::Missing(_) => {}
     }
+}
+
+fn role_field_value_is_principal_derived(
+    expression: &Expression,
+    entity: &str,
+    field: &str,
+) -> bool {
+    let is_principal_name = |expression: &Expression| {
+        matches!(expression, Expression::Name(name)
+            if name.path.first().is_some_and(|part| part.text == "principal"))
+    };
+    if is_principal_name(expression) {
+        return true;
+    }
+
+    matches!(expression, Expression::Invocation(invocation)
+        if invocation.callee.path.len() == 2
+            && invocation.callee.path[0].text == entity
+            && invocation.callee.path[1].text == field
+            && invocation.arguments.len() == 1
+            && invocation.named_arguments.is_empty()
+            && is_principal_name(&invocation.arguments[0]))
 }
 
 fn resolve_call(call: &str, names: &BTreeSet<String>) -> String {

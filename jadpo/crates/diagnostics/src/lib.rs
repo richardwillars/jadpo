@@ -793,6 +793,44 @@ struct AuthoredCopy {
     next: &'static str,
 }
 
+fn job_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
+    let (summary, reason, next) = match code {
+        "SYN_JOB_EVERY_REQUIRED" => ("Job requires a fixed interval", "A scheduled job uses `job name every duration` before its closed body.", "Write `every` before the interval"),
+        "SYN_JOB_DURATION_REQUIRED" | "TYPE_JOB_INTERVAL_INVALID" => ("Job interval must be a positive finite duration", "This slice accepts representable integral milliseconds with ms, s, m or h units, not bare numbers, strings, zero, negative values or cron expressions.", "Use a supported positive duration such as `15m`"),
+        "SYN_JOB_ITEM_DUPLICATE" => ("Job clause is duplicated", "Every job body declares concurrency, run and retry exactly once; a later value cannot replace an earlier clause.", "Remove the duplicate clause"),
+        "SYN_JOB_CLAUSE_VALUE_INVALID" => ("Unsupported job clause value", "This checked schedule slice supports only concurrency: singleton and retry: next_schedule. The retry clause selects a wake-up, not a retry budget.", "Use the closed supported clause value"),
+        "SYN_JOB_RUN_INVOCATION_REQUIRED" => ("Job run requires an action invocation", "A job run binds a checked action with explicit argument mapping, not a bare name or inline body.", "Write `run: action_name(JobRunAt(clock.now))` with the action's exact nominal snapshot type"),
+        "SYN_JOB_ITEM_UNKNOWN" => ("Unsupported item inside job", "A job body accepts concurrency:, run:, retry: and an optional closed delivery: reminder_v1 descriptor. Delivery analysis remains unsupported; principal, intent, fences, outcomes and receipts remain compiler-owned.", "Remove the unsupported job item"),
+        "SYN_JOB_CLAUSE_REQUIRED" => ("Job is missing a required clause", "The closed schedule entry needs one valid concurrency: singleton, run invocation and retry: next_schedule clause.", "Supply the missing supported clause"),
+        "SYN_JOB_EXPORT_INVALID" => ("Scheduled jobs cannot be exported", "A job is an application schedule entry, not a callable or public module value.", "Remove public from the job declaration"),
+        "SYN_JOB_DELIVERY_MODE_INVALID" => ("Unsupported delivery descriptor mode", "Only the closed reminder_v1 source descriptor is parsed; it grants no execution or authority.", "Use the reviewed reminder_v1 descriptor"),
+        "SYN_JOB_DELIVERY_KEY_UNKNOWN" => ("Unknown delivery descriptor key", "Each descriptor section accepts only its closed key catalogue, not arbitrary expressions or configuration.", "Remove the unknown key"),
+        "SYN_JOB_DELIVERY_KEY_DUPLICATE" => ("Duplicate delivery descriptor key", "Every required section and key occurs exactly once; later values cannot replace earlier ones.", "Remove the duplicate key"),
+        "SYN_JOB_DELIVERY_KEY_REQUIRED" => ("Missing valid delivery descriptor key", "All five sections and all their closed keys require valid source values; a partial descriptor is not checked.", "Supply each required valid key"),
+        "SYN_JOB_DELIVERY_TERM_INVALID" => ("Unsupported delivery descriptor term", "Compiler-origin descriptor terms are closed and position-specific, not ordinary values or caller-provided authority.", "Use the reviewed term for this slot"),
+        "SYN_JOB_DELIVERY_REFERENCE_INVALID" => ("Delivery slot requires a direct qualified reference", "This slot accepts a checked field/configuration/operation reference, not an invocation, raw record or generated intent value.", "Use a direct qualified source reference"),
+        "SYN_JOB_DELIVERY_LIMIT_INVALID" => ("Delivery scan requires literal 500", "This closed descriptor has a fixed finite scan bound; dynamic, larger and unbounded limits are not supported.", "Write limit: 500"),
+        "SYN_JOB_DELIVERY_VERSION_INVALID" => ("Unsupported delivery payload version", "The immutable closed payload uses the reviewed reminder.v1 version.", "Write payload_version: \"reminder.v1\""),
+        "SYN_JOB_DELIVERY_DIRECTION_INVALID" => ("Delivery cursor requires ascending order", "The two-field ordered keyset retains due then identity order; each direction is asc.", "Use the reviewed ordered ascending fields"),
+        "SYN_JOB_DELIVERY_SYNTAX_INVALID" => ("Malformed closed delivery descriptor", "Sections, references, open enum predicate and two-field cursor use the exact closed descriptor grammar.", "Restore the reviewed delivery descriptor syntax"),
+        "TYPE_JOB_DELIVERY_BINDING_NOT_IMPLEMENTED" => ("Delivery binding is not yet checked", "Parsing this descriptor does not establish sealed intent origins, mutation hooks or phase-qualified authority. Checked delivery analysis and worker lowering remain unimplemented.", "Keep worker execution disabled until the binding and profile gates pass"),
+        "TYPE_JOB_DELIVERY_SELECTOR_INVALID" => ("Delivery selector does not match its entity types", "Selection requires authoritative same-store entities with visibility contracts, an exact nonnullable Uuid identity, distinct mutable nullable Instant due/sent fields, an exact enum variant, due-then-identity cursor and a required relationship to the recipient identity. These necessary type checks do not establish a checked delivery binding or runtime authority.", "Match the selector to the checked entity identity, fields and required recipient reference"),
+        "TYPE_JOB_DELIVERY_SERVICE_INVALID" => ("Delivery service does not match its closed payload types", "The selected checked operation must use the distinct direct nominal Uuid intent and exact closed value request/receipt, with required nonsecret mapped configuration and recipient fields. Resolved candidates do not grant delivery authority or execution.", "Match the selected imported operation, nominal intent and exact payload/receipt field contracts"),
+        "TYPE_JOB_DELIVERY_SEALED_USE" => ("Compiler-owned delivery value cannot be authored or exposed", "The selected intent, request and receipt types are confined to their exact service contract declarations. Ordinary aliases, containment, signatures, constructors, values and selected provider calls cannot manufacture or carry delivery authority; unbound service types remain ordinary.", "Remove the ordinary use of the selected delivery contract or provider operation"),
+        "TYPE_JOB_DELIVERY_HOOK_INVALID" => ("Delivery hooks or competing writes cannot be proved", "A delivery binding requires one exact direct create and optional-due patch site, an effect-free run action, and a complete source census with no other creation or due/sent-field writes. Unknown patch provenance is not a disjoint write proof. These structural checks do not establish transaction or runtime behavior.", "Use the exact compatible mutation sites and remove competing or unproved writes"),
+        "TYPE_JOB_DELIVERY_AUTHORITY_INVALID" => ("Delivery authority does not compose to its selected service identity", "The selected API-key credential reference, active service resolution and required principal identity mapping must compose to the exact Service identity and selected authoritative application membership/role. Shared primitive types or another membership's role union do not prove this binding. Static composition is not a live grant or worker admission.", "Match the exact service identity, credential, resolution and selected same-store membership without competing bindings"),
+        "TYPE_JOB_RUN_SIGNATURE_INVALID" => ("Job run requires a nominal snapshot-to-Unit action", "The statically named action must have one nonnullable, unconstrained named type directly based on Instant, and builtin Unit result. The ordinary primitive-signature ban remains; functions, queries, service operations and jobs do not qualify.", "Bind a checked action taking a direct unconstrained Instant wrapper"),
+        "TYPE_JOB_RUN_ARGUMENT_INVALID" => ("Job run requires an explicit nominal clock snapshot", "The first schedule slice passes the action's exact nominal constructor containing only intrinsic clock.now. Bare clocks, sibling wrappers, named, extra, arbitrary nested or principal arguments reject.", "Pass the exact snapshot type's constructor around clock.now"),
+        "JADPO_TARGET_JOB_NOT_IMPLEMENTED" => ("Scheduled job `{name}` cannot execute yet", "The frontend checks this schedule, but a reviewed finite execution profile, durable failure dispositions and checked worker lowering are not implemented. Build stops rather than emitting a no-op or startup call.", "Retain the checked schedule while completing its worker binding and execution gates"),
+        _ => return None,
+    };
+    Some(AuthoredCopy {
+        summary,
+        reason,
+        next,
+    })
+}
+
 fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     let (summary, reason, next) = match code {
         "SYN_CONSTRAINT_NON_ENTITY" => (
@@ -902,7 +940,7 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "SYN_EXPECTED_ROUTE_ITEM" => (
             "Unsupported item inside route",
-            "A route body accepts `auth:`, `path:`, `input:`, `output:`, `run:`, and `action:` items only.",
+            "A route body accepts `auth:`, `path:`, `query:`, `headers:`, `deadline:`, `input:`, `output:`, `success:`, `run:`, and `action:` items only.",
             "Use a supported route item or move this source outside the route",
         ),
         "SYN_EXPECTED_STATEMENT" => (
@@ -964,6 +1002,71 @@ fn syntax_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Generated field lifecycle role is not supported",
             "The initial lifecycle contract has exactly two roles so timestamp ownership and update behavior remain predictable.",
             "Use `create` or `create_or_change`",
+        ),
+        "SYN_LIFECYCLE_DUPLICATE" => (
+            "Entity declares lifecycle rules more than once",
+            "An entity has one lifecycle contract so initial state, visibility, transitions, and retention share a single source of truth.",
+            "Combine the lifecycle settings into one block",
+        ),
+        "SYN_LIFECYCLE_INITIAL_DUPLICATE" => (
+            "Lifecycle initial state is declared more than once",
+            "The entity lifecycle has one initial field map; multiple blocks could disagree about compiler-owned creation state.",
+            "Keep one `initial` block containing every lifecycle-owned field",
+        ),
+        "SYN_LIFECYCLE_NON_ENTITY" => (
+            "Lifecycle rules require an entity",
+            "Lifecycle visibility and transitions are enforced against authoritative stored rows, so transient input and value records cannot own them.",
+            "Move this lifecycle block to a persistent entity",
+        ),
+        "SYN_LIFECYCLE_PURGE_AFTER_REQUIRED" => (
+            "Purge clause requires `after`",
+            "Retention is expressed as a minimum duration after the lifecycle timestamp, using the fixed `purge after ... from ...` form.",
+            "Write `purge after duration from timestamp_field`",
+        ),
+        "SYN_LIFECYCLE_PURGE_DUPLICATE" => (
+            "Entity declares more than one lifecycle purge",
+            "One retention rule determines the bounded physical-removal authority for an entity.",
+            "Keep one `purge after ... from ...` clause",
+        ),
+        "SYN_LIFECYCLE_PURGE_FROM_REQUIRED" => (
+            "Purge clause requires `from`",
+            "Retention must identify the lifecycle timestamp field that anchors eligibility.",
+            "Add `from timestamp_field` after the retention duration",
+        ),
+        "SYN_LIFECYCLE_SETTING_INVALID" => (
+            "Lifecycle block contains an unsupported setting",
+            "Lifecycle blocks accept only initial state, visibility, named transitions, and an optional retention purge clause.",
+            "Replace this item with a supported lifecycle setting",
+        ),
+        "SYN_LIFECYCLE_TRANSITION_DUPLICATE" => (
+            "Lifecycle transition setting or name is repeated",
+            "A transition has one source predicate and one fixed assignment map, and transition names identify exactly one state change.",
+            "Keep one `from`, one `set`, and one declaration for this transition name",
+        ),
+        "SYN_LIFECYCLE_TRANSITION_FROM_REQUIRED" => (
+            "Lifecycle transition requires a source predicate",
+            "The transition guard limits which current rows may enter its fixed state change.",
+            "Add `from: predicate` to the transition",
+        ),
+        "SYN_LIFECYCLE_TRANSITION_SETTING_INVALID" => (
+            "Lifecycle transition contains an unsupported setting",
+            "A transition declares only its current-state `from` predicate and compiler-owned `set` values.",
+            "Use `from:` or `set:` in the transition",
+        ),
+        "SYN_LIFECYCLE_TRANSITION_SET_REQUIRED" => (
+            "Lifecycle transition requires fixed assignments",
+            "The compiler must know the complete state change before an action invokes a named transition.",
+            "Add `set: { field: value }` to the transition",
+        ),
+        "SYN_LIFECYCLE_VISIBLE_DUPLICATE" => (
+            "Lifecycle visibility is declared more than once",
+            "One visibility predicate must govern reads and mutations consistently for every ordinary caller.",
+            "Keep one `visible when` predicate",
+        ),
+        "SYN_LIFECYCLE_VISIBLE_WHEN_REQUIRED" => (
+            "Lifecycle visibility requires `when`",
+            "Visibility is a same-row predicate and uses the explicit `visible when predicate` form.",
+            "Write `visible when predicate`",
         ),
         "SYN_LOCALES_DEFAULT_REQUIRED" => (
             "Locale declaration requires one default locale",
@@ -1060,6 +1163,61 @@ fn semantic_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Standard-library operation requires its owning namespace",
             "Standard operations have one canonical source spelling and cannot be called as free functions or receiver methods.",
             "Use `{suggestedName}`",
+        ),
+        "SEM_SERVICE_IMPORT_PIN_INVALID" => (
+            "Service import must pin one supported contract snapshot",
+            "This service slice accepts only the checked repository snapshot at its exact version and SHA-256. Missing or changed import metadata cannot establish which provider contract was reviewed.",
+            "Restore the pinned service contract import",
+        ),
+        "SEM_SERVICE_IMPORT_NOT_FOUND" => (
+            "Pinned service contract file is unavailable",
+            "The service declaration names a repository snapshot that the compiler cannot read, so it cannot verify the imported contract.",
+            "Restore the pinned contract file inside the project",
+        ),
+        "SEM_SERVICE_IMPORT_DIGEST_MISMATCH" => (
+            "Pinned service contract bytes have changed",
+            "The imported file does not match its declared SHA-256. The compiler will not accept a mutable or stale provider contract.",
+            "Restore the reviewed snapshot or plan a separately reviewed contract successor",
+        ),
+        "SEM_SERVICE_EGRESS_INVALID" => (
+            "Service egress must match its fixed authority",
+            "The first service slice admits one statically declared HTTPS host and port. Dynamic or mismatched egress could send credentials or payloads to an undeclared destination.",
+            "Use the declared mail provider authority or plan a reviewed provider contract",
+        ),
+        "SEM_SERVICE_SECRET_SINK_INVALID" => (
+            "Service credential sink is not permitted",
+            "Only the declared bearer credential from the secret mail configuration slot may enter the fixed Authorization header. Other secret paths or sinks are rejected.",
+            "Restore the declared credential slot and Authorization header",
+        ),
+        "SEM_SERVICE_IDEMPOTENCY_INVALID" => (
+            "Service operation lacks its stable delivery identity",
+            "The operation must bind its request and provider idempotency header to the persisted nominal ReminderIntentId. An attempt identity or missing key could duplicate a delivery.",
+            "Use ReminderIntentId for the operation idempotency key",
+        ),
+        "SEM_SERVICE_CONTRACT_INVALID" => (
+            "Service declaration is outside the checked contract slice",
+            "This compiler slice accepts one closed operation and its reviewed request, response, retry and outcome rules. Unsupported additions are rejected instead of being silently ignored.",
+            "Restore the checked ReminderMail operation or plan a reviewed contract expansion",
+        ),
+        "SEM_SERVICE_CONFIGURATION_MISSING" => (
+            "Service credential slot requires a project configuration declaration",
+            "A service must resolve its typed secret slot against the project's declared configuration field.",
+            "Declare the mail API key as a secret configuration field",
+        ),
+        "SEM_SERVICE_CALL_CONTEXT" => (
+            "External service operation requires an effectful caller",
+            "This checked operation performs network I/O and may produce uncertain outcomes, so pure functions and read-only queries cannot invoke it.",
+            "Move the call into an action with its complete declared failure set",
+        ),
+        "SEM_TEST_SERVICE_FAKE_REQUIRED" => (
+            "Authored tests must fake external service calls",
+            "A generated authored test cannot dispatch to a real external provider. Every service operation reachable from the test must be supplied by its typed fixture fake.",
+            "Add the service's declared fake to the test fixture",
+        ),
+        "SEM_SERVICE_ATOMIC_EFFECT" => (
+            "External service effect cannot share an uncommitted write",
+            "A network request cannot participate in the database write's commit or rollback. A durable intent must commit before dispatch so a crash cannot lose or duplicate the external operation.",
+            "Move dispatch behind a committed durable intent or separate it from the database write",
         ),
         "SEM_MULTIPLE_APPLICATIONS" => (
             "Project declares more than one application",
@@ -1667,8 +1825,18 @@ fn route_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "ROUTE_ITEM_DUPLICATE" => (
             "Route item is declared more than once",
-            "A route has one authentication setting, path schema, input, output, and behavior selection. Repeating an item would silently replace part of its public contract.",
+            "A route has one authentication setting, path schema, input, output, success mode, and behavior selection. Repeating an item would silently replace part of its public contract.",
             "Keep one occurrence of this route item",
+        ),
+        "ROUTE_DEADLINE_INVALID" => (
+            "Route deadline must be a finite positive duration",
+            "A route deadline is a fixed duration written in whole milliseconds using `ms`, `s`, `m`, or `h`. Zero, fractional milliseconds, days, and values outside the portable runtime range are not supported.",
+            "Use a positive route deadline such as `deadline: 2s`",
+        ),
+        "ROUTE_HEADER_FROM_REQUIRED" => (
+            "Route header binding needs an explicit wire name",
+            "Each ordinary header binding uses `name: Type from \"HTTP-Name\"` so source names never imply transport casing or collide with compiler-owned headers.",
+            "Add `from` followed by the exact HTTP header name",
         ),
         "ROUTE_PATH_BINDING_DUPLICATE" => (
             "Route path binding name is repeated",
@@ -1912,6 +2080,51 @@ fn data_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
 
 fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
     let (summary, reason, next) = match code {
+        "TYPE_ROUTE_BINDING_COLLISION" => (
+            "Route input name is used by more than one boundary",
+            "Path, query, header, and body fields must have distinct top-level names so reviews and generated adapters cannot confuse their transport source.",
+            "Rename one of the colliding route input fields",
+        ),
+        "TYPE_ROUTE_HEADER_NAME_INVALID" => (
+            "HTTP header name is not valid ASCII",
+            "An explicit header wire name may contain only the ASCII token characters allowed for HTTP field names.",
+            "Use a valid explicit HTTP field name",
+        ),
+        "TYPE_ROUTE_HEADER_SCALAR_REQUIRED" => (
+            "Route header binding requires a non-null scalar type",
+            "One HTTP field value can bind only a supported scalar, refinement, or enum. Structured and nullable values need a different reviewed encoding.",
+            "Use a supported non-null scalar header type",
+        ),
+        "TYPE_ROUTE_HEADER_WIRE_DUPLICATE" => (
+            "HTTP header wire name is bound more than once",
+            "HTTP field names are case-insensitive, so two bindings that differ only in casing would read the same transport value.",
+            "Keep one binding for this HTTP header name",
+        ),
+        "TYPE_ROUTE_QUERY_FIELD_UNSUPPORTED" => (
+            "Query Object contains an unsupported field type",
+            "Typed query fields may use supported non-null scalars, enums, refinements, or one JSON-encoded closed Object. Collections and nullable sentinels have no selected query encoding.",
+            "Use a supported query field type or make absence optional",
+        ),
+        "TYPE_ROUTE_QUERY_OBJECT_REQUIRED" => (
+            "Route query binding must reference a closed Object",
+            "A route query is a named field set so the compiler can reject unknown keys, apply defaults, and generate one OpenAPI parameter per declared field.",
+            "Reference a named closed Object after `query:`",
+        ),
+        "TYPE_AUTH_EXCHANGE_BINDING" => (
+            "Exchange must bind a service key and service signed validator",
+            "The exchange endpoint uses one bearer strategy with a declared service API-key authority and a service signed validator. A user validator or a validator from another strategy cannot supply either role.",
+            "Name the checked service key and signed validators in this bearer strategy",
+        ),
+        "TYPE_AUTH_EXCHANGE_PATH" => (
+            "Exchange path must be a fixed absolute path",
+            "A compiler-owned exchange endpoint needs a nonempty absolute path of ASCII letters, digits, hyphens and underscores without parameters, query, fragment or escapes so its transport and artifact inventory are unambiguous.",
+            "Use a fixed path such as `/auth/exchange`",
+        ),
+        "TYPE_AUTH_EXCHANGE_ROUTE_COLLISION" => (
+            "Exchange path overlaps an authored POST route",
+            "The compiler-owned exchange endpoint must own its POST path. An authored route at the same literal path or a matching path parameter would make dispatch ambiguous.",
+            "Move the exchange endpoint or the overlapping POST route",
+        ),
         "TYPE_AUTH_JWT_TRANSPORT" => (
             "JWT validation requires bearer transport",
             "The compiler-owned external JWT adapter accepts only the reserved Authorization bearer credential slot. Cookie authentication requires a first-party adapter with the browser CSRF boundary.",
@@ -1966,6 +2179,16 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Principal authority is not a persistent entity",
             "Authentication resolution must query an authoritative stored entity. A transient value or non-persistent entity cannot prove current identity or lifecycle state.",
             "Resolve the principal through a persistent authority entity",
+        ),
+        "TYPE_AUTH_LIFECYCLE_ACTIVE_FIELD" => (
+            "Lifecycle authentication check reads a private field",
+            "Authentication may inspect only the authority subject, identity and lifecycle-owned state of a hidden lifecycle entity.",
+            "Base the active check on lifecycle-owned state fields",
+        ),
+        "TYPE_AUTH_LIFECYCLE_MAPPING_SCOPE" => (
+            "Lifecycle authentication mapping reads an unrelated field",
+            "A lifecycle authority lookup may map its subject and identity values, but must not read unrelated business or private fields.",
+            "Map the authority subject or an identity field",
         ),
         "TYPE_AUTH_INACTIVE_FAILURE_KIND" => (
             "Inactive-principal failure has the wrong category",
@@ -2022,10 +2245,135 @@ fn core_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Identity, immutable, scope, membership, and direct role-binding fields have compiler-owned write rules so an update cannot move a record or manufacture authority.",
             "Remove the field from the update or use a separately reviewed transfer operation when that capability is available",
         ),
+        "TYPE_LIFECYCLE_REQUIRES_PERSISTENT_ENTITY" => (
+            "Lifecycle contract requires a persistent entity",
+            "Lifecycle visibility, transitions, and retention are enforced against authoritative stored rows.",
+            "Add the entity's persistence authority or remove its lifecycle contract",
+        ),
+        "TYPE_LIFECYCLE_INITIAL_REQUIRED" => (
+            "Lifecycle initial state is required",
+            "Every lifecycle-owned field needs a compiler-owned initial value on creation.",
+            "Declare `initial` with a value for every field used by a lifecycle transition",
+        ),
+        "TYPE_LIFECYCLE_VISIBLE_REQUIRED" => (
+            "Lifecycle visibility predicate is required",
+            "Lifecycle-owned rows must have one declared visibility rule so reads and mutations conceal inactive rows consistently.",
+            "Add `visible when` with a same-row lifecycle predicate",
+        ),
+        "TYPE_LIFECYCLE_INITIAL_DUPLICATE" => (
+            "Lifecycle initial field is repeated",
+            "Each compiler-owned initial field must be assigned exactly once.",
+            "Remove the duplicate initial field assignment",
+        ),
+        "TYPE_LIFECYCLE_FIELD_UNKNOWN" => (
+            "Lifecycle refers to an unknown entity field",
+            "Lifecycle ownership must bind to a field declared by the same entity.",
+            "Use a field declared on this entity",
+        ),
+        "TYPE_LIFECYCLE_FIELD_INELIGIBLE" => (
+            "Field cannot be lifecycle-owned",
+            "Generated, immutable, identity, and role-binding fields have separate compiler-owned write rules.",
+            "Choose a mutable non-identity field for lifecycle state",
+        ),
+        "TYPE_LIFECYCLE_VALUE_UNSUPPORTED" => (
+            "Lifecycle value is outside the supported closed form",
+            "Initial and transition values are closed literals, typed field constructors over enum variants, `none`, or the operation clock; arbitrary input and effects are not allowed.",
+            "Replace this value with a literal, typed field constructor, `none`, or `clock.now`",
+        ),
+        "TYPE_LIFECYCLE_TRANSITION_FIELD_DUPLICATE" => (
+            "Transition assigns a field more than once",
+            "A transition has one unambiguous value for each lifecycle-owned field.",
+            "Keep one assignment for this field",
+        ),
+        "TYPE_LIFECYCLE_RESTORE_FORBIDDEN" => (
+            "Lifecycle transition cannot restore a hidden row",
+            "The first lifecycle contract is one-way: a transition cannot start from hidden state and make the row visible again.",
+            "Remove this transition or keep its resulting state hidden",
+        ),
+        "TYPE_LIFECYCLE_TRANSITION_SOURCE_INVALID" => (
+            "Lifecycle transition must start from visible state",
+            "Ordinary lifecycle transitions are available only to rows that satisfy the entity's current visibility predicate.",
+            "Make the transition guard imply the declared lifecycle visibility predicate",
+        ),
+        "TYPE_LIFECYCLE_FIELD_UPDATE_FORBIDDEN" => (
+            "Lifecycle-owned field cannot be changed by an ordinary update",
+            "Lifecycle-owned state changes only through the entity's declared fixed transition, which adds its visibility and source-state guards to the write.",
+            "Use the declared lifecycle transition instead of assigning this field directly",
+        ),
+        "TYPE_LIFECYCLE_INITIAL_FIELD_REQUIRED" => (
+            "Transition or purge field has no initial value",
+            "A field changed by a transition or used for retention must be initialized by the lifecycle contract.",
+            "Add this field once to the entity lifecycle `initial` block",
+        ),
+        "TYPE_LIFECYCLE_PURGE_FIELD_INVALID" => (
+            "Purge field must be a nullable instant",
+            "Retention purge eligibility is anchored to a nullable deletion timestamp.",
+            "Use a nullable `Instant` lifecycle timestamp field",
+        ),
+        "TYPE_LIFECYCLE_PURGE_INITIAL_INVALID" => (
+            "Purge timestamp must start empty",
+            "Only a soft-deleted row with a timestamp can become eligible for retention purge.",
+            "Initialize the purge timestamp to `none`",
+        ),
+        "TYPE_LIFECYCLE_PURGE_TRANSITION_INVALID" => (
+            "Purge timestamp must come from a declared soft-delete transition",
+            "The worker can purge only a hidden post-transition state whose lifecycle-owned timestamp was set from the operation clock.",
+            "Set the purge timestamp to `clock.now` in a lifecycle transition",
+        ),
+        "TYPE_LIFECYCLE_PURGE_RETENTION_INVALID" => (
+            "Purge retention must bind to configuration",
+            "Retention is a checked startup configuration value rather than an authored per-row expression.",
+            "Use a configured duration such as `config.soft_delete_retention`",
+        ),
+        "TYPE_LIFECYCLE_PREDICATE_UNSUPPORTED" => (
+            "Lifecycle predicate uses an unsupported expression",
+            "Lifecycle visibility and transition guards are limited to typed same-row equality, absence, and conjunction.",
+            "Rewrite this predicate using entity fields, enum variants, `none`, equality, and `and`",
+        ),
+        "TYPE_LIFECYCLE_TRANSITION_UNKNOWN" => (
+            "Lifecycle transition is not declared on this entity",
+            "A transition marker selects one fixed state change declared by the target entity.",
+            "Use a transition declared in this entity's lifecycle block",
+        ),
+        "TYPE_LIFECYCLE_TRANSITION_IDENTITY_REQUIRED" => (
+            "Lifecycle transition requires an identity-bounded target",
+            "A transition changes one authoritative row selected by its declared identity field.",
+            "Use the entity identity field in the update predicate",
+        ),
+        "TYPE_LIFECYCLE_READ_LOWERING_UNSUPPORTED" => (
+            "Lifecycle reads are not yet available in the selected backend",
+            "A lifecycle entity may be read only when visibility is conjoined before projection and pagination on every adapter.",
+            "Keep reads off lifecycle entities until guarded lifecycle read lowering is supported",
+        ),
+        "TYPE_LIFECYCLE_MUTATION_LOWERING_UNSUPPORTED" => (
+            "Lifecycle mutations are not yet available in the selected backend",
+            "Every lifecycle mutation must evaluate visibility and transition invariants with its write in one authoritative transaction.",
+            "Keep mutations off lifecycle entities until guarded mutation lowering is supported",
+        ),
+        "TYPE_LIFECYCLE_HARD_DELETE_FORBIDDEN" => (
+            "Lifecycle entity cannot be physically deleted by authored code",
+            "Lifecycle deletion is a state transition; physical removal belongs only to the bounded compiler-owned retention worker.",
+            "Use the declared delete transition, or rely on the generated retention worker after its configured period",
+        ),
+        "TYPE_LIFECYCLE_TRANSITION_BODY_INVALID" => (
+            "Lifecycle transition cannot be combined with direct field writes",
+            "A transition is the sole write marker for lifecycle-owned fields and its field values are fixed by the entity contract.",
+            "Remove `set` and `patch` and keep only `transition: name`",
+        ),
+        "TYPE_LIFECYCLE_FIELD_CREATE_FORBIDDEN" => (
+            "Lifecycle-owned field cannot be supplied by a constructor",
+            "The compiler applies the entity lifecycle's initial values during creation.",
+            "Remove this field from the constructor",
+        ),
         "TYPE_GENERATED_FIELD_CONTEXT" => (
             "Generated lifecycle role requires a persistent entity field",
             "Lifecycle timestamps describe database creation and change events and therefore have no defined meaning on transient input, output, or value objects.",
             "Move this field to a persistent entity or remove its generated block",
+        ),
+        "TYPE_GENERATED_IDENTITY_INVALID" => (
+            "Generated identity must be a required UUID identity field",
+            "A compiler-generated identity belongs only to the persistent entity's declared identity field, uses the UUID representation, and is always present.",
+            "Mark the required UUID identity field as `generated: identity`, or supply the identity explicitly",
         ),
         "TYPE_GENERATED_FIELD_INPUT" => (
             "Generated lifecycle field cannot be accepted from input",
@@ -2489,6 +2837,26 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "`query` reads rows for an object type with a `persist` declaration; ordinary objects and scalar types have no storage contract.",
             "Query a persisted object type",
         ),
+        "SYN_QUERY_PAGE_AFTER_REQUIRED" => (
+            "Page query requires an explicit cursor boundary",
+            "A page query must state how an optional continuation cursor is applied so the generated lookup never silently switches to offset pagination.",
+            "Add `after: optional cursor_value` before the page limit",
+        ),
+        "SYN_QUERY_PAGE_PROJECT_REQUIRED" => (
+            "Page query requires a named projection",
+            "A bounded page must declare the output projection that the compiler selects and validates.",
+            "Add `project: OutputShape` before the cursor declaration",
+        ),
+        "SYN_QUERY_PAGE_CURSOR_REQUIRED" => (
+            "Page query requires a typed cursor shape",
+            "The continuation token needs a named value shape and explicit ordered fields so the compiler can validate its keyset predicate.",
+            "Add `cursor: CursorShape(field, ...)` matching `order_by`",
+        ),
+        "SYN_QUERY_PAGE_PREDICATE_OPERATOR" => (
+            "Unsupported page predicate operator",
+            "Page predicates support equality, optional equality filters and optional less-than-or-equal filters with statically bound values.",
+            "Use `==`, `matches optional` or `<= optional`",
+        ),
         "TYPE_QUERY_NULLABLE_FIELD_UNSUPPORTED" => (
             "Query predicate field is nullable",
             "The current query slice accepts a single equality predicate on a non-nullable field; nullable equality and `none` matching are not implicit.",
@@ -2518,6 +2886,11 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Query ordering field does not exist",
             "`order_by` must name a declared field on the queried persisted object before its stability can be checked.",
             "Use a declared field from the target object",
+        ),
+        "TYPE_QUERY_PAGE_SHAPE" => (
+            "Page query shapes do not match",
+            "A keyset page's output, projection and cursor must map to declared fields on the queried entity, and the cursor field order must match the stable sort order.",
+            "Align the output page items, projection fields and cursor fields with the query ordering",
         ),
         "TYPE_UPDATE_DUPLICATE_FIELD" => (
             "Update writes the same field more than once",
@@ -3419,7 +3792,8 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
     }
     .to_ascii_lowercase();
     let rule_id = format!("{category}.{}", remainder.to_ascii_lowercase());
-    let authored = syntax_catalogue_copy(code)
+    let authored = job_catalogue_copy(code)
+        .or_else(|| syntax_catalogue_copy(code))
         .or_else(|| semantic_catalogue_copy(code))
         .or_else(|| configuration_catalogue_copy(code))
         .or_else(|| policy_catalogue_copy(code))
@@ -3500,6 +3874,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
                 "ROUTE_PATH_BINDING_EXTRA" => "Remove the typed path field that has no placeholder",
                 "ROUTE_BEHAVIOUR_CONFLICT" => "Keep either `run:` or the inline `action:`",
                 "ROUTE_BEHAVIOUR_REQUIRED" => "Add `run:` or an inline `action:`",
+                "ROUTE_DEADLINE_INVALID" => "Use a positive `deadline:` duration in `ms`, `s`, `m`, or `h`",
                 "CLI_INCIDENT_REVISION_MISMATCH" => {
                     "Use the checked sources that produced the runtime event"
                 }
@@ -3508,6 +3883,9 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
                 }
                 "RUNTIME_UNHANDLED_FAULT" => {
                     "Inspect the matching local incident using its request identifier"
+                }
+                "RUNTIME_OUTCOME_UNKNOWN" => {
+                    "Inspect the matching uncertain operation before attempting reconciliation"
                 }
                 "RUNTIME_STARTUP_FAILED" => {
                     "Inspect the generated runtime startup event before retrying"
@@ -3542,6 +3920,9 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         }
         "CLI_PRESENTATION_ARGUMENTS" => "Terminal presentation option is invalid".to_owned(),
         "RUNTIME_UNHANDLED_FAULT" => "Generated runtime contained an unexpected fault".to_owned(),
+        "RUNTIME_OUTCOME_UNKNOWN" => {
+            "Generated runtime could not confirm whether an effect committed".to_owned()
+        }
         "RUNTIME_STARTUP_FAILED" => "Generated runtime failed during startup".to_owned(),
         "SYN_EXPECTED_DECLARATION" => "`{found}` cannot start a top-level declaration".to_owned(),
         "SYN_UNEXPECTED_TOKEN" => "Expected {expected}".to_owned(),
@@ -3560,6 +3941,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "CLI_INCIDENT_REVISION_MISMATCH" => "Local enrichment is trustworthy only when the runtime event and compiler graph identify the same checked source revision.".to_owned(),
         "CLI_PRESENTATION_ARGUMENTS" => "Diagnostic format and colour flags must select one supported presentation without changing the semantic diagnostic payload.".to_owned(),
         "RUNTIME_UNHANDLED_FAULT" => "An exception outside the declared domain-failure boundary was contained by the generated runtime.".to_owned(),
+        "RUNTIME_OUTCOME_UNKNOWN" => "The generated runtime contained an operation whose external effect may have committed, so it returned a safe uncertainty response without retrying.".to_owned(),
         "RUNTIME_STARTUP_FAILED" => "The generated runtime could not establish its startup contract and did not report readiness.".to_owned(),
         "SYN_EXPECTED_DECLARATION" => "Jadpo files accept `type`, `persist`, `failure`, `function`, `action`, `test`, and `route` declarations at the top level. Optional `module` and `import` headers come before those declarations. Route items such as `path:` belong inside a `route` block, so `{found}` cannot be parsed here.".to_owned(),
         "SYN_UNEXPECTED_TOKEN" => "Found `{found}` while parsing this construct. Jadpo requires {expected} at this location, so parsing stops rather than guessing the authored structure.".to_owned(),
@@ -3587,9 +3969,11 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
                 | "ROUTE_BEHAVIOUR_REQUIRED"
                 | "ROUTE_ITEM_COLON_REQUIRED"
                 | "ROUTE_AUTH_VALUE_INVALID"
+                | "ROUTE_DEADLINE_INVALID"
                 | "CLI_INCIDENT_REVISION_MISMATCH"
                 | "CLI_PRESENTATION_ARGUMENTS"
                 | "RUNTIME_UNHANDLED_FAULT"
+                | "RUNTIME_OUTCOME_UNKNOWN"
                 | "RUNTIME_STARTUP_FAILED"
                 | "SYN_EXPECTED_DECLARATION"
                 | "SYN_UNEXPECTED_TOKEN"
@@ -3639,6 +4023,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             "JADPO_TARGET_AUTH_NOT_IMPLEMENTED" => vec!["route"],
             "JADPO_TARGET_DURABLE_WORKFLOW_NOT_IMPLEMENTED" => vec!["callable"],
             "JADPO_TARGET_STORE_NOT_IMPLEMENTED" => vec!["name"],
+            "JADPO_TARGET_JOB_NOT_IMPLEMENTED" => vec!["name"],
             "ROUTE_AUTH_VALUE_INVALID" => vec!["route", "found"],
             "SEM_DUPLICATE_DECLARATION" => vec!["name"],
             "SEM_NAME_CASE" => vec!["name", "expected", "suggestedName"],

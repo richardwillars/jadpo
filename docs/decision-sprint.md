@@ -112,6 +112,14 @@ approval records, adversarial evidence, and POLICY-P0–P6.
 Freeze outbound provider calls, secret flow, and retry semantics as one effect
 contract.
 
+**2026-10-02 disposition:** [SERVICE-001](service-plan.md) is independently
+reviewed and semantically frozen through RM-301. Its successor declaration,
+30-case catalog and scoped JOB-001 overlay are pinned by the review. RM-302
+owns checked grammar/import/effect implementation and RM-303 owns real HTTP
+conformance; the remainder of ASYNC-001 is still RM-305 work. The baseline
+below is historical motivation; the owning service contract supplies the exact
+accepted no-effect/unknown rules.
+
 Candidate baseline:
 
 - a checked service declaration owns endpoint provenance, egress bounds,
@@ -124,8 +132,9 @@ Candidate baseline:
 - an OpenAPI snapshot import produces a digest-pinned review artifact and does
   not grant semantic authority directly;
 - imported contracts may be narrowed explicitly but not silently broadened;
-- automatic retry requires a mapped retryable outcome plus an idempotent
-  operation or declared idempotency key;
+- automatic retry requires a listed transient cause, proved no effect, a
+  repeatable operation, stable durable identity and remaining shared budget;
+  an idempotency key alone is insufficient;
 - provider objects and raw provider errors never cross the service boundary;
   and
 - test fakes expose only declared operations and outcomes.
@@ -263,7 +272,7 @@ external environments. The original dependency order is retained below so the
 remaining work cannot bypass those gates.
 
 The owner scheduled
-[WASM-EXP1](implementation-roadmap.md#wasm-exp1--bounded-wasm-runtime-experiment)
+[WASM-EXP1](implementation-history.md#wasm-exp1--bounded-wasm-runtime-experiment)
 on 2026-09-29. The owner subsequently clarified that the agreed authentication
 scope must finish first, followed by a comprehensive validation phase, with
 Wasm after both. The first-party checkpoint's local implementation and evidence

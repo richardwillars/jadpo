@@ -1,6 +1,6 @@
 # TIME-001 and TEST-001 decision plan
 
-**Status:** approved contract; Temporal/runtime-clock and typed callable-fixture core implemented, capability-bound integration evidence pending
+**Status:** approved contract; Temporal/runtime-clock, typed callable-fixture core and independently reviewed checked authored service fakes implemented; broader capability/job integration remains pending
 
 **Prepared:** 2026-09-27
 
@@ -833,8 +833,40 @@ remain available in the lower-level runtime harness to prove deadline safety.
 A service fake chooses only outcomes declared by the checked service contract.
 It may define a finite sequence such as timeout then success, but cannot run an
 arbitrary Jadpo callback in place of the adapter. The harness validates request
-values before recording a call and validates the selected response before
-returning it.
+values before the fake adapter attempt and validates the selected response
+before returning it.
+
+The implementation attaches a finite fake queue to each authored test's
+operation context. Nested callable invocations keep that test's queue, while a
+new test receives fresh queue cursors and synthetic monotonic elapsed time. The
+generated service wrapper validates the complete typed request before calling
+the adapter. The adapter consumes the declared outcome, applies the same
+attempt budget, deadline, retry rules and failure classifier as live transport,
+and the generated wrapper validates an accepted response against the declared
+output type. Queue exhaustion and malformed runtime receipts become
+`OutcomeUnknown`; request/credential validation happens before a queue entry is
+consumed. Test fakes never select a host or open a provider connection.
+
+Runtime coverage runs the authored fixture suite twice with the transport
+connector replaced by a fail-fast counter. It checks accepted, rate-limited
+retry, three pre-dispatch timeouts, malformed acknowledgement and possible
+dispatch timeout, along with deterministic elapsed values, per-test isolation
+and credential redaction. Direct adapter cases verify invalid keys do not
+consume fake state and exhausted/malformed queues resolve to unknown outcome.
+These checks establish fixture integration and adapter behavior; the separate
+HTTP/TLS adapter suite remains the evidence for actual loopback request handling.
+
+**RM-304 closure, 2026-10-04:** the
+[independent correction review](../tests/validation/rm304-independent-correction-review.json)
+accepts empty/missing checked authored fake containment and fresh-operation elapsed
+baselines. The baseline is keyed by shared attempt-budget identity, so cloned and
+nested contexts keep their limits while a new operation resets its relative
+elapsed budget without rewinding the queue. The registered suite passes 7/7
+(40 assertions), and the [fresh supported gate](../build/validation/20261004T084327-70967/report.json)
+passes 61/61. This scope excludes malformed host-injected nullish map entries and
+direct-host receipt validation seams identified by the reviewer; checked authored
+lowering cannot construct those inputs. Broader capability and job integration
+remains open. Timing and completion are linked from [history](implementation-history.md#2026-10-04--rm-304-checked-authored-service-fakes).
 
 Typed traces expose only reviewable facts:
 

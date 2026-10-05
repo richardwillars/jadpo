@@ -1,0 +1,17 @@
+value Result {
+    ok: Bool
+}
+
+failure Refused {
+    kind: Rejected
+    code: "refused"
+    message: "Request refused."
+}
+
+route POST /result {
+    auth: none
+    output: Result
+    action: fails Refused {
+        reject Refused
+    }
+}

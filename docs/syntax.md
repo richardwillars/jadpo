@@ -483,6 +483,11 @@ type UpdateCustomer = Object {
     name: Text optional
     middle_name: Text? optional
 }
+
+input CreateTodo {
+    title: Todo.title
+    due_at: Instant? default none
+}
 ```
 
 The forms mean:
@@ -503,6 +508,11 @@ input states:
 
 Those are input states, not `undefined | null | string` values carried through
 the application.
+
+An input field may also have a checked omission default. For example,
+`due_at: Instant? default none` accepts an omitted field and normalizes it to
+`none` before application code runs. This differs from a patch field marked
+`optional`, where omission remains observable to application code.
 
 ### 6.3 Boundary mapping
 
@@ -1548,6 +1558,30 @@ route POST /orders {
 }
 ```
 
+Successful HTTP responses default to `200 OK`. A route may choose one of the
+two explicit success modes required by its public contract:
+
+```text
+route POST /orders {
+    input: CreateOrder
+    run: place_order(input)
+    output: Order
+    success: created
+}
+
+route DELETE /orders/{order_id} {
+    path: { order_id: Order.id }
+    run: cancel_order(path.order_id)
+    success: no_content
+}
+```
+
+`success: created` returns `201` and requires a declared output whose type
+matches the named action's result. `success: no_content` returns an empty `204`
+response; it requires a `Unit` action result and does not permit an `output:`
+declaration. The selected status and body contract appear in route inventory
+and OpenAPI. Application failures keep their independently derived status.
+
 The route's `InvalidValue` and `Conflict` responses are derived from the failure
 kinds reachable through `place_order` and appear automatically in generated
 documentation.
@@ -1642,6 +1676,7 @@ invocation of a named action. Small, one-off behaviour remains local:
 
 ```text
 route POST /todos {
+    deadline: 2s
     input: CreateTodo
 
     action: fails Unavailable {
@@ -1691,6 +1726,12 @@ transport values to domain parameters visible. Abstraction remains available,
 but the language should not encourage controller/service/repository/factory/
 mapper layers for straightforward operations.
 
+An optional `deadline:` route item sets a positive monotonic execution budget
+for the handler operation. It has no implicit default, follows nested calls,
+transactions and checked service calls, and reports expiry as HTTP 504. Expiry
+prevents new work and a late database statement from committing; active database
+calls still have to return before the runtime can act on the deadline.
+
 Query-string, ordinary-header, and body bindings also belong in the route and
 are typed and validated before either behaviour form runs. Authentication
 headers belong to the generated authentication boundary and are not ordinary
@@ -1703,8 +1744,9 @@ bodies, content negotiation, redirects, and route composition.
 
 The compiler grammar and fixtures implement the accepted P10.6 route surface,
 including `name: value` route items, inline `action:` blocks, named `run:`
-invocations, and `auth: none`. The remaining open binding, pagination,
-streaming, and composition questions above are not executable syntax.
+invocations, `auth: none`, and explicit `created`/`no_content` success modes.
+The remaining open binding, pagination, streaming, and composition questions
+above are not executable syntax.
 
 ## 14. Policies
 
@@ -1786,9 +1828,12 @@ job overdue_reminders every 15m {
 }
 ```
 
-**Open:** event delivery guarantees, idempotency declarations, job concurrency,
-transactions spanning event publication, scheduling syntax, and whether the
-compiler can infer safe defaults.
+The inline event/job snippets above are historical proposal syntax, not the
+implemented checked schedule form. The current
+[scheduled-job frontend and closed descriptor stage](grammar-v0.1.md#checked-scheduled-job-frontend--2026-10-04)
+require explicit concurrency/run/retry and optionally parse the reviewed closed
+reminder descriptor. Its typed binding and runtime remain fail-closed; no event
+emission/loop or safe-default inference follows from these examples.
 
 ## 16. Tests
 
@@ -1822,7 +1867,11 @@ property-test syntax remains deferred.
 
 Formatting differences do not change program meaning. `jadpo fmt <project>`
 provides deterministic indentation, blank-line, comment, and final-newline
-normalisation. `jadpo fmt <project> --check` is read-only and fails when a file
+normalisation. The current rules and grammar-to-fixture coverage are tracked in
+the [formatter rule matrix](formatter-rules.md), which maps every current
+grammar production. The missing-line-break output contract remains open under
+TOOL-005.
+`jadpo fmt <project> --check` is read-only and fails when a file
 would change. The same algorithm backs VS Code formatting.
 
 It should run at deliberate checkpoints such as an explicit format command,
@@ -2004,3 +2053,240 @@ resolve:
 This draft should now be tested by writing the complete golden todo backend. Any
 place where that program needs a construct not defined here becomes a language
 design issue rather than an invitation to improvise silently.
+
+## 22. Successor syntax review — 2026-10-04
+
+**RM-222 candidate, not implemented or frozen.** Keep the
+[locked naming/principal direction](naming-and-qualification.md#10-naming-reaffirmation-and-principal-simplification--2026-10-04).
+The owner prefers prefix `attempt` and typed `emit_event(...)`. The
+[event model](event-model.md) owns successor semantics; current contracts and
+golden source remain the baseline. Ordinary declaration headers need not lose
+all whitespace: the target is unclear stacked operation prefixes.
+
+| Production family | Review disposition / required check |
+|---|---|
+| `type Name = Text/Object/Enum { ... }` | Retain nominal construction, validation, payload variants and exhaustiveness; dynamic constructor failures remain TYPE/FAIL work |
+| `entity Todo`, `Todo.id`, `Todo.Ref`, `Todo.by_id(...)` | Retain owner/field/reference types and checked calls; no implicit persistence from construction or dots |
+| `failure TodoNotFound`, `reject`, `fails A, B -> Result` | Retain exact escaping set, context disclosure and order |
+| `config TodoConfiguration`, `service ReminderMail`, `application TodoApplication` | Retain uppercase declarative contracts and current bindings; no casing migration |
+| `principal Principal { ... }` | Selected unnamed `principal { ... }`, generated `Principal`, existing `current_principal`; remove redundant selector together |
+| Functions/actions/named queries | Keep canonical names, signatures, freshness/consistency contracts and ordinary calls |
+| `attempt call(...)`, `return attempt call(...)` | Keep explicit propagation; no retry meaning, postfix operator or optional alias |
+| Outcome match / variant match | Preserve their distinct subjects, exhaustive arms, mapping and propagation |
+| Inline query | Owner selected `query(Todo) { cardinality: required ... }`; cardinality-named alternatives are not selected |
+| Create/update/delete | Candidate `create(Todo) { ... }`, `update(Todo) { ... }`, `delete(Todo) { ... }`; preserve ownership, cardinality, missing/conflict/patch/transition semantics |
+| Include/order/cursor/limit clauses | Preserve bounded DSL semantics; cover complete query shapes, not only ID lookups |
+| Modules/selective imports | Retain one resolution spelling; logical component ownership is checked metadata, not an import alias |
+| Standard namespaces / contextual values | Retain `temporal.*`, `collection.*`, `clock.now`, `config.*`; effect intrinsic `emit_event` is reserved separately |
+| Nullability/presence/defaults | Retain `T?`, `none`, `optional` and `default` distinctions |
+| Bindings/control flow/loops | Preserve supported immutable/mutable and bounded execution rules |
+| Routes/auth/success modes | Preserve transport/security behaviour and owned entry boundaries |
+| Jobs/fixtures/tests | Reuse schedules and test-only capabilities; no new scheduler |
+| Events/subscribers | Add typed variants/selectors and generated registration; authority and defaults follow the event contract |
+| Formatter/LSP/renderers/diagnostics/clients | Each changed production needs canonical formatting, token/resolution/error coverage and compatibility accounting |
+
+### Query comparison
+
+The owner selected candidate A: one query operation with details in its block.
+This is the successor direction; parser/semantic equivalence still needs review:
+
+```text
+var todo = attempt query(Todo) {
+    cardinality: required
+    where: id == input.id
+    missing: TodoNotFound
+}
+```
+
+Rejected candidate B used cardinality-named intrinsics (`query_required`,
+`query_optional`, `query_many`):
+
+```text
+var todo = attempt query_required(Todo) {
+    where: id == input.id
+    missing: TodoNotFound
+}
+```
+
+The owner answered "A: one query operation (recommended)". No semicolons are
+required and no cardinality-named aliases are introduced. The chosen form is a checked
+DSL expression with a statically resolved type operand, not an arbitrary function
+or fictitious `Todo { where: ... }` record construction. Named queries still use
+`attempt Todo.by_id(input.id)`. Required reads bind a not-found failure; optional
+reads return `Todo?`; many reads retain the current list/page shape and its
+existing limits (this syntax migration does not add a new collection bound).
+Do not infer that a caller wants rejection rather than absence from naming.
+
+The matching mutation candidate is:
+
+```text
+var changed = attempt update(Todo) {
+    where: id == todo_id
+    transition: complete
+    missing: TodoNotFound
+    conflict: TodoMutationConflict
+}
+```
+
+Required mutation cardinality is the only currently supported mutation form;
+removing its redundant word preserves exactly-one semantics. Keep checked
+`set`, `patch`/`empty`, conflict binding, policy/lifecycle guards and generated
+fields. Future bulk work needs a separate contract. Attached DSL blocks are
+restricted to these intrinsics; this adds no general trailing closures.
+
+### Query and mutation detail candidate
+
+The owner-selected outer form is `query(Type) { ... }`. The following completes
+its bounded candidate mapping, including the later page implementation. Changes
+beyond the selected outer form remain proposals for review, not newly frozen
+owner decisions. Normal clause values such as `id desc` keep their existing
+field/direction meaning; they do not stack independent operations after `attempt`.
+
+```text
+var maybe_todo = attempt query(Todo) {
+    cardinality: optional
+    where: id == input.id
+}
+
+var todos = attempt query(Todo) {
+    cardinality: many
+    where: owner_id == owner_id
+    order_by: id asc
+    limit: 100 offset: 0
+}
+
+var page = attempt query(Todo) {
+    cardinality: page
+    into: TodoPage
+    where: owner_id == Todo.owner_id(principal.user_id)
+    and: status matches optional input.status
+    order_by: created_at desc, id desc
+    after: optional input.after
+    limit: input.page_size
+    project: TodoView
+    cursor: TodoCursor
+}
+
+var created = attempt create(Todo) {
+    values: { name: input.name owner_id: owner_id }
+    conflict: TodoMutationConflict
+}
+```
+
+These are expression fragments, assuming the same enclosing callable, principal
+narrowing, nominal field types and required entity fields as their respective
+source contracts. They are not complete compilable fixtures. The create object
+must supply every required authored field; generated fields remain forbidden.
+Required/optional/many results remain the current entity, nullable entity or list
+shape; `page` retains the named page/projection/cursor contract. Cardinality is
+explicit because choosing rejection, absence or a collection changes behaviour.
+
+`into: TodoPage` moves the existing page result into the operation block.
+`cursor: TodoCursor` denotes a type, not a call. Its ordered fields are derived
+from `order_by`, removing a tuple that the current checker already requires to
+match. Generated cursor encoding and validity do not change. `values:` puts
+creation fields inside the same operation-details pattern as other mutations,
+allowing all conflict mappings to stay within the block. No alternate direct-field
+creation spelling is proposed alongside it. These two simplifications require
+migration/roundtrip evidence before adoption.
+
+Retain current relationship include syntax and its checked cardinality/shape
+rules within this pass; `include:` names a relationship and `into:` a result type,
+not another runtime call. Nested loads still require explicit bounds. Retain the
+bounded page predicates and explicit optional-input markers: presence differs
+from a nullable field, so silently replacing them with ordinary equality would
+change results. No generic arbitrary predicate, hidden relationship loading,
+new cursor codec or automatic freshness choice is introduced.
+
+The [expanded grammar candidate](grammar-v0.1.md#18-successor-grammar-candidate--2026-10-04)
+records fixed clause order, update set/patch/transition forms, required conflict
+bindings and typed constraint-specific mappings. Compile-negative migration cases
+must cover wrong cardinality clauses, missing page output/cursor, mismatched
+cursor fields/types, duplicate metadata, unsafe transition-plus-set, invalid
+patch presence and unmapped failures. Fixtures must compare generated contracts
+and behaviour, not just successful parsing.
+
+### Effect statements
+
+`attempt emit_event(...)` should work on its own line. The current parser only
+accepts bindings, returns and its other explicit statements, so this requires a
+small new rule rather than assuming every call is already a statement:
+
+```text
+attempt emit_event(TodoEvent.completion_requested { todo_id: input.id })
+var completed = attempt Todo.complete(input.id)
+```
+
+A standalone admitted effect call must return `Unit`; non-`Unit` results must be
+bound, returned or explicitly handled. `emit_event` always requires `attempt`,
+as existing persistence expressions do; bare emission and direct intrinsic
+outcome matching are rejected. Ordinary callable matches/exact `fails` remain
+unchanged. Operational faults stay with generated boundary handling, distinct
+from declared domain failures. `attempt` never chooses a retry. The compiler/runtime keeps emission evidence without an
+authored receipt variable. This adds no arbitrary expression statements or silent
+receipt disposal. Handlers implicitly finish with `Unit`, the existing no-result
+type; lowercase `none` retains its absence meaning. Normal helpers retain
+their declared result/failure contract.
+
+### Principal and event constraints
+
+`principal { user { ... } service { ... } }` generates the nominal `Principal`
+owner and keeps existing runtime provenance. Defining/importing a colliding
+type is an error. Missing principal configuration cannot manufacture identity.
+The conversion must remove redundant selectors and rewrite references to any
+old custom name as one checked migration; authentication claims/strength and
+policy rules retain their existing requirements.
+
+`event TodoEvent { completed { todo_id: Todo.id } }` declares a specialised
+nominal tagged type. `on TodoEvent.completed(payload) { ... }` infers the selected
+payload; wrong variant fields and directly calling a subscriber fail. Declaration
+keywords remain reserved: `event` cannot be the payload binding. Include both
+declaration and reference keyword collisions in the negative grammar cases. An event
+handler remains a runtime entry, not an action alias. Required transition facts
+are generated without authored emission. The complete semantic/fault matrix is
+in the event model, not duplicated in the grammar.
+
+### Migration gates
+
+RM-223 changes each production family across AST/parser, semantic checking,
+formatter, language service/renderers, diagnostics and canonical examples.
+Preserve frozen baselines; use a checked conversion aid rather than permanent
+equivalent spellings. Source naming decisions do not rename wire keys or public
+failure codes. Freeze query syntax before implementing it.
+
+Required evidence: parse/format roundtrip, failure/policy/transaction equivalence,
+resolved calls/constructors, missing/duplicate DSL fields, nested precedence,
+payload/cardinality boundaries, principal collision/forgery and complete Todo
+plus representative order examples. No candidate here has been compiled.
+RM-222 remains open pending the complete grammar/compatibility and public-language review.
+
+
+### Successor migration evidence map — 2026-10-05
+
+The successor syntax requires behavioural comparisons against existing sources,
+not a parser-only demonstration. These are selected baseline inputs and planned
+checks; they have not been converted or run as successor fixtures.
+
+| Family | Existing baseline | Required preserved behaviour |
+|---|---|---|
+| Required/optional reads | [Required query](../tests/compile/pass/29_query_required_entity.jadpo), [optional query](../tests/compile/pass/26_query_optional_entity.jadpo) | Same result/nullability, nominal predicate, missing failure/context and policy scope |
+| Relationship loads | [Optional parent](../tests/compile/pass/46_optional_parent_include.jadpo), [optional inverse](../tests/compile/pass/48_optional_inverse_include.jadpo), [bounded nested include](../tests/compile/pass/49_bounded_nested_include.jadpo) | Same relationship paths, output shape, per-hop bound and pre-limit visibility |
+| Patch presence | [Omission-aware patch](../tests/compile/pass/40_omission_aware_patch.jadpo), [derived change](../tests/compile/pass/44_patch_derived_change.jadpo) | Absence, explicit null and supplied values remain distinct; identical empty/conditional-set behaviour |
+| Constraint failures | [Compound mapping](../tests/compile/pass/38_compound_constraint_mapping.jadpo) | Same specific constraint identity, context and fallback; no duplicate/ambiguous mapping becomes accepted |
+| Principal migration | [Application principal](../tests/compile/pass/127_application_principal_contract.jadpo), [route variant](../tests/compile/pass/138_route_principal_variant.jadpo) | Generated `Principal`, selector removal and reference conversion preserve authenticated provenance and closed variants |
+| Lifecycle mutations | [Initial values](../tests/compile/pass/lifecycle/170_lifecycle_initial_values.jadpo), [logical delete effect](../tests/compile/pass/lifecycle/174_lifecycle_delete_effect.jadpo) | Transition ownership, logical permission, concealment and generated fields remain enforced |
+| Page/normal named reads | [Migrated Todo entity](../examples/golden-todo-migration/entities/todo.jadpo), [User entity](../examples/golden-todo-migration/entities/user.jadpo) | Same cursor tuple/codec, optional-input predicates, stable ordering, page result and authoritative freshness |
+
+Record baseline and successor source/compiler identities separately. Compare the
+resolved types, exact failure sets, policy/effect obligations, query plans, cursor
+wire contract and real boundary results. Source ranges, build-local node ordinals
+and whole-build digests are expected to differ; they are not semantic-equivalence
+assertions. Preserve frozen historical sources/results. Negative counterparts
+must still reject malformed/missing/duplicate clauses, incorrect nominal types,
+forged principal values, forbidden scope/effect paths and unsupported shapes.
+
+New-only event/effect-statement fixtures belong to EV-01/EV-18/EV-23 and cannot be
+reported as unchanged existing behaviour. Parser/formatter/LSP support and runtime
+admission/publication require separate evidence. This map supplies an executable
+migration plan without weakening RM-110 or claiming the successor grammar exists
+in the current compiler.

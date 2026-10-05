@@ -366,7 +366,12 @@ also expose the chosen isolation, locking/conditional-write, deadlock-ordering,
 and retry plan in audit output and reject the declaration when it cannot prove
 the requested atomicity. Exact default isolation and retry rules remain TX-001
 fixture work; an automatically opened transaction must never be presented as a
-substitute for a proved concurrency contract.
+substitute for a proved concurrency contract. The owner selected default-on safe
+transient retries with bounded exponential backoff and independent jitter on
+2026-10-01. The compiler/runtime determines replay safety and shares retry budgets;
+uncertain commits and non-repeatable effects are never automatically replayed.
+Exact adapter classification, defaults and evidence remain RM-401/RM-402 work;
+see the [recorded direction](decision-register.md#delivery-defaults-and-planning-directions--2026-10-01).
 
 ## 9. Cross-store consistency
 

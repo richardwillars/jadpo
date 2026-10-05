@@ -73,7 +73,7 @@ evolution, and agent safety—not performance.
 ### 3.3 Scheduled Wasm target experiment
 
 On 2026-09-29 the project owner scheduled
-[WASM-EXP1](implementation-roadmap.md#wasm-exp1--bounded-wasm-runtime-experiment)
+[WASM-EXP1](implementation-history.md#wasm-exp1--bounded-wasm-runtime-experiment)
 after authentication. The owner subsequently clarified the order: finish the
 agreed authentication scope, complete the comprehensive validation phase, then
 begin this experiment. It will compare one generated

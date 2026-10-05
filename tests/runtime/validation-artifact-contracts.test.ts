@@ -27,6 +27,7 @@ entity Customer { id: Uuid identity: id }
 type ReferenceInput = Object { customer: Customer.Ref }
 type DenialInput = Object { ticket: ExactLabel }
 type Accepted = Object { ok: Bool }
+type CreatedItem = Object { id: Text }
 type ChoiceInput = Object { ticket: ExactLabel alternate: Bool }
 failure OtherDeclined { kind: Rejected code: "other_declined" public { ticket: ExactLabel } }
 failure Declined {
@@ -50,6 +51,10 @@ action choose_failure(input: ChoiceInput) fails Declined, OtherDeclined -> Accep
 action deny(input: DenialInput) fails Declined -> Accepted {
     reject Declined { ticket: input.ticket diagnostic: "private-artifact-canary" }
 }
+action create_item() -> CreatedItem {
+    return CreatedItem { id: "item-1" }
+}
+action remove_item() -> Unit { }
 route POST /root { auth: none input: Root output: Root run: root_echo(input) }
 route POST /link { auth: none input: Link output: Link run: link_echo(input) }
 route POST /bounded { auth: none input: BoundedInput output: BoundedInput run: bounded_echo(input) }
@@ -61,6 +66,8 @@ route POST /payload { auth: none input: PayloadInput output: PayloadInput run: p
 route POST /reference { auth: none input: ReferenceInput output: ReferenceInput run: reference_echo(input) }
 route POST /choice { auth: none input: ChoiceInput output: Accepted run: choose_failure(input) }
 route POST /deny { auth: none input: DenialInput output: Accepted run: deny(input) }
+route POST /created { auth: none output: CreatedItem run: create_item() success: created }
+route DELETE /empty { auth: none run: remove_item() success: no_content }
 `);
 function build() {
   const result = Bun.spawnSync([compiler, "build", root], { stdout: "pipe", stderr: "pipe" });
@@ -222,6 +229,27 @@ test("every declared failure remains representable when HTTP status is shared", 
     expect(body.error.code).toBe(alternate ? "other_declined" : "declined");
     expect(permits(schema, body), `declared ${body.error.code} must remain in the response contract`).toBe(true);
   }
+});
+test("created routes return a typed 201 response and publish it in OpenAPI", async () => {
+  const response = await app.handleRequest(new Request("http://local/created", { method: "POST" }));
+  expect(response.status).toBe(201);
+  expect(await response.json()).toEqual({ id: "item-1" });
+  expect(openapi.paths["/created"].post.responses["201"].content["application/json"].schema).toEqual({ $ref: "#/components/schemas/CreatedItem" });
+  const inventory = JSON.parse(readFileSync(join(root, "build/inventory/routes.json"), "utf8"));
+  expect(inventory.schema_version).toBe(2);
+  const route = inventory.routes.find((entry: any) => entry.route === "POST /created");
+  expect(route.success).toEqual({ kind: "created", http_status: 201 });
+});
+test("no-content routes return an empty 204 response and omit an OpenAPI body schema", async () => {
+  const response = await app.handleRequest(new Request("http://local/empty", { method: "DELETE" }));
+  expect(response.status).toBe(204);
+  expect(await response.text()).toBe("");
+  expect(response.headers.get("x-request-id")).toMatch(/^req_/);
+  expect(openapi.paths["/empty"].delete.responses["204"]).toEqual({ description: "No content" });
+  expect(openapi.paths["/empty"].delete.responses["204"]).not.toHaveProperty("content");
+  const inventory = JSON.parse(readFileSync(join(root, "build/inventory/routes.json"), "utf8"));
+  const route = inventory.routes.find((entry: any) => entry.route === "DELETE /empty");
+  expect(route.success).toEqual({ kind: "no_content", http_status: 204 });
 });
 test("unchanged builds reproduce contract artifacts byte for byte", () => {
   const files = ["openapi/openapi.json", "validators/plan.json", "inventory/routes.json", "inventory/callables.json", "audit/failures.json", "compatibility/public-failure-codes.json", "app.meta.json"];

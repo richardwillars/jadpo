@@ -1,6 +1,45 @@
 use super::*;
 
 impl TargetGenerator<'_> {
+    fn authentication_authority_fields<'a>(
+        &'a self,
+        resolution: &jadpo_syntax::AuthenticationResolutionDeclaration,
+    ) -> Vec<&'a FieldDeclaration> {
+        let entity = &resolution.authority.path[0].text;
+        let record = self.records.get(entity).expect("checked authority entity");
+        let lifecycle_owned = self.lifecycle_owned_field_names(entity);
+        if lifecycle_owned.is_empty() {
+            return record.fields.iter().collect();
+        }
+
+        let mut selected = lifecycle_owned;
+        selected.insert(resolution.authority.path[1].text.clone());
+        selected.extend(
+            resolution
+                .mappings
+                .iter()
+                .map(|mapping| mapping.source.text.clone()),
+        );
+        record
+            .fields
+            .iter()
+            .filter(|field| selected.contains(&field.name.text))
+            .collect()
+    }
+
+    fn first_party_strength_supported(&self, reference: &TypeReference) -> bool {
+        let root = self.representation_root_for(reference);
+        root == "Text"
+            || self.enums.get(&root).is_some_and(|declaration| {
+                let variants = declaration
+                    .variants
+                    .iter()
+                    .map(|variant| variant.name.text.as_str())
+                    .collect::<BTreeSet<_>>();
+                variants == BTreeSet::from(["primary", "multi_factor"])
+            })
+    }
+
     pub(super) fn first_party_supported(&self) -> bool {
         if !self.has_authentication() || self.configuration.is_none() {
             return false;
@@ -87,8 +126,10 @@ impl TargetGenerator<'_> {
                                 f.name.text.as_str(),
                                 "subject" | "authentication_strength"
                             ) && f.name.text != id_name
-                            || matches!(f.name.text.as_str(), "subject" | "authentication_strength")
+                            || f.name.text == "subject"
                                 && self.representation_root_for(&f.field_type) != "Text"
+                            || f.name.text == "authentication_strength"
+                                && !self.first_party_strength_supported(&f.field_type)
                     })
                 {
                     return false;
@@ -100,15 +141,53 @@ impl TargetGenerator<'_> {
                 else {
                     return false;
                 };
-                if !record.fields.iter().any(|f| {
-                    f.name.text == id.source.text
-                        && f.persistence.contains(&PersistenceModifier::Identity)
+                let id_field = record.fields.iter().find(|f| f.name.text == id.source.text);
+                let direct_identity = id_field.is_some_and(|f| {
+                    f.persistence.contains(&PersistenceModifier::Identity)
                         && self.representation_root_for(&f.field_type) == "Uuid"
-                }) || !resolution.mappings.iter().any(|m| {
-                    m.source.text == resolution.authority.path[1].text
-                        && m.target.path.last().is_some_and(|n| n.text == "subject")
-                }) {
+                });
+                if !direct_identity
+                    || !resolution.mappings.iter().any(|m| {
+                        m.source.text == resolution.authority.path[1].text
+                            && m.target.path.last().is_some_and(|n| n.text == "subject")
+                    })
+                {
                     return false;
+                }
+                if let Some(binding) = &validator.credentials {
+                    let Some(credential_record) = self.records.get(&binding.identity.path[0].text)
+                    else {
+                        return false;
+                    };
+                    let Some((active_field, _)) = self.credential_active_binding(&binding.active)
+                    else {
+                        return false;
+                    };
+                    if self.credential_active_binding(&resolution.active).is_none() {
+                        return false;
+                    }
+                    let supplied = [
+                        &binding.identity,
+                        &binding.principal,
+                        &binding.verifier,
+                        &binding.expires,
+                        &binding.revoked,
+                    ]
+                    .map(|name| name.path[1].text.as_str());
+                    if credential_record.fields.iter().any(|field| {
+                        field.generated == Some(jadpo_syntax::GeneratedFieldRole::CreateOrChange)
+                            || !supplied.contains(&field.name.text.as_str())
+                                && field.name.text != active_field
+                                && !(matches!(
+                                    field.generated,
+                                    Some(jadpo_syntax::GeneratedFieldRole::Create)
+                                ) && self.representation_root_for(&field.field_type)
+                                    == "Instant")
+                                && !field.optional
+                                && !self.reference_is_nullable(&field.field_type)
+                    }) {
+                        return false;
+                    }
                 }
                 if mode == "api_key" {
                     let Some(owner) = validator.settings.iter().find(|s| s.name.text == "owner")
@@ -168,7 +247,7 @@ impl TargetGenerator<'_> {
             output,
             "  const generation = ++authenticationInitialization;",
         );
-        line(output, "  firstPartyAuthentication = undefined;");
+        line(output, "  firstPartyAuthentication?.invalidateDeliveryCredentialProofs(); firstPartyAuthentication = undefined;");
         line(output, "  const resolvePrincipal = async (strategy: string, subject: string, strength: string, principalKind: \"user\" | \"service\" = \"user\"): Promise<import(\"./authentication.ts\").ResolutionResult> => {");
         line(
             output,
@@ -187,12 +266,7 @@ impl TargetGenerator<'_> {
             for resolution in &strategy.resolutions {
                 let entity = &resolution.authority.path[0].text;
                 let record = self.records.get(entity).unwrap();
-                let fields = record
-                    .fields
-                    .iter()
-                    .map(|f| f.name.text.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                let lifecycle_owned = self.lifecycle_owned_field_names(entity);
                 let id = resolution
                     .mappings
                     .iter()
@@ -218,26 +292,54 @@ impl TargetGenerator<'_> {
                     ),
                 );
                 line(
-                output,
-                "        const authorityRow = expectObject(rows[0], \"authentication.authority\");",
-            );
-                line(
                     output,
-                    &format!("        const {{ {fields} }} = validate_{entity}({{"),
+                    "        const authorityRow = expectObject(rows[0], \"authentication.authority\");",
                 );
-                for field in &record.fields {
-                    let raw = format!("authorityRow[{}]", ts_string(&field.name.text));
-                    let decoded = self.database_decode_expression(
-                        &field.field_type,
-                        &raw,
-                        "\"authentication.authority\"",
-                    );
+                if lifecycle_owned.is_empty() {
+                    let fields = record
+                        .fields
+                        .iter()
+                        .map(|f| f.name.text.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
                     line(
                         output,
-                        &format!("          {}: {},", field.name.text, decoded),
+                        &format!("        const {{ {fields} }} = validate_{entity}({{"),
                     );
+                    for field in &record.fields {
+                        let raw = format!("authorityRow[{}]", ts_string(&field.name.text));
+                        let decoded = self.database_decode_expression(
+                            &field.field_type,
+                            &raw,
+                            "\"authentication.authority\"",
+                        );
+                        line(
+                            output,
+                            &format!("          {}: {},", field.name.text, decoded),
+                        );
+                    }
+                    line(output, "        }, \"authentication.authority\");");
+                } else {
+                    for field in self.authentication_authority_fields(resolution) {
+                        let raw = format!("authorityRow[{}]", ts_string(&field.name.text));
+                        let decoded = self.database_decode_expression(
+                            &field.field_type,
+                            &raw,
+                            &ts_string(&format!("authentication.authority.{}", field.name.text)),
+                        );
+                        let validator = self
+                            .field_validator_name(&format!("{entity}.{}", field.name.text))
+                            .expect("authority field has a validator");
+                        line(
+                            output,
+                            &format!(
+                                "        const {} = {validator}({decoded}, {});",
+                                field.name.text,
+                                ts_string(&format!("authentication.authority.{}", field.name.text))
+                            ),
+                        );
+                    }
                 }
-                line(output, "        }, \"authentication.authority\");");
                 line(
                     output,
                     &format!(
@@ -246,7 +348,7 @@ impl TargetGenerator<'_> {
                         ts_string(&resolution.inactive.text)
                     ),
                 );
-                line(output, &format!("        return {{ kind: \"active\", principal: {{ kind: {}, subject: {}, authenticationStrength: strength, values: {{ {}: {} }} }} }};", ts_string(&resolution.principal.text), resolution.authority.path[1].text, if resolution.principal.text == "user" { "user_id" } else { "service_id" }, id.source.text));
+                line(output, &format!("        return {{ kind: \"active\", principal: {{ kind: {}, subject: {}, authenticationStrength: firstPartyAuthenticationStrength({}, strength), values: {{ {}: {} }} }} }};", ts_string(&resolution.principal.text), resolution.authority.path[1].text, ts_string(&resolution.principal.text), if resolution.principal.text == "user" { "user_id" } else { "service_id" }, id.source.text));
                 line(output, "      }");
             }
         }
@@ -336,18 +438,134 @@ impl TargetGenerator<'_> {
                 "  ], authenticationStorage, resolvePrincipal);"
             },
         );
-        line(output, "  if (generation !== authenticationInitialization) throw new AuthenticationFault(\"authentication_misconfigured\", 503);");
+        line(output, "  if (generation !== authenticationInitialization) { initialized.invalidateDeliveryCredentialProofs(); throw new AuthenticationFault(\"authentication_misconfigured\", 503); }");
         line(output, "  firstPartyAuthentication = initialized;");
         line(output, "}");
         // The host integration surface is not an authored callable or a route.
-        line(output, "export async function initializeApplication(environment: Record<string, string | undefined>) { ++authenticationInitialization; firstPartyAuthentication = undefined; configuration = loadConfiguration(environment); await initializeAuthentication(); }");
+        if self.has_lifecycle_purges() {
+            line(output, "export async function initializeApplication(environment: Record<string, string | undefined>) { ++authenticationInitialization; firstPartyAuthentication?.invalidateDeliveryCredentialProofs(); firstPartyAuthentication = undefined; configuration = loadConfiguration(environment); await initializeAuthentication(); bindLifecycleRetention(configuration); }");
+        } else {
+            line(output, "export async function initializeApplication(environment: Record<string, string | undefined>) { ++authenticationInitialization; firstPartyAuthentication?.invalidateDeliveryCredentialProofs(); firstPartyAuthentication = undefined; configuration = loadConfiguration(environment); await initializeAuthentication(); }");
+        }
         line(output, "export function authenticationHost() { if (!firstPartyAuthentication) throw new AuthenticationFault(\"authentication_misconfigured\", 503); return firstPartyAuthentication; }");
+        if !self.project.delivery_model().bindings().is_empty() {
+            line(output, "// Native read-only worker bridge: the selected issuer is this private current host, never a caller-provided principal, callback or setter.");
+            line(output, "export function readCurrentDeliveryCredentialProof(proof: unknown) { return readDeliveryCredentialProof(proof, authenticationStorage, firstPartyAuthentication); }");
+        }
+    }
+
+    // The declared lifecycle subset is deliberately synthesizable at trusted issuance.
+    fn credential_active_binding(&self, expression: &Expression) -> Option<(String, String)> {
+        let Expression::Binary(binary) = expression else {
+            return None;
+        };
+        if binary.operator != BinaryOperator::Equal {
+            return None;
+        }
+        let Expression::Name(field) = binary.left.as_ref() else {
+            return None;
+        };
+        if field.path.len() != 1 {
+            return None;
+        }
+        match binary.right.as_ref() {
+            Expression::Name(value)
+                if value.path.len() == 2
+                    && self
+                        .enums
+                        .get(&value.path[0].text)
+                        .is_some_and(|declaration| {
+                            declaration.variants.iter().any(|variant| {
+                                variant.name.text == value.path[1].text && variant.fields.is_empty()
+                            })
+                        }) =>
+            {
+                Some((field.path[0].text.clone(), ts_string(&value.path[1].text)))
+            }
+            Expression::Literal(value) if value.kind == LiteralKind::Boolean => {
+                Some((field.path[0].text.clone(), value.text.clone()))
+            }
+            _ => None,
+        }
+    }
+
+    fn declared_credential_storage(&self, output: &mut String) {
+        line(output, "const declaredCredentialBindings: Record<string, DeclaredCredentialBinding> = Object.create(null);");
+        for strategy in &self.authentication_strategies {
+            for validator in &strategy.validators {
+                let Some(binding) = &validator.credentials else {
+                    continue;
+                };
+                let record = self.records.get(&binding.identity.path[0].text).unwrap();
+                let resolution = strategy
+                    .resolutions
+                    .iter()
+                    .find(|r| r.principal.text == "service")
+                    .unwrap();
+                let service = self
+                    .records
+                    .get(&resolution.authority.path[0].text)
+                    .unwrap();
+                let id = resolution
+                    .mappings
+                    .iter()
+                    .find(|m| m.target.path.last().is_some_and(|n| n.text == "service_id"))
+                    .unwrap();
+                let (active_field, active_value) =
+                    self.credential_active_binding(&binding.active).unwrap();
+                let (service_active_field, service_active_value) =
+                    self.credential_active_binding(&resolution.active).unwrap();
+                line(
+                    output,
+                    &format!(
+                        "declaredCredentialBindings[{}] = {{",
+                        ts_string(&strategy.name.text)
+                    ),
+                );
+                for (key, value) in [
+                    ("binding", record.name.text.clone()),
+                    ("table", snake_case(&record.name.text)),
+                    ("identity", snake_case(&binding.identity.path[1].text)),
+                    ("principal", snake_case(&binding.principal.path[1].text)),
+                    ("verifier", snake_case(&binding.verifier.path[1].text)),
+                    ("expires", snake_case(&binding.expires.path[1].text)),
+                    ("revoked", snake_case(&binding.revoked.path[1].text)),
+                    ("activeField", snake_case(&active_field)),
+                    ("authorityTable", snake_case(&service.name.text)),
+                    (
+                        "authoritySubject",
+                        snake_case(&resolution.authority.path[1].text),
+                    ),
+                    ("authorityId", snake_case(&id.source.text)),
+                    ("authorityActiveField", snake_case(&service_active_field)),
+                ] {
+                    line(output, &format!("  {key}: {},", ts_string(&value)));
+                }
+                line(output, &format!("  activeValue: {active_value}, authorityActiveValue: {service_active_value},"));
+                let created = record
+                    .fields
+                    .iter()
+                    .filter(|field| {
+                        matches!(
+                            field.generated,
+                            Some(jadpo_syntax::GeneratedFieldRole::Create)
+                        )
+                    })
+                    .map(|field| ts_string(&snake_case(&field.name.text)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                line(output, &format!("  created: [{created}],"));
+                line(output, "};");
+            }
+        }
+        output.push_str(include_str!("../runtime/declared_credential_storage.ts"));
     }
 
     pub(super) fn first_party_storage(&self, output: &mut String) {
         if !self.first_party_supported() {
             return;
         }
+        self.declared_credential_storage(output);
         output.push_str(r#"
 // Internal auth data cannot be reached through authored persistence operations.
 async function initializeAuthenticationStorage() {
@@ -386,22 +604,9 @@ export const authenticationStorage = {
     if (postgres !== null) await persistenceAsync("authentication.revoke", () => postgres!.unsafe('UPDATE "__jadpo_auth_sessions" SET "revoked" = 1 WHERE "id" = $1', [id]));
     else await serializeSQLiteTransaction(async () => persistenceSync("authentication.revoke", () => sqlite!.prepare('UPDATE "__jadpo_auth_sessions" SET "revoked" = 1 WHERE "id" = ?').run(id)));
   },
-  async getServiceCredential(id: string) {
-    const rows = await authenticationRows('SELECT "data", "revoked" FROM "__jadpo_auth_service_credentials" WHERE "id" = $1', [id]);
-    if (rows.length === 0) return null;
-    if (rows.length !== 1) throw new Error("Invalid service credential cardinality");
-    const record = JSON.parse(rows[0].data);
-    return { ...record, revoked: rows[0].revoked !== 0 };
-  },
-  async putServiceCredential(credential: any) {
-    const values = [credential.id, JSON.stringify(credential)];
-    if (postgres !== null) await persistenceAsync("authentication.issue", () => postgres!.unsafe('INSERT INTO "__jadpo_auth_service_credentials" ("id", "data") VALUES ($1, $2)', values));
-    else await serializeSQLiteTransaction(async () => persistenceSync("authentication.issue", () => sqlite!.prepare('INSERT INTO "__jadpo_auth_service_credentials" ("id", "data") VALUES (?, ?)').run(...values)));
-  },
-  async revokeServiceCredential(id: string) {
-    if (postgres !== null) await persistenceAsync("authentication.revoke", () => postgres!.unsafe('UPDATE "__jadpo_auth_service_credentials" SET "revoked" = 1 WHERE "id" = $1', [id]));
-    else await serializeSQLiteTransaction(async () => persistenceSync("authentication.revoke", () => sqlite!.prepare('UPDATE "__jadpo_auth_service_credentials" SET "revoked" = 1 WHERE "id" = ?').run(id)));
-  },
+  getServiceCredential: getStoredServiceCredential,
+  putServiceCredential: putStoredServiceCredential,
+  revokeServiceCredential: revokeStoredServiceCredential,
 };
 export async function resolveAuthenticationAuthority(strategy: string, subject: string, principalKind = "user"): Promise<unknown[]> {
   switch (`${strategy}:${principalKind}`) {
@@ -409,12 +614,17 @@ export async function resolveAuthenticationAuthority(strategy: string, subject: 
         for strategy in &self.authentication_strategies {
             for resolution in &strategy.resolutions {
                 let entity = &resolution.authority.path[0].text;
+                let selected_fields = self.authentication_authority_fields(resolution);
                 let query = format!(
-                    "SELECT * FROM {} WHERE {} = $1 LIMIT 2",
+                    "SELECT {} FROM {} WHERE {} = $1 LIMIT 2",
+                    selected_fields
+                        .iter()
+                        .map(|field| sql_identifier(&snake_case(&field.name.text)))
+                        .collect::<Vec<_>>()
+                        .join(", "),
                     sql_identifier(&snake_case(entity)),
                     sql_identifier(&resolution.authority.path[1].text)
                 );
-                let record = self.records.get(entity).unwrap();
                 // Reuse the persistence result decoder, including Boolean/Temporal values.
                 line(
                     output,
@@ -424,7 +634,7 @@ export async function resolveAuthenticationAuthority(strategy: string, subject: 
                     ts_string(&query)
                 ),
                 );
-                for field in &record.fields {
+                for field in &selected_fields {
                     let raw = format!("row[{}]", ts_string(&snake_case(&field.name.text)));
                     let value = if self.representation_root_for(&field.field_type) == "Bool" {
                         format!("({raw} === 0 ? false : {raw} === 1 ? true : {raw})")

@@ -106,6 +106,43 @@ The initial HTTP catalogue is deliberately opinionated:
 | `Misconfigured` | 500 | An internal deployment/configuration error occurred | alert, no blind retry |
 | `InternalFault` | 500 | An internal error occurred | alert and diagnose |
 
+The owner selected an explicit Bun HTTP mapping for `OutcomeUnknown` on
+2026-10-01: 500 with safe code `outcome_unknown`, request ID and a short static
+message that the operation may have completed, without an automatic retry or
+retry instruction. The generated Bun HTTP boundary now emits this envelope for
+a compiler-owned `PersistenceFault` with `unknown` kind. The generated-route
+test now commits an actual write and injects lost acknowledgement at the
+transaction boundary, checks the durable row and one transaction attempt, and
+verifies the route inventory, OpenAPI and audit envelope. This is controlled
+boundary injection, not network-phase classification. The
+[RM-401 phase probe](../tests/validation/rm401-phase-probe-results.json) separately
+establishes a committed PostgreSQL write whose network acknowledgement was lost.
+Provider/job uncertainty and other transports remain unexecuted. This Bun-specific
+contract is not a universal mapping. `OutcomeUnknown` requires an effect that may
+have committed or been accepted; a failed read with no possible side effect is
+`Unavailable` or `TimedOut` according to its cause. The shared semantic manifest
+now reports a null HTTP default for `OutcomeUnknown`; the Bun target explicitly
+selects 500. The [boundary case matrix](../tests/assurance/operational-boundary-v0.1.json)
+has passed independent contract review; runtime integration remains open. See the
+[recorded decision](decision-register.md#delivery-defaults-and-planning-directions--2026-10-01).
+
+The Bun target now maps `SQLITE_BUSY`, `SQLITE_LOCKED` and
+`ERR_POSTGRES_CONNECTION_CLOSED` to 503 `read_unavailable` when the route invokes
+a compiler-checked query-only call graph, with simple name/literal arguments and
+no opaque effects. This classification begins after authentication. A
+transaction fault, unknown outcome, cardinality failure or unlisted driver cause
+cannot enter this path; message text is never a classification input. The safe
+response contains only a static message and request ID, with no automatic replay
+or retry instruction. Route inventory, failure audit and OpenAPI expose the same
+mapping. Native SQLite exclusive-lock and PostgreSQL dropped-read-response tests
+exercise the generated boundary; injected negative cases cover misleading text,
+SQL defects, cancellation code `57014`, cardinality and unknown outcomes.
+
+This is a bounded supported-read mapping. Action/inline routes and opaque effect
+graphs retain conservative containment. A PostgreSQL query-cancelled code alone
+does not establish a timeout; deadline-aware `TimedOut` mapping remains pending,
+along with provider/job integration and independent runtime review.
+
 The exact catalogue can evolve through golden applications, but applications do
 not invent status numbers. A missing semantic kind is a language-design issue,
 not permission to write `status: 418` beside a rejection.
@@ -328,12 +365,19 @@ For background work, the runtime maps failure families to completion, retry,
 dead-letter, and alert behaviour:
 
 - expected domain failures are non-retryable by default;
-- `RateLimited`, `Unavailable`, and `TimedOut` follow declared retry policy;
-- defects use bounded runtime retry policy, then alert and dead-letter;
+- `RateLimited`, `Unavailable`, and `TimedOut` follow declared retry policy only
+  after the runtime proves no effect or no commit, a repeatable effect graph,
+  stable logical delivery identity, and remaining attempt/deadline budget;
+- defects alert and dead-letter; bounded retry additionally requires the same
+  certainty/repeatability gate and a separately classified transient cause;
 - handlers may explicitly map a domain failure when the event contract requires
   different treatment.
 
-Retryability is never inferred from an English error message.
+Retryability is never inferred from an English error message. These proof
+conditions take precedence over job retry configuration. A defect or timeout
+after possible dispatch or commit retains an inspectable uncertain delivery
+state; lease expiry and worker restart do not authorise resend. Reconciliation
+must establish the outcome before any further effect is attempted.
 
 ### 7.2 Service boundaries
 

@@ -1,0 +1,12 @@
+type RequestTimeout = Duration {}
+
+config ApplicationConfiguration {
+    request_timeout: RequestTimeout {
+        binding: "REQUEST_TIMEOUT"
+        default: 5s
+    }
+}
+
+function configured_timeout() -> RequestTimeout {
+    return config.request_timeout
+}

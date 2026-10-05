@@ -5,12 +5,16 @@ use jadpo_syntax::{
     CallableDeclaration, ConfigDeclaration, ConfigDefaultKind, Constraint, ConstraintKind,
     Declaration, EnumDeclaration, Expression, FieldDeclaration, FieldInitialiser,
     FixtureDeclaration, HttpMethod, LiteralKind, LocalesDeclaration, MatchPattern,
-    PersistenceModifier, PrincipalDeclaration, RecordDeclaration, ReferenceDeleteAction, Statement,
-    TestDeclaration, TypeDeclaration, TypeReference,
+    PersistenceModifier, PrincipalDeclaration, RecordDeclaration, ReferenceDeleteAction,
+    RouteSuccess, Statement, TestDeclaration, TypeDeclaration, TypeReference,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
+mod delivery_authority;
+mod delivery_hooks;
+mod delivery_invocation;
+mod delivery_selection;
 mod first_party;
 
 const JWT_PACKAGE: &str = include_str!("runtime/jwt/package.json");
@@ -61,6 +65,12 @@ pub fn derive_target(
             contents: generator.authentication_target(),
         });
     }
+    if generator.has_service_operations() {
+        outputs.push(GeneratedArtifact {
+            relative_path: "target/service-adapter.ts",
+            contents: include_str!("runtime/service_adapter.ts").to_owned(),
+        });
+    }
     if generator.first_party_supported() {
         outputs.push(GeneratedArtifact {
             relative_path: "target/first-party-authentication.ts",
@@ -106,6 +116,18 @@ pub fn derive_target(
                 contents: generator.persistence_manifest(),
             },
         ]);
+    }
+    if generator.has_lifecycle_purges() {
+        outputs.push(GeneratedArtifact {
+            relative_path: "audit/lifecycle-maintenance.json",
+            contents: generator.lifecycle_maintenance_manifest(),
+        });
+    }
+    if generator.has_lifecycles() {
+        outputs.push(GeneratedArtifact {
+            relative_path: "audit/lifecycles.json",
+            contents: generator.lifecycle_manifest(project_path),
+        });
     }
     validate_runtime_dependency_contract(
         &outputs,
@@ -165,7 +187,10 @@ fn validate_runtime_dependency_contract(
             {
                 continue;
             }
-            if specifier == "bun" || specifier.starts_with("bun:") {
+            if specifier == "bun"
+                || specifier.starts_with("bun:")
+                || matches!(specifier.as_str(), "node:http" | "node:net" | "node:stream")
+            {
                 continue;
             }
             if let Some(relative) = specifier.strip_prefix("./") {
@@ -325,6 +350,16 @@ impl<'project> TargetGenerator<'project> {
                     Declaration::AuthenticationStrategy(declaration) => {
                         authentication_strategies.push(declaration);
                     }
+                    Declaration::Job(job) => {
+                        let mut diagnostic = Diagnostic::error("JADPO_TARGET_JOB_NOT_IMPLEMENTED")
+                            .with_fact(DiagnosticFact::Name(job.name.text.clone()));
+                        diagnostic.primary = Some(SourceSpan {
+                            source: source.source_name.clone(),
+                            start: job.range.start,
+                            end: job.range.end,
+                        });
+                        return Err(diagnostic);
+                    }
                     Declaration::Route(_) => {}
                 }
             }
@@ -348,6 +383,25 @@ impl<'project> TargetGenerator<'project> {
         };
         for source in &project.syntax.sources {
             for declaration in &source.file.declarations {
+                if let Declaration::AuthenticationStrategy(strategy) = declaration {
+                    if let Some(exchange) = &strategy.exchange {
+                        if !generator.first_party_supported() {
+                            let mut diagnostic = Diagnostic::error(
+                                "JADPO_TARGET_AUTH_NOT_IMPLEMENTED",
+                            )
+                            .with_fact(DiagnosticFact::Route(format!(
+                                "POST {}",
+                                unquote(&exchange.path.text)
+                            )));
+                            diagnostic.primary = Some(SourceSpan {
+                                source: source.source_name.clone(),
+                                start: exchange.range.start,
+                                end: exchange.range.end,
+                            });
+                            return Err(diagnostic);
+                        }
+                    }
+                }
                 if let Declaration::Route(route) = declaration {
                     if !route.public && !generator.first_party_supported() {
                         let name = format!("{} {}", method_name(route.method), route.path);
@@ -371,6 +425,51 @@ impl<'project> TargetGenerator<'project> {
         self.application.is_some()
             && self.principal.is_some()
             && !self.authentication_strategies.is_empty()
+    }
+
+    fn has_service_credential_exchange(&self) -> bool {
+        self.authentication_strategies
+            .iter()
+            .any(|strategy| strategy.exchange.is_some())
+    }
+
+    fn has_service_operations(&self) -> bool {
+        !self.project.semantics.external_effects.is_empty()
+    }
+
+    fn readiness_advisories(&self) -> String {
+        let services = self
+            .project
+            .semantics
+            .external_effects
+            .iter()
+            .map(|effect| snake_case(&effect.service))
+            .collect::<BTreeSet<_>>();
+        format!(
+            "{{{}}}",
+            services
+                .iter()
+                .map(|service| format!("{}: \"unprobed\"", ts_string(service)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+
+    fn service_effect(&self, name: &str) -> Option<&jadpo_semantic::ExternalServiceEffect> {
+        self.project
+            .semantics
+            .external_effects
+            .iter()
+            .find(|effect| format!("{}.{}", effect.service, effect.operation) == name)
+    }
+
+    fn service_operation_names(&self) -> BTreeSet<String> {
+        self.project
+            .semantics
+            .external_effects
+            .iter()
+            .map(|effect| format!("{}.{}", effect.service, effect.operation))
+            .collect()
     }
 
     fn authentication_target(&self) -> String {
@@ -412,8 +511,12 @@ impl<'project> TargetGenerator<'project> {
                     .collect::<Vec<_>>()
                     .join("; ");
                 format!(
-                    "Readonly<{{ kind: {}; subject: string; authenticationStrength: string; values: Readonly<{{ {values} }}> }}>",
-                    ts_string(variant.kind.as_str())
+                    "Readonly<{{ kind: {}; subject: {}; authenticationStrength: {}; values: Readonly<{{ {values} }}> }}>",
+                    ts_string(variant.kind.as_str()),
+                    variant.fields.iter().find(|f| f.name.text == "subject")
+                        .map_or_else(|| "string".to_owned(), |f| self.authentication_ts_type(&f.field_type)),
+                    variant.fields.iter().find(|f| f.name.text == "authentication_strength")
+                        .map_or_else(|| "string".to_owned(), |f| self.authentication_ts_type(&f.field_type))
                 )
             })
             .collect::<Vec<_>>()
@@ -516,6 +619,49 @@ impl<'project> TargetGenerator<'project> {
         line(&mut output, "function authHasOwn(value: Record<string, unknown>, key: string): boolean { return Object.prototype.hasOwnProperty.call(value, key); }");
         line(&mut output, "function authExactKeys(value: Record<string, unknown>, allowed: readonly string[]): void { if (Object.keys(value).some(key => !allowed.includes(key))) authInvariant(); }");
         line(&mut output, "");
+        if self.first_party_supported() {
+            line(
+                &mut output,
+                "// Transport/proof mode does not establish multi-factor assurance.",
+            );
+            line(&mut output, "export function firstPartyAuthenticationStrength(kind: PrincipalKind, proofMode: string): AuthPrincipal[\"authenticationStrength\"] {");
+            line(&mut output, "  if (!(kind === \"user\" ? [\"signed\", \"opaque\", \"jwt\"] : kind === \"service\" ? [\"api_key\"] : []).includes(proofMode)) return authInvariant();");
+            line(&mut output, "  switch (kind) {");
+            for variant in &principal.variants {
+                let configured = self.authentication_strategies.iter().any(|strategy| {
+                    strategy
+                        .validators
+                        .iter()
+                        .any(|validator| validator.principal.text == variant.kind.as_str())
+                });
+                let typed_strength = variant
+                    .fields
+                    .iter()
+                    .find(|field| field.name.text == "authentication_strength")
+                    .is_some_and(|field| {
+                        self.enums
+                            .contains_key(&self.representation_root_for(&field.field_type))
+                    });
+                let strength = if !configured {
+                    "authInvariant()"
+                } else if typed_strength {
+                    "\"primary\""
+                } else {
+                    "proofMode"
+                };
+                line(
+                    &mut output,
+                    &format!(
+                        "    case {}: return {strength};",
+                        ts_string(variant.kind.as_str())
+                    ),
+                );
+            }
+            line(&mut output, "    default: return authInvariant();");
+            line(&mut output, "  }");
+            line(&mut output, "}");
+            line(&mut output, "");
+        }
         line(
             &mut output,
             "function normalizeAuthPrincipal(value: unknown): AuthPrincipal {",
@@ -523,11 +669,6 @@ impl<'project> TargetGenerator<'project> {
         line(&mut output, "  const object = authRecord(value);");
         line(&mut output, "  authExactKeys(object, [\"kind\", \"subject\", \"authenticationStrength\", \"values\"]);");
         line(&mut output, "  const kind = authText(object.kind);");
-        line(&mut output, "  const subject = authText(object.subject);");
-        line(
-            &mut output,
-            "  const authenticationStrength = authText(object.authenticationStrength);",
-        );
         line(&mut output, "  const values = authRecord(object.values);");
         line(&mut output, "  switch (kind) {");
         for variant in &principal.variants {
@@ -550,6 +691,30 @@ impl<'project> TargetGenerator<'project> {
                 &mut output,
                 &format!("    case {}: {{", ts_string(variant.kind.as_str())),
             );
+            for (source, target) in [
+                ("subject", "subject"),
+                ("authentication_strength", "authenticationStrength"),
+            ] {
+                let value = format!("object.{target}");
+                let validation = variant
+                    .fields
+                    .iter()
+                    .find(|field| field.name.text == source)
+                    .map_or_else(
+                        || format!("authText({value})"),
+                        |field| {
+                            self.authentication_validation_expression(
+                                &field.field_type,
+                                &value,
+                                &ts_string(source),
+                            )
+                        },
+                    );
+                line(
+                    &mut output,
+                    &format!("      const {target} = {validation};"),
+                );
+            }
             line(
                 &mut output,
                 &format!("      authExactKeys(values, [{allowed}]);"),
@@ -761,6 +926,16 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
             &mut output,
             "// Authored source and semantic metadata are the review surfaces.",
         );
+        if self.has_service_operations() {
+            line(&mut output, "import { invokeReferenceMail, ServiceAdapterFault } from \"./service-adapter.ts\";");
+        }
+        if self.has_route_headers() {
+            line(
+                &mut output,
+                "import { createServer, type IncomingMessage, type ServerResponse } from \"node:http\";",
+            );
+            line(&mut output, "import { Readable } from \"node:stream\";");
+        }
         if self
             .records
             .values()
@@ -771,20 +946,45 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
             } else {
                 ", createIsolatedTestPersistence"
             };
+            let lifecycle_import = if self.has_lifecycle_purges() {
+                ", configureLifecycleRetention as bindLifecycleRetention"
+            } else {
+                ""
+            };
+            // Finished delivery bindings need a read-only app -> persistence
+            // cycle for current issuer provenance. Keep both names as live
+            // imports, never sample the uninitialized persistence export.
+            let delivery_import = if self.project.delivery_model().bindings().is_empty() {
+                ""
+            } else {
+                ", persistence"
+            };
             line(
                 &mut output,
                 &format!(
-                    "import {{ persistence as rootPersistence, PersistenceFault, PolicyFault{isolated_test_import} }} from \"./persistence.ts\";"
+                    "import {{ persistence as rootPersistence, PersistenceFault, PolicyFault, isPersistenceReady as databaseIsReady, isPersistenceInitializationFatal as persistenceInitializationFatal, refreshPersistenceReadiness as refreshDatabaseReadiness{isolated_test_import}{lifecycle_import}{delivery_import} }} from \"./persistence.ts\";"
                 ),
             );
-            line(&mut output, "const persistence = rootPersistence;");
+            if self.project.delivery_model().bindings().is_empty() {
+                line(&mut output, "const persistence = rootPersistence;");
+            }
             if self.first_party_supported() {
                 line(&mut output, "import { authenticationStorage, resolveAuthenticationAuthority } from \"./persistence.ts\";");
+                let exchange_import = if self.has_service_credential_exchange() {
+                    ", inventoryAuthenticationCredentials"
+                } else {
+                    ""
+                };
                 line(
                     &mut output,
-                    "import { AuthenticationFault } from \"./authentication.ts\";",
+                    &format!("import {{ AuthenticationFault, firstPartyAuthenticationStrength{exchange_import} }} from \"./authentication.ts\";"),
                 );
-                line(&mut output, "import { createFirstPartyAuthentication } from \"./first-party-authentication.ts\";");
+                let delivery_reader = if self.project.delivery_model().bindings().is_empty() {
+                    ""
+                } else {
+                    ", readDeliveryCredentialProof"
+                };
+                line(&mut output, &format!("import {{ createFirstPartyAuthentication{delivery_reader} }} from \"./first-party-authentication.ts\";"));
                 if self.has_jwt() {
                     line(
                         &mut output,
@@ -802,12 +1002,64 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
         self.validators(&mut output);
         self.configuration_runtime(&mut output);
         self.first_party_application(&mut output);
+        self.delivery_selection_bridges(&mut output);
+        self.delivery_invocation_bridges(&mut output);
         self.failure_contracts(&mut output);
         self.invoke_authorization_runtime(&mut output);
+        self.service_operation_implementations(&mut output);
         self.callable_implementations(&mut output);
         self.test_implementations(&mut output);
+        self.lifecycle_maintenance(&mut output);
         self.http_handler(&mut output);
         output
+    }
+
+    fn lifecycle_maintenance(&self, output: &mut String) {
+        if !self.has_lifecycle_purges() {
+            return;
+        }
+        line(
+            output,
+            "export async function runLifecycleMaintenance(): Promise<void> {",
+        );
+        line(
+            output,
+            "  if (configuration === undefined) configuration = loadConfiguration(Bun.env);",
+        );
+        line(output, "  bindLifecycleRetention(configuration);");
+        line(output, "  const attemptNow = new Date().toISOString();");
+        for (name, record) in self.entities() {
+            let Some(purge) = record
+                .dossier
+                .as_ref()
+                .and_then(|dossier| dossier.lifecycle.as_ref())
+                .and_then(|lifecycle| lifecycle.purge.as_ref())
+            else {
+                continue;
+            };
+            let Expression::Name(binding) = &purge.after else {
+                continue;
+            };
+            if binding.path.len() != 2 || binding.path[0].text != "config" {
+                continue;
+            }
+            let retention_field = &binding.path[1].text;
+            line(output, "  {");
+            line(output, "    const selected: { count: number; tokens: readonly string[] } = { count: 0, tokens: [] };");
+            line(output, &format!("    const retentionMs = durationMilliseconds(configuration.{retention_field}, {});", ts_string(&format!("config.{retention_field}"))));
+            line(output, "    if (retentionMs <= 0) throw new Error(\"Retention duration must be positive\");");
+            line(output, "    try {");
+            line(output, &format!("      const result = await rootPersistence.withOperationTime(attemptNow).retention_purge_{name}((count, tokens) => {{ selected.count = count; selected.tokens = tokens; }});"));
+            line(output, &format!("      console.error(JSON.stringify({{ schemaVersion: 1, kind: \"maintenance_audit\", eventName: \"retention.purge.batch\", operation: {}, entity: {}, clause: {}, sourceRevision: {}, retentionBinding: {}, attemptNow, selectedCount: selected.count, committedCount: result.committedCount, rowIdentityTokens: result.rowIdentityTokens, bound: 500, outcome: \"committed\" }}));", ts_string(&format!("retention_purge({name})")), ts_string(name), ts_string(&format!("{name}.lifecycle.purge")), ts_string(&self.source_revision()), ts_string(&format!("config.{retention_field}"))));
+            line(output, "    } catch (error) {");
+            line(output, "      const rolledBack = error instanceof PersistenceFault && error.transaction?.outcome === \"no_commit\" && error.transaction.rollbackProven;");
+            line(output, &format!("      console.error(JSON.stringify({{ schemaVersion: 1, kind: \"maintenance_audit\", eventName: \"retention.purge.batch\", operation: {}, entity: {}, clause: {}, sourceRevision: {}, retentionBinding: {}, attemptNow, selectedCount: selected.count, committedCount: rolledBack ? 0 : null, rowIdentityTokens: selected.tokens, bound: 500, outcome: rolledBack ? \"rolled_back\" : \"unknown\" }}));", ts_string(&format!("retention_purge({name})")), ts_string(name), ts_string(&format!("{name}.lifecycle.purge")), ts_string(&self.source_revision()), ts_string(&format!("config.{retention_field}"))));
+            line(output, "      throw error;");
+            line(output, "    }");
+            line(output, "  }");
+        }
+        line(output, "}");
+        line(output, "");
     }
 
     fn temporal_runtime(&self, output: &mut String) {
@@ -907,11 +1159,37 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
         line(output, "");
         output.push_str(r#"type LocalParts = Readonly<{ year: number; month: number; day: number; hour: number; minute: number; second: number; millisecond: number }>;
 type PolicyPrincipal = Readonly<{ kind: "user" | "service"; subject: string; authenticationStrength: string; values: Readonly<Record<string, unknown>> }>;
-type OperationContext = Readonly<{ now: Instant; monotonicStartedAt: number; principal: PolicyPrincipal | null }>;
+type TestServiceOutcome = Readonly<{ kind: "accepted"; value: Readonly<Record<string, unknown>> }> | Readonly<{ kind: "declared"; name: string }>;
+type TestServiceFake = { readonly outcomes: readonly TestServiceOutcome[]; readonly cursor: { index: number }; elapsedMs: number };
+type TestServiceFakes = Readonly<Record<string, TestServiceFake>>;
+type OperationContext = Readonly<{ now: Instant; monotonicStartedAt: number; deadlineAt: number | null; serviceAttemptBudget: { attemptsUsed: number }; principal: PolicyPrincipal | null; operationId: string; retryAllowed: boolean; signal: AbortSignal | null; testServiceFakes: TestServiceFakes | null; refreshNow: () => Instant }>;
 
-function captureOperation(fixedNow: Instant | null = null, principal: PolicyPrincipal | null = null): OperationContext {
-  const now = fixedNow ?? validateInstant(new Date().toISOString(), "clock.now");
-  return Object.freeze({ now, monotonicStartedAt: performance.now(), principal });
+class RequestDeadlineFault extends Error {
+  readonly code = "JADPO_REQUEST_DEADLINE";
+  constructor() { super("declared operation deadline exceeded"); this.name = "RequestDeadlineFault"; }
+}
+
+function captureOperation(fixedNow: Instant | null = null, principal: PolicyPrincipal | null = null, refreshNow?: () => Instant, retryAllowed = false, signal: AbortSignal | null = null, testServiceFakes: TestServiceFakes | null = null): OperationContext {
+  const timeSource = refreshNow ?? (fixedNow === null ? () => validateInstant(new Date().toISOString(), "clock.now") : () => fixedNow);
+  const now = timeSource();
+  return Object.freeze({ now, monotonicStartedAt: performance.now(), deadlineAt: null, serviceAttemptBudget: { attemptsUsed: 0 }, principal, operationId: crypto.randomUUID(), retryAllowed, signal, testServiceFakes, refreshNow: timeSource });
+}
+
+function withOperationDeadline(operation: OperationContext, durationMs: number): OperationContext {
+  const deadlineAt = Math.min(operation.deadlineAt ?? Infinity, performance.now() + durationMs);
+  return Object.freeze({ ...operation, deadlineAt });
+}
+
+function assertOperationDeadline(operation: OperationContext): void {
+  if (operation.deadlineAt !== null && performance.now() >= operation.deadlineAt) throw new RequestDeadlineFault();
+}
+
+function refreshOperation(operation: OperationContext): OperationContext {
+  return Object.freeze({ ...operation, now: operation.refreshNow() });
+}
+
+function allowOperationRetries(operation: OperationContext, allowed: boolean): OperationContext {
+  return Object.freeze({ ...operation, retryAllowed: allowed });
 }
 
 async function withMonotonicDeadline<T>(duration: Duration, operation: () => Promise<T>): Promise<T> {
@@ -1242,7 +1520,12 @@ export const temporal = Object.freeze({
         line(output, "  return value;");
         line(output, "}");
         line(output, "function loadConfiguration(environment: Record<string, string | undefined>): ApplicationConfiguration {");
-        line(output, "  return {");
+        let retention_fields = self.lifecycle_purge_config_fields();
+        if retention_fields.is_empty() {
+            line(output, "  return {");
+        } else {
+            line(output, "  const loaded: ApplicationConfiguration = {");
+        }
         for field in &configuration.fields {
             let binding = field
                 .binding
@@ -1291,6 +1574,18 @@ export const temporal = Object.freeze({
             line(output, &format!("    {}: {validated},", field.name.text));
         }
         line(output, "  };");
+        for field in retention_fields {
+            line(
+                output,
+                &format!(
+                    "  if (durationMilliseconds(loaded.{field}, {}) <= 0) throw new Error(\"Retention must be positive: config.{field}\");",
+                    ts_string(&format!("config.{field}"))
+                ),
+            );
+        }
+        if !self.lifecycle_purge_config_fields().is_empty() {
+            line(output, "  return loaded;");
+        }
         line(output, "}");
         line(output, "");
     }
@@ -1355,12 +1650,36 @@ export const temporal = Object.freeze({
         callable_is_mutative(name, &self.callables, &mut BTreeSet::new())
     }
 
+    fn callable_is_repeatable(&self, name: &str) -> bool {
+        let type_names = self.types.keys().cloned().collect::<BTreeSet<_>>();
+        callable_is_repeatable(name, &self.callables, &type_names, &mut BTreeSet::new())
+    }
+
     fn callable_may_suspend(&self, name: &str) -> bool {
-        callable_may_suspend(name, &self.callables, &mut BTreeSet::new())
+        callable_may_suspend(
+            name,
+            &self.callables,
+            &self.service_operation_names(),
+            &mut BTreeSet::new(),
+        )
     }
 
     fn block_may_suspend(&self, block: &Block) -> bool {
-        block_may_suspend(block, &self.callables, &mut BTreeSet::new())
+        block_may_suspend(
+            block,
+            &self.callables,
+            &self.service_operation_names(),
+            &mut BTreeSet::new(),
+        )
+    }
+
+    fn expression_may_suspend(&self, expression: &Expression) -> bool {
+        expression_may_suspend(
+            expression,
+            &self.callables,
+            &self.service_operation_names(),
+            &mut BTreeSet::new(),
+        )
     }
 
     fn entities(&self) -> impl Iterator<Item = (&String, &&RecordDeclaration)> {
@@ -1446,6 +1765,7 @@ export const temporal = Object.freeze({
                         let generated = field.generated.map_or_else(
                             || "null".to_owned(),
                             |role| ts_string(match role {
+                                jadpo_syntax::GeneratedFieldRole::Identity => "identity",
                                 jadpo_syntax::GeneratedFieldRole::Create => "create",
                                 jadpo_syntax::GeneratedFieldRole::CreateOrChange => "create_or_change",
                             }),
@@ -1604,6 +1924,11 @@ export const temporal = Object.freeze({
                     .collect::<Vec<_>>()
                     .join(",");
                 let table = sql_identifier(&snake_case(name));
+                let lifecycle_write_guard = self
+                    .lifecycle_visibility_sql(name)
+                    .map(|predicate| format!(" AND ({predicate})"))
+                    .unwrap_or_default();
+                let lifecycle_owned_fields = self.lifecycle_owned_field_names(name);
                 let returned_fields = entity
                     .fields
                     .iter()
@@ -1613,17 +1938,22 @@ export const temporal = Object.freeze({
                 let mut mutations = Vec::new();
                 for predicate in &entity.fields {
                     for change in &entity.fields {
+                        if change.generated.is_some()
+                            || lifecycle_owned_fields.contains(&change.name.text)
+                        {
+                            continue;
+                        }
                         let key = format!(
                             "update_required_by_{}_set_{}",
                             predicate.name.text, change.name.text
                         );
                         let postgres = format!(
-                            "UPDATE {table} SET {} = $1 WHERE {} = $2 RETURNING {returned_fields}",
+                            "UPDATE {table} SET {} = $1 WHERE {} = $2{lifecycle_write_guard} RETURNING {returned_fields}",
                             sql_identifier(&change.name.text),
                             sql_identifier(&predicate.name.text)
                         );
                         let sqlite = format!(
-                            "UPDATE {table} SET {} = ?1 WHERE {} = ?2 RETURNING {returned_fields}",
+                            "UPDATE {table} SET {} = ?1 WHERE {} = ?2{lifecycle_write_guard} RETURNING {returned_fields}",
                             sql_identifier(&change.name.text),
                             sql_identifier(&predicate.name.text)
                         );
@@ -1634,21 +1964,23 @@ export const temporal = Object.freeze({
                             ts_string(&sqlite)
                         ));
                     }
-                    let key = format!("delete_required_by_{}", predicate.name.text);
-                    let postgres = format!(
-                        "DELETE FROM {table} WHERE {} = $1 RETURNING {returned_fields}",
-                        sql_identifier(&predicate.name.text)
-                    );
-                    let sqlite = format!(
-                        "DELETE FROM {table} WHERE {} = ?1 RETURNING {returned_fields}",
-                        sql_identifier(&predicate.name.text)
-                    );
-                    mutations.push(format!(
-                        "{}:{{\"postgres\":{},\"sqlite\":{}}}",
-                        ts_string(&key),
-                        ts_string(&postgres),
-                        ts_string(&sqlite)
-                    ));
+                    if self.lifecycle_visibility_sql(name).is_none() {
+                        let key = format!("delete_required_by_{}", predicate.name.text);
+                        let postgres = format!(
+                            "DELETE FROM {table} WHERE {} = $1 RETURNING {returned_fields}",
+                            sql_identifier(&predicate.name.text)
+                        );
+                        let sqlite = format!(
+                            "DELETE FROM {table} WHERE {} = ?1 RETURNING {returned_fields}",
+                            sql_identifier(&predicate.name.text)
+                        );
+                        mutations.push(format!(
+                            "{}:{{\"postgres\":{},\"sqlite\":{}}}",
+                            ts_string(&key),
+                            ts_string(&postgres),
+                            ts_string(&sqlite)
+                        ));
+                    }
                 }
                 let mut emitted_multi_updates = BTreeSet::new();
                 for callable in self.callables.values() {
@@ -1707,11 +2039,11 @@ export const temporal = Object.freeze({
                             .join(", ");
                         let predicate_index = update.changes.len() + 1;
                         let postgres = format!(
-                            "UPDATE {table} SET {postgres_set} WHERE {} = ${predicate_index} RETURNING {returned_fields}",
+                            "UPDATE {table} SET {postgres_set} WHERE {} = ${predicate_index}{lifecycle_write_guard} RETURNING {returned_fields}",
                             sql_identifier(&update.field.text)
                         );
                         let sqlite = format!(
-                            "UPDATE {table} SET {sqlite_set} WHERE {} = ?{predicate_index} RETURNING {returned_fields}",
+                            "UPDATE {table} SET {sqlite_set} WHERE {} = ?{predicate_index}{lifecycle_write_guard} RETURNING {returned_fields}",
                             sql_identifier(&update.field.text)
                         );
                         mutations.push(format!(
@@ -1794,11 +2126,11 @@ export const temporal = Object.freeze({
                         let sqlite_set = sqlite_set.join(", ");
                         let predicate_index = patch_fields.len() * 2 + derived.len() + 1;
                         let postgres = format!(
-                            "UPDATE {table} SET {postgres_set} WHERE {} = ${predicate_index} RETURNING {returned_fields}",
+                            "UPDATE {table} SET {postgres_set} WHERE {} = ${predicate_index}{lifecycle_write_guard} RETURNING {returned_fields}",
                             sql_identifier(&update.field.text)
                         );
                         let sqlite = format!(
-                            "UPDATE {table} SET {sqlite_set} WHERE {} = ?{predicate_index} RETURNING {returned_fields}",
+                            "UPDATE {table} SET {sqlite_set} WHERE {} = ?{predicate_index}{lifecycle_write_guard} RETURNING {returned_fields}",
                             sql_identifier(&update.field.text)
                         );
                         mutations.push(format!(
@@ -2050,6 +2382,35 @@ export const temporal = Object.freeze({
         for callable in self.callables.values() {
             let mut queries = Vec::new();
             collect_query_expressions(&callable.body, &mut queries);
+            for query in &queries {
+                let Some(page) = &query.page else {
+                    continue;
+                };
+                let entity = query
+                    .target
+                    .path
+                    .iter()
+                    .map(|part| part.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                let columns = query_page_index_columns(page);
+                let predicate_fields = query_page_index_predicate_fields(page);
+                let order = page
+                    .order
+                    .iter()
+                    .map(|field| ts_string(&field.field.text))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                query_plans.push(format!(
+                    "{{\"entity\":{},\"strategy\":\"indexed_keyset_page\",\"query_count\":1,\"offset\":false,\"fetch_limit\":\"page_size_plus_one\",\"cursor_fields\":[{order}],\"index\":{},\"postgres_first_sql\":{},\"postgres_after_sql\":{},\"sqlite_first_sql\":{},\"sqlite_after_sql\":{}}}",
+                    ts_string(&entity),
+                    ts_string(&query_page_index_name(&entity, &columns, &predicate_fields)),
+                    ts_string(&self.query_page_sql(&entity, page, SqlDialect::Postgres, false)),
+                    ts_string(&self.query_page_sql(&entity, page, SqlDialect::Postgres, true)),
+                    ts_string(&self.query_page_sql(&entity, page, SqlDialect::Sqlite, false)),
+                    ts_string(&self.query_page_sql(&entity, page, SqlDialect::Sqlite, true))
+                ));
+            }
             for query in queries.into_iter().filter(|query| query.includes.len() > 1) {
                 let parent = query
                     .target
@@ -2102,11 +2463,13 @@ export const temporal = Object.freeze({
             .iter()
             .flat_map(|entity| {
                 entity.fields.iter().flat_map(move |field| {
-                    field.rules.iter().flat_map(move |rule| {
-                        rule.effects.iter().map(move |effect| {
+                    // A declared policy narrows every field effect, not just
+                    // the explicitly granted ones. Empty means deny, not inherit.
+                    ["create", "read", "update", "delete"]
+                        .into_iter()
+                        .map(move |effect| {
                             ts_string(&format!("{}:{effect}.{}", entity.entity, field.field))
                         })
-                    })
                 })
             })
             .collect::<BTreeSet<_>>()
@@ -2365,7 +2728,8 @@ export const temporal = Object.freeze({
                 continue;
             };
             for membership in self.project.policy.memberships.iter().filter(|membership| {
-                membership.role_type == role_type && membership.scope == scope_name
+                membership.role_type == role_type
+                    && (membership.scope == "application" || membership.scope == scope_name)
             }) {
                 let principal_field = self.principal_identity_expression(&membership.principal);
                 let table = sql_identifier(&snake_case(&membership.entity));
@@ -2599,7 +2963,8 @@ export const temporal = Object.freeze({
                 continue;
             };
             for membership in self.project.policy.memberships.iter().filter(|membership| {
-                membership.role_type == role_type && membership.scope == scope_name
+                membership.role_type == role_type
+                    && (membership.scope == "application" || membership.scope == scope_name)
             }) {
                 let principal_field = self.principal_identity_expression(&membership.principal);
                 let table = sql_identifier(&snake_case(&membership.entity));
@@ -2726,6 +3091,15 @@ export const temporal = Object.freeze({
         line(&mut output, "// Generated by Jadpo 0.0.1. Do not edit.");
         line(&mut output, "import { SQL } from \"bun\";");
         line(&mut output, "import { Database } from \"bun:sqlite\";");
+        if !self.project.delivery_model().bindings().is_empty() {
+            line(
+                &mut output,
+                "import { readCurrentDeliveryCredentialProof, readDeliverySelectionSender, validateDeliveryPayload, validateDeliverySelectionCursor } from \"./app.ts\";",
+            );
+        }
+        line(&mut output, "let persistenceReady = false;");
+        line(&mut output, "let persistenceProbeNeeded = false;");
+        line(&mut output, "let persistenceInvalidationGeneration = 0;");
         line(&mut output, "");
         line(
             &mut output,
@@ -2746,6 +3120,27 @@ export const temporal = Object.freeze({
         line(&mut output, "  const match = /^(-)?PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)(?:\\.(\\d{1,3}))?S)?$/u.exec(value); if (match === null) throw new PersistenceFault(\"encode.duration\", \"data\", new Error(\"invalid Duration\"));");
         line(&mut output, "  const result = ((Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0)) * 60 + Number(match[4] ?? 0)) * 1000 + Number((match[5] ?? \"\").padEnd(3, \"0\")); return match[1] === undefined ? result : -result;");
         line(&mut output, "}");
+        if self.has_lifecycle_purges() {
+            line(
+                &mut output,
+                "function configuredPersistenceDuration(value: unknown, path: string): number {",
+            );
+            line(&mut output, "  if (typeof value !== \"string\") throw new PersistenceFault(\"retention.configuration\", \"data\", new Error(`invalid configured duration ${path}`));");
+            line(&mut output, "  if (value.startsWith(\"P\") || value.startsWith(\"-P\")) return persistenceDuration(value);");
+            line(
+                &mut output,
+                "  const match = /^(-?\\d+(?:\\.\\d+)?)(ms|s|m|h|d)$/u.exec(value);",
+            );
+            line(&mut output, "  if (match === null) throw new PersistenceFault(\"retention.configuration\", \"data\", new Error(`invalid configured duration ${path}`));");
+            line(&mut output, "  const multiplier = match[2] === \"d\" ? 86_400_000 : match[2] === \"h\" ? 3_600_000 : match[2] === \"m\" ? 60_000 : match[2] === \"s\" ? 1_000 : 1;");
+            line(
+                &mut output,
+                "  const milliseconds = Number(match[1]) * multiplier;",
+            );
+            line(&mut output, "  if (!Number.isSafeInteger(milliseconds)) throw new PersistenceFault(\"retention.configuration\", \"data\", new Error(`invalid configured duration ${path}`));");
+            line(&mut output, "  return milliseconds;");
+            line(&mut output, "}");
+        }
         line(
             &mut output,
             "function persistenceValue(value: unknown, kind: string, postgres: boolean): unknown {",
@@ -2879,15 +3274,47 @@ export const temporal = Object.freeze({
         line(&mut output, "");
         line(
             &mut output,
-            "export type PersistenceFaultKind = \"driver\" | \"constraint\" | \"cardinality\";",
+            "export type PersistenceFaultKind = \"driver\" | \"constraint\" | \"cardinality\" | \"unknown\";",
         );
+        line(
+            &mut output,
+            "export type TransactionPhase = \"begin\" | \"statement\" | \"commit\" | \"rollback\";",
+        );
+        line(
+            &mut output,
+            "export type TransactionOutcome = \"no_commit\" | \"committed\" | \"unknown\";",
+        );
+        line(&mut output, "export type RetryableCause = \"sqlite_busy\" | \"sqlite_locked\" | \"postgres_connection\" | \"postgres_serialization\" | \"postgres_deadlock\" | null;");
+        line(&mut output, "export type TransactionEvidence = Readonly<{ phase: TransactionPhase; database: \"sqlite\" | \"postgres\"; outcome: TransactionOutcome; retryableCause: RetryableCause; rollbackProven: boolean; commitAcknowledged: boolean }>;");
+        line(&mut output, "class RequestDeadlineFault extends Error { readonly code = \"JADPO_REQUEST_DEADLINE\"; constructor() { super(\"declared operation deadline exceeded\"); this.name = \"RequestDeadlineFault\"; } }");
+        line(
+            &mut output,
+            "export class OutcomeUnknownFault extends Error {",
+        );
+        line(
+            &mut output,
+            "  constructor(operation: string, cause?: unknown) {",
+        );
+        line(
+            &mut output,
+            "    super(`persistence outcome is unknown: ${operation}`, { cause });",
+        );
+        line(&mut output, "    this.name = \"OutcomeUnknownFault\";");
+        line(&mut output, "  }");
+        line(&mut output, "}");
+        line(&mut output, "");
         line(&mut output, "export class PersistenceFault extends Error {");
         line(&mut output, "  readonly operation: string;");
         line(&mut output, "  readonly kind: PersistenceFaultKind;");
         line(&mut output, "  readonly constraint: string | null;");
         line(
             &mut output,
-            "  constructor(operation: string, kind: PersistenceFaultKind, cause: unknown, constraint: string | null = null) {",
+            "  readonly transaction: TransactionEvidence | null;",
+        );
+        line(&mut output, "  readonly deadlineExceeded: boolean;");
+        line(
+            &mut output,
+            "  constructor(operation: string, kind: PersistenceFaultKind, cause: unknown, constraint: string | null = null, transaction: TransactionEvidence | null = null) {",
         );
         line(
             &mut output,
@@ -2895,8 +3322,13 @@ export const temporal = Object.freeze({
         );
         line(&mut output, "    this.name = \"PersistenceFault\";");
         line(&mut output, "    this.operation = operation;");
-        line(&mut output, "    this.kind = kind;");
+        line(&mut output, "    this.kind = cause instanceof OutcomeUnknownFault ? \"unknown\" : cause instanceof PersistenceFault && cause.kind === \"unknown\" ? \"unknown\" : kind;");
         line(&mut output, "    this.constraint = constraint;");
+        line(&mut output, "    this.transaction = transaction ?? (cause instanceof PersistenceFault ? cause.transaction : null);");
+        line(&mut output, "    this.deadlineExceeded = cause instanceof Error && \"code\" in cause && cause.code === \"JADPO_REQUEST_DEADLINE\" || cause instanceof PersistenceFault && cause.deadlineExceeded;");
+        line(&mut output, "  }");
+        line(&mut output, "  isReadUnavailable(): boolean {");
+        line(&mut output, "    return this.kind === \"driver\" && this.transaction === null && persistenceErrorCodes(this).some(code => code === \"SQLITE_BUSY\" || code === \"SQLITE_LOCKED\" || code === \"ERR_POSTGRES_CONNECTION_CLOSED\");");
         line(&mut output, "  }");
         line(&mut output, "}");
         line(&mut output, "");
@@ -2951,52 +3383,90 @@ export const temporal = Object.freeze({
         line(&mut output, "");
         line(
             &mut output,
+            "function persistenceErrorCodes(error: unknown): string[] {",
+        );
+        line(
+            &mut output,
+            "  const codes: string[] = []; const seen = new Set<object>(); let current: unknown = error;",
+        );
+        line(
+            &mut output,
+            "  for (let depth = 0; depth < 8 && typeof current === \"object\" && current !== null && !seen.has(current); depth++) { seen.add(current); const details = current as { code?: unknown; errno?: unknown; cause?: unknown }; for (const value of [details.code, details.errno]) if (value !== undefined && value !== null) codes.push(String(value)); current = details.cause; }",
+        );
+        line(&mut output, "  return codes;");
+        line(&mut output, "}");
+        line(&mut output, "");
+        line(&mut output, "function isPersistenceAvailabilityFailure(error: unknown): boolean { const codes = persistenceErrorCodes(error); return codes.some(code => code.startsWith(\"ERR_POSTGRES_CONNECTION_\") || code === \"ERR_POSTGRES_IDLE_TIMEOUT\" || code === \"ERR_POSTGRES_LIFETIME_TIMEOUT\" || code.startsWith(\"08\") || code === \"57P01\" || code === \"57P02\" || code === \"57P03\" || code === \"SQLITE_CANTOPEN\" || code === \"SQLITE_IOERR\"); }");
+        line(&mut output, "");
+        line(
+            &mut output,
+            "function retryablePersistenceCause(error: unknown): RetryableCause {",
+        );
+        line(&mut output, "  const codes = persistenceErrorCodes(error);");
+        line(
+            &mut output,
+            "  if (codes.some(code => code === \"SQLITE_BUSY\")) return \"sqlite_busy\";",
+        );
+        line(&mut output, "  if (codes.some(code => code === \"SQLITE_LOCKED\" || code === \"SQLITE_LOCKED_SHAREDCACHE\")) return \"sqlite_locked\";");
+        line(&mut output, "  if (codes.some(code => code === \"ERR_POSTGRES_CONNECTION_CLOSED\")) return \"postgres_connection\";");
+        line(
+            &mut output,
+            "  if (codes.some(code => code === \"40001\")) return \"postgres_serialization\";",
+        );
+        line(
+            &mut output,
+            "  if (codes.some(code => code === \"40P01\")) return \"postgres_deadlock\";",
+        );
+        line(&mut output, "  return null;");
+        line(&mut output, "}");
+        line(&mut output, "");
+        line(
+            &mut output,
             "function classifyPersistenceError(error: unknown): PersistenceFaultKind {",
         );
-        line(
-            &mut output,
-            "  const details = typeof error === \"object\" && error !== null ? error as { code?: unknown; errno?: unknown } : {};",
-        );
-        line(
-            &mut output,
-            "  const codes = [details.code, details.errno].map(value => String(value ?? \"\"));",
-        );
+        line(&mut output, "  const codes = persistenceErrorCodes(error);");
         line(
             &mut output,
             "  return codes.some(code => code.startsWith(\"23\") || code.startsWith(\"SQLITE_CONSTRAINT\")) ? \"constraint\" : \"driver\";",
         );
         line(&mut output, "}");
+        line(&mut output, "function transactionFault(operation: string, cause: unknown, transaction: TransactionEvidence): PersistenceFault {");
+        line(&mut output, "  return new PersistenceFault(operation, transaction.outcome === \"unknown\" ? \"unknown\" : classifyPersistenceError(cause), cause, identifyPersistenceConstraint(cause), Object.freeze(transaction));");
+        line(&mut output, "}");
         line(&mut output, "");
         line(
             &mut output,
-            "function persistenceSync<T>(operation: string, execute: () => T): T {",
+            "function persistenceSyncBase<T>(operation: string, execute: () => T): T {",
         );
         line(&mut output, "  try { return execute(); }");
-        line(&mut output, "  catch (error) { throw error instanceof PersistenceFault ? error : new PersistenceFault(operation, classifyPersistenceError(error), error, identifyPersistenceConstraint(error)); }");
+        line(&mut output, "  catch (error) { const fault = error instanceof PersistenceFault ? error : new PersistenceFault(operation, classifyPersistenceError(error), error, identifyPersistenceConstraint(error)); if (isPersistenceAvailabilityFailure(error)) { persistenceProbeNeeded = true; persistenceInvalidationGeneration++; } throw fault; }");
         line(&mut output, "}");
+        line(&mut output, "function persistenceSync<T>(operation: string, execute: () => T): T { return persistenceSyncBase(operation, execute); }");
         line(&mut output, "");
-        line(&mut output, "async function persistenceAsync<T>(operation: string, execute: () => Promise<T>): Promise<T> {");
-        line(&mut output, "  try { return await execute(); }");
-        line(&mut output, "  catch (error) {");
-        line(&mut output, "    throw error instanceof PersistenceFault ? error : new PersistenceFault(operation, classifyPersistenceError(error), error, identifyPersistenceConstraint(error));");
-        line(&mut output, "  }");
+        line(&mut output, "function persistenceDeadlineFault(operation: string, requestDeadlineAt: number | null): PersistenceFault { const cause = requestDeadlineAt !== null && performance.now() >= requestDeadlineAt ? new RequestDeadlineFault() : new Error(\"transaction retry window exceeded\"); return new PersistenceFault(operation, \"driver\", cause); }");
+        line(&mut output, "async function persistenceAsyncWithSignal<T>(operation: string, execute: () => Promise<T>, signal: AbortSignal | null, deadlineAt: number | null, requestDeadlineAt: number | null): Promise<T> {");
+        line(&mut output, "  if (signal?.aborted) throw new PersistenceFault(operation, \"driver\", new Error(\"operation cancelled\"));");
+        line(&mut output, "  if (deadlineAt !== null && performance.now() >= deadlineAt) throw persistenceDeadlineFault(operation, requestDeadlineAt);");
+        line(&mut output, "  try { const result = await execute(); if (signal?.aborted) throw new PersistenceFault(operation, \"driver\", new Error(\"operation cancelled\")); if (deadlineAt !== null && performance.now() >= deadlineAt) throw persistenceDeadlineFault(operation, requestDeadlineAt); return result; }");
+        line(&mut output, "  catch (error) { if (deadlineAt !== null && performance.now() >= deadlineAt && persistenceErrorCodes(error).includes(\"57014\") && !(error instanceof PersistenceFault && error.kind === \"unknown\")) throw persistenceDeadlineFault(operation, requestDeadlineAt); const fault = error instanceof PersistenceFault ? error : new PersistenceFault(operation, classifyPersistenceError(error), error, identifyPersistenceConstraint(error)); if (isPersistenceAvailabilityFailure(error)) { persistenceProbeNeeded = true; persistenceInvalidationGeneration++; } throw fault; }");
         line(&mut output, "}");
+        line(&mut output, "async function persistenceAsync<T>(operation: string, execute: () => Promise<T>): Promise<T> { return persistenceAsyncWithSignal(operation, execute, null, null, null); }");
         line(&mut output, "");
         line(
             &mut output,
-            "function reportPersistenceStartupFault(error: unknown): void {",
+            "function reportPersistenceDependencyUnavailable(error: unknown): void {",
         );
         line(&mut output, "  console.error(JSON.stringify({");
         line(&mut output, "    schemaVersion: 1,");
         line(&mut output, "    kind: \"operational_log_event\",");
-        line(&mut output, "    eventName: \"operation.failed\",");
+        line(&mut output, "    eventName: \"dependency.unavailable\",");
         line(
             &mut output,
-            "    classification: \"RUNTIME_STARTUP_FAILED\",",
+            "    classification: \"RUNTIME_DEPENDENCY_UNAVAILABLE\",",
         );
-        line(&mut output, "    requestId: \"startup\",");
+        line(&mut output, "    requestId: \"readiness\",");
         line(&mut output, "    traceId: null,");
-        line(&mut output, "    semanticOperationId: \"runtime:start\",");
+        line(&mut output, "    semanticOperationId: \"health:ready\",");
         line(
             &mut output,
             &format!(
@@ -3014,18 +3484,44 @@ export const temporal = Object.freeze({
         line(&mut output, "");
         line(
             &mut output,
+            "function reportPersistenceStartupFault(error: unknown): void {",
+        );
+        line(&mut output, "  console.error(JSON.stringify({ schemaVersion: 1, kind: \"operational_log_event\", eventName: \"operation.failed\", classification: \"RUNTIME_STARTUP_FAILED\", requestId: \"startup\", traceId: null, semanticOperationId: \"runtime:start\", sourceRevision: " );
+        line(
+            &mut output,
+            &format!("    {},", ts_string(&self.source_revision())),
+        );
+        line(&mut output, "    attributes: {}, }));");
+        line(
+            &mut output,
+            "  if (Bun.env.JADPO_DEBUG_TARGET_STACKS === \"1\") console.error(error);",
+        );
+        line(&mut output, "}");
+        line(&mut output, "");
+        line(
+            &mut output,
             "const localPath = decodeURIComponent(new URL(\"../local.sqlite\", import.meta.url).pathname);",
         );
         line(&mut output, "let postgres: SQL | null = null;");
         line(&mut output, "let sqlite: Database | null = null;");
+        line(
+            &mut output,
+            "let persistenceDependencyUnavailableReported = false;",
+        );
+        line(&mut output, "let persistenceStartupFaultReported = false;");
+        line(&mut output, "let persistenceInitializationFatal = false;");
+        line(
+            &mut output,
+            "async function initializePersistenceOnce(publish = true): Promise<boolean> {",
+        );
         line(&mut output, "try {");
         line(
             &mut output,
-            "  postgres = Bun.env.DATABASE_URL ? persistenceSync(\"database.open\", () => new SQL({ url: Bun.env.DATABASE_URL!, prepare: false, connectionTimeout: 2 })) : null;",
+            "  if (Bun.env.DATABASE_URL && postgres === null) postgres = persistenceSync(\"database.open\", () => new SQL({ url: Bun.env.DATABASE_URL!, prepare: false, connectionTimeout: 2 }));",
         );
         line(
             &mut output,
-            "  sqlite = postgres === null ? persistenceSync(\"database.open\", () => new Database(Bun.env.SQLITE_PATH ?? localPath, { create: true, strict: true })) : null;",
+            "  if (postgres === null && sqlite === null) sqlite = persistenceSync(\"database.open\", () => new Database(Bun.env.SQLITE_PATH ?? localPath, { create: true, strict: true }));",
         );
         line(
             &mut output,
@@ -3073,9 +3569,14 @@ export const temporal = Object.freeze({
         if self.first_party_supported() {
             line(&mut output, "  await initializeAuthenticationStorage();");
         }
+        line(&mut output, "  if (publish) { persistenceReady = true; persistenceProbeNeeded = false; persistenceDependencyUnavailableReported = false; persistenceStartupFaultReported = false; persistenceInitializationFatal = false; } return true;");
         line(&mut output, "} catch (error) {");
-        line(&mut output, "  reportPersistenceStartupFault(error);");
-        line(&mut output, "  process.exit(1);");
+        line(&mut output, "  persistenceReady = false;");
+        line(&mut output, "  const initializationContended = persistenceErrorCodes(error).some(code => code === \"SQLITE_BUSY\" || code.startsWith(\"SQLITE_BUSY_\") || code === \"SQLITE_LOCKED\" || code.startsWith(\"SQLITE_LOCKED_\"));");
+        line(&mut output, "  if (isPersistenceAvailabilityFailure(error) || initializationContended) { if (!persistenceDependencyUnavailableReported) { reportPersistenceDependencyUnavailable(error); persistenceDependencyUnavailableReported = true; } }");
+        line(&mut output, "  else { persistenceInitializationFatal = true; if (!persistenceStartupFaultReported) { reportPersistenceStartupFault(error); persistenceStartupFaultReported = true; } }");
+        line(&mut output, "  return false;");
+        line(&mut output, "}");
         line(&mut output, "}");
         line(&mut output, "");
         if self.has_derived_representations() {
@@ -3134,17 +3635,94 @@ export const temporal = Object.freeze({
         line(&mut output, "");
         line(&mut output, "type PolicyPrincipal = Readonly<{ kind: \"user\" | \"service\"; subject: string; values: Readonly<Record<string, unknown>> }>; ");
         line(&mut output, "type PolicyRequest = Readonly<{ principal: PolicyPrincipal | null; operation: string }>; ");
+        line(&mut output, "type TransactionRetryOptions = Readonly<{ replayable: boolean; operationId: string; operation: string; startedAt: number; deadlineAt?: number | null; signal: AbortSignal | null; refreshOperationTime?: () => string }>;");
+        line(&mut output, "function recordTransactionAttempt(options: TransactionRetryOptions, attempt: number, evidence: TransactionEvidence, elapsedMs: number, selectedDelayMs: number | null, retryScheduled: boolean, cancelled: boolean): void {");
+        line(&mut output, "  console.error(JSON.stringify({ schemaVersion: 1, kind: \"operational_log_event\", eventName: \"transaction.attempt\", operationId: options.operationId, operation: options.operation, attempt, database: evidence.database, phase: evidence.phase, outcome: evidence.outcome, retryableCause: evidence.retryableCause, rollbackProven: evidence.rollbackProven, commitAcknowledged: evidence.commitAcknowledged, elapsedMs: Math.max(0, Math.round(elapsedMs)), selectedDelayMs: selectedDelayMs === null ? null : Math.round(selectedDelayMs), retryScheduled, cancelled }));");
+        line(&mut output, "}");
         line(&mut output, "const emptyPolicyRequest: PolicyRequest = Object.freeze({ principal: null, operation: \"internal\" });");
+        if self.has_lifecycle_purges() {
+            line(&mut output, "let lifecycleRetentionMilliseconds: Readonly<Record<string, number>> | null = null;");
+            line(&mut output, "export function configureLifecycleRetention(configuration: Record<string, unknown>): void {");
+            line(
+                &mut output,
+                "  const configuredRetention: Record<string, number> = Object.create(null);",
+            );
+            for (name, entity) in self.entities() {
+                let Some(purge) = entity
+                    .dossier
+                    .as_ref()
+                    .and_then(|dossier| dossier.lifecycle.as_ref())
+                    .and_then(|lifecycle| lifecycle.purge.as_ref())
+                else {
+                    continue;
+                };
+                let Expression::Name(binding) = &purge.after else {
+                    continue;
+                };
+                let Some(field) = binding.path.get(1).map(|part| part.text.as_str()) else {
+                    continue;
+                };
+                line(&mut output, "  {");
+                line(&mut output, &format!("    const milliseconds = configuredPersistenceDuration(configuration[{}], {});", ts_string(field), ts_string(&format!("config.{field}"))));
+                line(&mut output, &format!("    if (milliseconds <= 0) throw new PersistenceFault(\"retention.configuration\", \"data\", new Error(\"configured retention must be positive: config.{field}\"));"));
+                line(
+                    &mut output,
+                    &format!(
+                        "    configuredRetention[{}] = milliseconds;",
+                        ts_string(name)
+                    ),
+                );
+                line(&mut output, "  }");
+            }
+            line(
+                &mut output,
+                "  lifecycleRetentionMilliseconds = Object.freeze(configuredRetention);",
+            );
+            line(&mut output, "}");
+        }
         line(&mut output, "");
         self.first_party_storage(&mut output);
         self.persistence_policy_runtime(&mut output);
-        line(&mut output, "function createPersistenceClient(postgres: SQL | null, sqlite: Database | null, transactional = false, transactionState = { nextSavepoint: 0 }, policy: PolicyRequest = emptyPolicyRequest, operationTime: string | null = null) {");
+        output.push_str(include_str!("runtime/delivery_claims.ts"));
+        output.push_str(include_str!("runtime/delivery_scheduler.ts"));
+        line(&mut output, "function createPersistenceClient(postgres: SQL | null, sqlite: Database | null, transactional = false, transactionState: { nextSavepoint: number; active: boolean; poisoned?: boolean } = { nextSavepoint: 0, active: false }, policy: PolicyRequest = emptyPolicyRequest, operationTime: string | null = null, signal: AbortSignal | null = null, deadlineAt: number | null = null, requestDeadlineAt: number | null = deadlineAt) {");
+        line(&mut output, "const assertTransactionActive = (): void => { if (!transactional) return; if (sqlite !== null && sqlite.inTransaction !== true) { transactionState.active = false; transactionState.poisoned = true; } if (!transactionState.active || transactionState.poisoned) throw new PersistenceFault(\"transaction.inactive\", \"driver\", new Error(\"transaction capability expired\")); };");
+        line(&mut output, "const persistenceAsync = async <T>(operation: string, execute: () => Promise<T>): Promise<T> => {");
+        line(&mut output, "  assertTransactionActive();");
+        line(
+            &mut output,
+            "  if (postgres !== null && transactional && deadlineAt !== null) {",
+        );
+        line(&mut output, "    const remaining = deadlineAt - performance.now(); if (remaining <= 0) throw persistenceDeadlineFault(operation, requestDeadlineAt);");
+        line(&mut output, "    // Transaction-local server enforcement works with the pinned Bun adapter even when query.cancel() does not interrupt an active query.");
+        line(&mut output, "    await persistenceAsyncWithSignal(\"transaction.timeout.refresh\", () => postgres!.unsafe(\"SELECT set_config('statement_timeout', $1, true)\", [String(Math.min(Math.ceil(remaining), 2147483647))]), signal, deadlineAt, requestDeadlineAt);");
+        line(&mut output, "  }");
+        line(&mut output, "  return persistenceAsyncWithSignal(operation, () => { assertTransactionActive(); return execute(); }, signal, deadlineAt, requestDeadlineAt);");
+        line(&mut output, "};");
+        line(
+            &mut output,
+            "const persistenceSync = <T>(operation: string, execute: () => T): T => {",
+        );
+        line(&mut output, "  const cleanup = operation === \"transaction.rollback\" || operation.endsWith(\".rollback\") || operation.endsWith(\".release\");");
+        line(&mut output, "  if (!cleanup) assertTransactionActive();");
+        line(&mut output, "  const stopped = () => signal?.aborted ? new PersistenceFault(operation, \"driver\", new Error(\"operation cancelled\")) : deadlineAt !== null && performance.now() >= deadlineAt ? persistenceDeadlineFault(operation, requestDeadlineAt) : null;");
+        line(
+            &mut output,
+            "  if (!cleanup) { const fault = stopped(); if (fault !== null) throw fault; }",
+        );
+        line(
+            &mut output,
+            "  const result = persistenceSyncBase(operation, execute);",
+        );
+        line(&mut output, "  if (!cleanup && operation !== \"transaction.commit\") { const fault = stopped(); if (fault !== null) throw fault; }");
+        line(&mut output, "  return result;");
+        line(&mut output, "};");
         line(&mut output, "async function policyReadRows(operation: string, entity: string, postgresSql: string, sqliteSql: string, postgresValues: unknown[], sqliteValues: unknown[]): Promise<unknown[]> {");
         line(&mut output, "  const scope = policySqlScope(entity, \"read\", policy, postgres !== null ? \"postgres\" : \"sqlite\", postgres !== null ? postgresValues.length : sqliteValues.length);");
         line(&mut output, "  if (!scope.permitted) return [];");
         line(&mut output, "  return postgres !== null");
         line(&mut output, "    ? persistenceAsync(operation, () => postgres!.unsafe(policyScopedSql(postgresSql, scope.clause), [...postgresValues, ...scope.values]))");
-        line(&mut output, "    : persistenceSync(operation, () => sqlite!.prepare(policyScopedSql(sqliteSql, scope.clause)).all(...sqliteValues, ...scope.values));");
+        line(&mut output, "    : persistenceSync(operation, () => { const statement = sqlite!.prepare(policyScopedSql(sqliteSql, scope.clause)); try { return statement.all(...sqliteValues, ...scope.values); } finally { statement.finalize(); } });");
         line(&mut output, "}");
         line(&mut output, "");
         line(&mut output, "async function policyPostgresMutationRows(connection: SQL, entity: string, effect: string, fields: readonly string[], sql: string, values: unknown[]): Promise<unknown[]> {");
@@ -3179,12 +3757,19 @@ export const temporal = Object.freeze({
         line(&mut output, "  return persistenceSync(`mutation.${entity}.${effect}.policy`, () => sqlite!.prepare(scopedSql).all(...scopedValues));");
         line(&mut output, "}");
         line(&mut output, "");
+        output.push_str(&include_str!("runtime/delivery_outbox.ts").replace(
+            "// __JADPO_BOUND_DELIVERY_METHODS__",
+            &(self.delivery_selection_methods() + &self.delivery_invocation_methods()),
+        ));
         line(&mut output, "const client = {");
+        line(&mut output, "  ...deliveryOutbox,");
+        self.delivery_authority_methods(&mut output);
         line(
             &mut output,
-            "  async transaction<T>(work: (client: any) => Promise<T>): Promise<T> {",
+            "  async transaction<T>(work: (client: any) => Promise<T>, retryOptions: TransactionRetryOptions | null = null): Promise<T> {",
         );
         line(&mut output, "    if (transactional) {");
+        line(&mut output, "      if (!transactionState.active) throw new PersistenceFault(\"transaction.inactive\", \"driver\", new Error(\"transaction capability expired\"));");
         line(
             &mut output,
             "      const savepoint = `jadpo_sp_${++transactionState.nextSavepoint}`;",
@@ -3192,24 +3777,26 @@ export const temporal = Object.freeze({
         line(&mut output, "      if (postgres !== null) {");
         line(
             &mut output,
-            "        await postgres.unsafe(`SAVEPOINT \"${savepoint}\"`);",
+            "        await persistenceAsyncWithSignal(\"transaction.savepoint\", () => postgres!.unsafe(`SAVEPOINT \"${savepoint}\"`), signal, deadlineAt, requestDeadlineAt);",
         );
         line(&mut output, "        try {");
         line(&mut output, "          const result = await work(client);");
         line(
             &mut output,
-            "          await postgres.unsafe(`RELEASE SAVEPOINT \"${savepoint}\"`);",
+            "          await persistenceAsyncWithSignal(\"transaction.savepoint.release\", () => postgres!.unsafe(`RELEASE SAVEPOINT \"${savepoint}\"`), null, null, requestDeadlineAt);",
         );
         line(&mut output, "          return result;");
         line(&mut output, "        } catch (error) {");
+        line(&mut output, "          try {");
         line(
             &mut output,
-            "          await postgres.unsafe(`ROLLBACK TO SAVEPOINT \"${savepoint}\"`);",
+            "          await persistenceAsyncWithSignal(\"transaction.savepoint.rollback\", () => postgres!.unsafe(`ROLLBACK TO SAVEPOINT \"${savepoint}\"`), null, null, requestDeadlineAt);",
         );
         line(
             &mut output,
-            "          await postgres.unsafe(`RELEASE SAVEPOINT \"${savepoint}\"`);",
+            "          await persistenceAsyncWithSignal(\"transaction.savepoint.release\", () => postgres!.unsafe(`RELEASE SAVEPOINT \"${savepoint}\"`), null, null, requestDeadlineAt);",
         );
+        line(&mut output, "          } catch (cleanupError) { transactionState.active = false; transactionState.poisoned = true; throw cleanupError; }");
         line(&mut output, "          throw error;");
         line(&mut output, "        }");
         line(&mut output, "      }");
@@ -3219,83 +3806,300 @@ export const temporal = Object.freeze({
         line(&mut output, "        persistenceSync(\"transaction.savepoint.release\", () => sqlite!.exec(`RELEASE SAVEPOINT \"${savepoint}\"`));");
         line(&mut output, "        return result;");
         line(&mut output, "      } catch (error) {");
+        line(&mut output, "        try {");
         line(&mut output, "        persistenceSync(\"transaction.savepoint.rollback\", () => sqlite!.exec(`ROLLBACK TO SAVEPOINT \"${savepoint}\"`));");
         line(&mut output, "        persistenceSync(\"transaction.savepoint.release\", () => sqlite!.exec(`RELEASE SAVEPOINT \"${savepoint}\"`));");
+        line(&mut output, "        } catch (cleanupError) { transactionState.active = false; transactionState.poisoned = true; throw cleanupError; }");
         line(&mut output, "        throw error;");
         line(&mut output, "      }");
         line(&mut output, "    }");
+        line(&mut output, "    const executeAttempt = async (attemptOperationTime: string | null, retryIndex: number): Promise<T> => {");
+        line(
+            &mut output,
+            "    const attemptSignal = retryOptions?.signal ?? signal;",
+        );
+        line(&mut output, "    const retryDeadlineAt = retryOptions !== null && retryIndex > 0 ? Math.min(retryOptions.startedAt + 1000, retryOptions.deadlineAt ?? Infinity) : null;");
+        line(&mut output, "    const attemptDeadlineAt = deadlineAt === null ? retryDeadlineAt : retryDeadlineAt === null ? deadlineAt : Math.min(deadlineAt, retryDeadlineAt);");
+        line(&mut output, "    const checkAttemptLimit = (operation: string): PersistenceFault | null => { if (attemptSignal?.aborted) return new PersistenceFault(operation, \"driver\", new Error(\"operation cancelled\")); if (attemptDeadlineAt !== null && performance.now() >= attemptDeadlineAt) return persistenceDeadlineFault(operation, requestDeadlineAt); return null; };");
         line(&mut output, "    if (postgres !== null) {");
-        line(&mut output, "      let callbackFailed = false;");
-        line(&mut output, "      let callbackError: unknown;");
+        line(&mut output, "      let callbackState: \"not_started\" | \"failed\" | \"returned\" = \"not_started\";");
         line(&mut output, "      try {");
+        line(&mut output, "        const beginLimit = checkAttemptLimit(\"transaction.begin\"); if (beginLimit !== null) throw beginLimit;");
         line(
             &mut output,
             "        return await postgres.begin(async tx => {",
         );
+        line(&mut output, "          callbackState = \"failed\";");
         line(
             &mut output,
-            "          try { return await work(createPersistenceClient(tx as SQL, null, true, transactionState, policy, operationTime)); }",
+            "          const attemptState = { nextSavepoint: 0, active: true };",
         );
-        line(&mut output, "          catch (error) { callbackFailed = true; callbackError = error; throw error; }");
+        line(&mut output, "          try {");
+        line(&mut output, "          if (attemptDeadlineAt !== null) { const remaining = attemptDeadlineAt - performance.now(); if (remaining <= 0) throw persistenceDeadlineFault(\"transaction.statement\", requestDeadlineAt); await persistenceAsyncWithSignal(\"transaction.timeout.setup\", () => tx.unsafe(\"SELECT set_config('statement_timeout', $1, true)\", [String(Math.min(Math.ceil(remaining), 2147483647))]), attemptSignal, attemptDeadlineAt, requestDeadlineAt); }");
+        line(
+            &mut output,
+            "          const result = await work(createPersistenceClient(tx as SQL, null, true, attemptState, policy, attemptOperationTime, attemptSignal, attemptDeadlineAt, requestDeadlineAt)); if ((attemptState as { poisoned?: boolean }).poisoned) throw new PersistenceFault(\"transaction.poisoned\", \"driver\", new Error(\"transaction recovery unproved\")); attemptState.active = false; const callbackLimit = checkAttemptLimit(\"transaction.statement\"); if (callbackLimit !== null) throw callbackLimit; if (attemptDeadlineAt !== null) await persistenceAsyncWithSignal(\"transaction.timeout.reset\", () => tx.unsafe(\"SET LOCAL statement_timeout = 0\"), attemptSignal, attemptDeadlineAt, requestDeadlineAt); const afterResetLimit = checkAttemptLimit(\"transaction.statement\"); if (afterResetLimit !== null) throw afterResetLimit; callbackState = \"returned\"; return result;",
+        );
+        line(
+            &mut output,
+            "          } finally { attemptState.active = false; }",
+        );
         line(&mut output, "        });");
         line(&mut output, "      } catch (error) {");
         line(
             &mut output,
-            "        if (callbackFailed) throw callbackError;",
+            "        const retryableCause = retryablePersistenceCause(error);",
         );
-        line(&mut output, "        throw error instanceof PersistenceFault ? error : new PersistenceFault(\"transaction.action\", classifyPersistenceError(error), error, identifyPersistenceConstraint(error));");
+        line(&mut output, "        if (callbackState === \"failed\") {");
+        line(&mut output, "          if (attemptDeadlineAt !== null && performance.now() >= attemptDeadlineAt && persistenceErrorCodes(error).includes(\"57014\") && !(error instanceof PersistenceFault && error.kind === \"unknown\")) error = persistenceDeadlineFault(\"transaction.statement\", requestDeadlineAt);");
+        line(
+            &mut output,
+            "          if (!(error instanceof PersistenceFault)) throw error;",
+        );
+        line(
+            &mut output,
+            "          if (error.kind === \"unknown\") throw error;",
+        );
+        line(&mut output, "          const serverAbort = retryableCause === \"postgres_serialization\" || retryableCause === \"postgres_deadlock\";");
+        line(&mut output, "          throw new PersistenceFault(error.operation, error.kind, error, error.constraint, Object.freeze({ phase: \"statement\", database: \"postgres\", outcome: \"no_commit\", retryableCause: serverAbort ? retryableCause : null, rollbackProven: true, commitAcknowledged: false }));");
+        line(&mut output, "        }");
+        line(&mut output, "        if (callbackState === \"not_started\") throw transactionFault(\"transaction.begin\", error, { phase: \"begin\", database: \"postgres\", outcome: \"no_commit\", retryableCause, rollbackProven: false, commitAcknowledged: false });");
+        line(&mut output, "        const serverAbort = retryableCause === \"postgres_serialization\" || retryableCause === \"postgres_deadlock\";");
+        line(&mut output, "        throw transactionFault(\"transaction.commit\", error, { phase: \"commit\", database: \"postgres\", outcome: serverAbort ? \"no_commit\" : \"unknown\", retryableCause: serverAbort ? retryableCause : null, rollbackProven: serverAbort, commitAcknowledged: false });");
         line(&mut output, "      }");
         line(&mut output, "    }");
         line(
             &mut output,
             "    return serializeSQLiteTransaction(async () => {",
         );
-        line(&mut output, "      persistenceSync(\"transaction.begin\", () => sqlite!.exec(\"BEGIN IMMEDIATE\"));");
+        line(&mut output, "      try { const beginLimit = checkAttemptLimit(\"transaction.begin\"); if (beginLimit !== null) throw beginLimit; persistenceSync(\"transaction.begin\", () => sqlite!.exec(\"BEGIN IMMEDIATE\")); const afterBeginLimit = checkAttemptLimit(\"transaction.begin\"); if (afterBeginLimit !== null) throw afterBeginLimit; }");
+        line(&mut output, "      catch (error) { const opened = sqlite!.inTransaction === true; let rollbackProven = false; if (opened) { try { sqlite!.exec(\"ROLLBACK\"); rollbackProven = true; } catch { rollbackProven = false; } } const retryableCause = opened ? (rollbackProven ? retryablePersistenceCause(error) : null) : retryablePersistenceCause(error); throw transactionFault(\"transaction.begin\", error, { phase: \"begin\", database: \"sqlite\", outcome: \"no_commit\", retryableCause, rollbackProven, commitAcknowledged: false }); }");
+        line(&mut output, "      let result: T;");
+        line(
+            &mut output,
+            "      const attemptState = { nextSavepoint: 0, active: true };",
+        );
         line(&mut output, "      try {");
         line(
             &mut output,
-            "        const result = await work(createPersistenceClient(null, sqlite, true, transactionState, policy, operationTime));",
+            "        try { result = await work(createPersistenceClient(null, sqlite, true, attemptState, policy, attemptOperationTime, attemptSignal, attemptDeadlineAt, requestDeadlineAt)); if ((attemptState as { poisoned?: boolean }).poisoned) throw new PersistenceFault(\"transaction.poisoned\", \"driver\", new Error(\"transaction recovery unproved\")); } finally { attemptState.active = false; } const callbackLimit = checkAttemptLimit(\"transaction.statement\"); if (callbackLimit !== null) throw callbackLimit;",
         );
-        line(
-            &mut output,
-            "        persistenceSync(\"transaction.commit\", () => sqlite!.exec(\"COMMIT\"));",
-        );
-        line(&mut output, "        return result;");
         line(&mut output, "      } catch (error) {");
-        line(&mut output, "        try { sqlite!.exec(\"ROLLBACK\"); } catch (rollbackError) { throw new PersistenceFault(\"transaction.rollback\", classifyPersistenceError(rollbackError), rollbackError, identifyPersistenceConstraint(rollbackError)); }");
+        line(&mut output, "        try { sqlite!.exec(\"ROLLBACK\"); }");
+        line(&mut output, "        catch (rollbackError) { const cause = new AggregateError([error, rollbackError], \"transaction rollback failed\", { cause: error }); throw transactionFault(\"transaction.rollback\", cause, { phase: \"rollback\", database: \"sqlite\", outcome: \"unknown\", retryableCause: null, rollbackProven: false, commitAcknowledged: false }); }");
+        line(&mut output, "        if (error instanceof PersistenceFault) throw new PersistenceFault(error.operation, error.kind, error, error.constraint, Object.freeze({ phase: \"statement\", database: \"sqlite\", outcome: \"no_commit\", retryableCause: retryablePersistenceCause(error), rollbackProven: true, commitAcknowledged: false }));");
         line(&mut output, "        throw error;");
         line(&mut output, "      }");
+        line(&mut output, "      try { persistenceSync(\"transaction.commit\", () => sqlite!.exec(\"COMMIT\")); return result; }");
+        line(&mut output, "      catch (error) { const remainedActive = sqlite!.inTransaction === true; let rollbackProven = false; let cleanupFault: unknown = null; if (remainedActive) { try { sqlite!.exec(\"ROLLBACK\"); rollbackProven = true; } catch (rollbackError) { cleanupFault = rollbackError; } } const cause = cleanupFault === null ? error : new AggregateError([error, cleanupFault], \"transaction commit rollback failed\", { cause: error }); const retryableCause = rollbackProven ? retryablePersistenceCause(error) : null; throw transactionFault(\"transaction.commit\", cause, { phase: \"commit\", database: \"sqlite\", outcome: rollbackProven ? \"no_commit\" : \"unknown\", retryableCause, rollbackProven, commitAcknowledged: false }); }");
         line(&mut output, "    });");
+        line(&mut output, "    };");
+        line(
+            &mut output,
+            "    if (retryOptions === null) return executeAttempt(operationTime, 0);",
+        );
+        line(&mut output, "    let attempt = 0;");
+        line(&mut output, "    while (true) {");
+        line(&mut output, "      const attemptOperationTime = attempt === 0 ? operationTime : retryOptions.refreshOperationTime?.() ?? operationTime;");
+        line(
+            &mut output,
+            "      const attemptStartedAt = performance.now();",
+        );
+        line(&mut output, "      try {");
+        line(
+            &mut output,
+            "        const result = await executeAttempt(attemptOperationTime, attempt);",
+        );
+        line(&mut output, "        recordTransactionAttempt(retryOptions, attempt + 1, { phase: \"commit\", database: postgres !== null ? \"postgres\" : \"sqlite\", outcome: \"committed\", retryableCause: null, rollbackProven: false, commitAcknowledged: true }, performance.now() - attemptStartedAt, null, false, retryOptions.signal?.aborted === true);");
+        line(&mut output, "        return result;");
+        line(&mut output, "      }");
+        line(&mut output, "      catch (error) {");
+        line(&mut output, "        const evidence = error instanceof PersistenceFault ? error.transaction : null;");
+        line(
+            &mut output,
+            "        const elapsedMs = performance.now() - attemptStartedAt;",
+        );
+        line(&mut output, "        const remainingMs = Math.max(0, Math.min(1000 - (performance.now() - retryOptions.startedAt), (retryOptions.deadlineAt ?? Infinity) - performance.now()));");
+        line(&mut output, "        const canRetry = retryOptions.replayable && error instanceof PersistenceFault && error.kind !== \"unknown\" && attempt < 2 && evidence !== null && evidence.outcome === \"no_commit\" && evidence.retryableCause !== null && (evidence.phase === \"begin\" || evidence.rollbackProven) && remainingMs > 0;");
+        line(&mut output, "        const selectedDelayMs = canRetry && !retryOptions.signal?.aborted ? Math.random() * Math.min(250, 50 * (2 ** attempt), remainingMs) : null;");
+        line(
+            &mut output,
+            "        let retryScheduled = selectedDelayMs !== null;",
+        );
+        line(&mut output, "        if (selectedDelayMs !== null && selectedDelayMs > 0) await new Promise<void>(resolve => setTimeout(resolve, selectedDelayMs));");
+        line(
+            &mut output,
+            "        const cancelled = retryOptions.signal?.aborted === true;",
+        );
+        line(&mut output, "        if (retryScheduled && (cancelled || performance.now() - retryOptions.startedAt >= 1000 || retryOptions.deadlineAt !== null && retryOptions.deadlineAt !== undefined && performance.now() >= retryOptions.deadlineAt)) retryScheduled = false;");
+        line(&mut output, "        if (evidence !== null) recordTransactionAttempt(retryOptions, attempt + 1, evidence, elapsedMs, selectedDelayMs, retryScheduled, cancelled);");
+        line(&mut output, "        if (!retryScheduled) { if (error instanceof PersistenceFault && error.kind !== \"unknown\" && evidence?.outcome === \"no_commit\" && retryOptions.deadlineAt !== null && retryOptions.deadlineAt !== undefined && performance.now() >= retryOptions.deadlineAt) throw new PersistenceFault(error.operation, error.kind, new RequestDeadlineFault(), error.constraint, evidence); throw error; }");
+        line(&mut output, "        attempt++;");
+        line(&mut output, "      }");
+        line(&mut output, "    }");
         line(&mut output, "  },");
         line(&mut output, "  did_change(value: unknown): boolean {");
         line(&mut output, "    return typeof value === \"object\" && value !== null && semanticChanges.get(value) === true;");
+        line(&mut output, "  },");
+        line(&mut output, "  async query_page_rows(operation: string, entity: string, postgresFirstSql: string, sqliteFirstSql: string, postgresAfterSql: string, sqliteAfterSql: string, values: ReadonlyArray<Readonly<{ value: unknown; kind: string }>>, hasCursor: boolean): Promise<unknown[]> {");
+        line(&mut output, "    const postgresValues = values.map(item => persistenceValue(item.value, item.kind, true));");
+        line(&mut output, "    const sqliteValues = values.map(item => persistenceValue(item.value, item.kind, false));");
+        line(&mut output, "    return policyReadRows(operation, entity, hasCursor ? postgresAfterSql : postgresFirstSql, hasCursor ? sqliteAfterSql : sqliteFirstSql, postgresValues, sqliteValues);");
         line(&mut output, "  },");
         line(
             &mut output,
             "  withPolicy(principal: PolicyPrincipal | null, operation: string) {",
         );
-        line(&mut output, "    return createPersistenceClient(postgres, sqlite, transactional, transactionState, Object.freeze({ principal, operation }), operationTime);");
+        line(&mut output, "    return createPersistenceClient(postgres, sqlite, transactional, transactionState, Object.freeze({ principal, operation }), operationTime, signal, deadlineAt, requestDeadlineAt);");
+        line(&mut output, "  },");
+        line(&mut output, "  withDeadline(value: number | null) {");
+        line(&mut output, "    const bounded = value === null ? deadlineAt : deadlineAt === null ? value : Math.min(deadlineAt, value);");
+        line(&mut output, "    const requestBounded = value === null ? requestDeadlineAt : requestDeadlineAt === null ? value : Math.min(requestDeadlineAt, value);");
+        line(&mut output, "    return createPersistenceClient(postgres, sqlite, transactional, transactionState, policy, operationTime, signal, bounded, requestBounded);");
         line(&mut output, "  },");
         line(&mut output, "  withOperationTime(value: string) {");
         line(
             &mut output,
             "    const canonical = persistenceInstant(value, true) as string;",
         );
-        line(&mut output, "    return createPersistenceClient(postgres, sqlite, transactional, transactionState, policy, canonical);");
+        line(&mut output, "    return createPersistenceClient(postgres, sqlite, transactional, transactionState, policy, canonical, signal, deadlineAt, requestDeadlineAt);");
+        line(&mut output, "  },");
+        line(&mut output, "  withSignal(value: AbortSignal | null) {");
+        line(&mut output, "    return createPersistenceClient(postgres, sqlite, transactional, transactionState, policy, operationTime, value, deadlineAt, requestDeadlineAt);");
         line(&mut output, "  },");
         line(&mut output, "  async allowsPolicy(entity: string, effect: string, row: Record<string, unknown> = {}) {");
+        line(&mut output, "    assertTransactionActive();");
         line(
             &mut output,
             "    return policyAllows(entity, effect, row, policy, postgres, sqlite);",
         );
         line(&mut output, "  },");
         for (name, entity) in self.entities() {
+            let Some(lifecycle) = entity
+                .dossier
+                .as_ref()
+                .and_then(|dossier| dossier.lifecycle.as_ref())
+            else {
+                continue;
+            };
+            let Some(purge) = &lifecycle.purge else {
+                continue;
+            };
+            let Expression::Name(retention_binding) = &purge.after else {
+                continue;
+            };
+            let retention_field = retention_binding
+                .path
+                .get(1)
+                .map(|part| part.text.as_str())
+                .expect("checked purge retention binding has a field");
+            let identity = identity_field_name(entity).expect("persistent entity identity");
+            let identity_kind = entity
+                .fields
+                .iter()
+                .find(|field| field.name.text == identity)
+                .map(|field| self.representation_root_for(&field.field_type))
+                .expect("identity field declaration");
+            let table = sql_identifier(&snake_case(name));
+            let identity_column = sql_identifier(identity);
+            let timestamp_column = sql_identifier(&purge.from.text);
+            let visible = self
+                .lifecycle_visibility_sql(name)
+                .expect("typechecked lifecycle visibility");
+            let state = self
+                .lifecycle_purge_state_sql(name)
+                .expect("typechecked purge transition state");
+            let predicate = |placeholder: &str| {
+                format!(
+                    "{timestamp_column} IS NOT NULL AND {timestamp_column} <= {placeholder} AND NOT ({visible}) AND ({state})"
+                )
+            };
+            let select_postgres = format!(
+                "SELECT {identity_column}, {timestamp_column} FROM {table} WHERE {} ORDER BY {timestamp_column} ASC, {identity_column} ASC LIMIT 500 FOR UPDATE",
+                predicate("$1")
+            );
+            let select_sqlite = format!(
+                "SELECT {identity_column}, {timestamp_column} FROM {table} WHERE {} ORDER BY {timestamp_column} ASC, {identity_column} ASC LIMIT 500",
+                predicate("?1")
+            );
+            let delete_postgres = format!(
+                "DELETE FROM {table} WHERE {identity_column} = $2 AND ({}) RETURNING {identity_column}",
+                predicate("$1")
+            );
+            let delete_sqlite = format!(
+                "DELETE FROM {table} WHERE {identity_column} = ?2 AND ({}) RETURNING {identity_column}",
+                predicate("?1")
+            );
+            line(
+                &mut output,
+                &format!("  async retention_purge_{name}(onSelected: (count: number, rowIdentityTokens: readonly string[]) => void): Promise<{{ committedCount: number; rowIdentityTokens: readonly string[] }}> {{"),
+            );
+            line(
+                &mut output,
+                &format!("    if (!transactional) return client.transaction((transaction: any) => transaction.retention_purge_{name}(onSelected));"),
+            );
+            line(
+                &mut output,
+                "    if (operationTime === null) throw new PersistenceFault(\"retention.operation_time\", \"data\", new Error(\"retention purge requires a captured attempt instant\"));",
+            );
+            line(
+                &mut output,
+                &format!("    const retentionMilliseconds = lifecycleRetentionMilliseconds?.[{}]; if (retentionMilliseconds === undefined) throw new PersistenceFault(\"retention.configuration\", \"data\", new Error(\"lifecycle retention is not initialized: config.{retention_field}\"));", ts_string(name)),
+            );
+            line(
+                &mut output,
+                "    const attemptMilliseconds = Date.parse(operationTime); const eligibleBefore = Math.min(attemptMilliseconds, Date.now()) - retentionMilliseconds;",
+            );
+            line(
+                &mut output,
+                &format!("    const cutoffDate = new Date(eligibleBefore); if (!Number.isSafeInteger(eligibleBefore) || Number.isNaN(cutoffDate.getTime()) || cutoffDate.getUTCFullYear() < 1 || cutoffDate.getUTCFullYear() > 9999) throw new PersistenceFault(\"retention.configuration\", \"data\", new Error(\"configured retention cutoff is outside the portable Instant range: config.{retention_field}\"));"),
+            );
+            line(
+                &mut output,
+                "    const canonicalCutoff = cutoffDate.toISOString();",
+            );
+            line(
+                &mut output,
+                "    const postgresCutoff = persistenceValue(canonicalCutoff, \"Instant\", true); const sqliteCutoff = persistenceValue(canonicalCutoff, \"Instant\", false);",
+            );
+            line(
+                &mut output,
+                &format!("    const candidates = (postgres !== null ? await persistenceAsync(\"retention.purge.{name}.select\", () => postgres!.unsafe({}, [postgresCutoff])) : persistenceSync(\"retention.purge.{name}.select\", () => sqlite!.prepare({}).all(sqliteCutoff))) as Array<Record<string, unknown>>;", ts_string(&select_postgres), ts_string(&select_sqlite)),
+            );
+            line(
+                &mut output,
+                &format!("    const rowIdentityTokens = await Promise.all(candidates.map(async row => {{ const digest = await crypto.subtle.digest(\"SHA-256\", new TextEncoder().encode({} + \":\" + String(row[{}]))); return [...new Uint8Array(digest).slice(0, 8)].map(value => value.toString(16).padStart(2, \"0\")).join(\"\"); }}));", ts_string(name), ts_string(&snake_case(identity))),
+            );
+            line(
+                &mut output,
+                "    onSelected(candidates.length, rowIdentityTokens);",
+            );
+            line(&mut output, "    let committedCount = 0;");
+            line(&mut output, "    for (const row of candidates) {");
+            line(
+                &mut output,
+                &format!("      const deleted = postgres !== null ? await persistenceAsync(\"retention.purge.{name}.delete\", () => postgres!.unsafe({}, [postgresCutoff, persistenceValue(row[{}], {}, true)])) : persistenceSync(\"retention.purge.{name}.delete\", () => sqlite!.prepare({}).all(sqliteCutoff, persistenceValue(row[{}], {}, false)));", ts_string(&delete_postgres), ts_string(&snake_case(identity)), ts_string(&identity_kind), ts_string(&delete_sqlite), ts_string(&snake_case(identity)), ts_string(&identity_kind)),
+            );
+            line(
+                &mut output,
+                "      if (deleted.length === 1) committedCount++;",
+            );
+            line(&mut output, "    }");
+            line(
+                &mut output,
+                "    return { committedCount, rowIdentityTokens };",
+            );
+            line(&mut output, "  },");
+        }
+        for (name, entity) in self.entities() {
+            let lifecycle_initial = self.lifecycle_initial_values(name);
+            let schedule_hook = self.delivery_create_hook(name);
             let postgres_values = entity
                 .fields
                 .iter()
                 .map(|field| {
                     format!(
-                        "${{persistenceValue(value[{}], {}, true)}}",
+                        "${{persistenceValue(createValue[{}], {}, true)}}",
                         ts_string(&field.name.text),
                         ts_string(&self.representation_root_for(&field.field_type))
                     )
@@ -3303,6 +4107,11 @@ export const temporal = Object.freeze({
                 .collect::<Vec<_>>()
                 .join(", ");
             let table = sql_identifier(&snake_case(name));
+            let lifecycle_write_guard = self
+                .lifecycle_visibility_sql(name)
+                .map(|predicate| format!(" AND ({predicate})"))
+                .unwrap_or_default();
+            let lifecycle_owned_fields = self.lifecycle_owned_field_names(name);
             let fields = entity
                 .fields
                 .iter()
@@ -3315,7 +4124,7 @@ export const temporal = Object.freeze({
                 .iter()
                 .map(|field| {
                     format!(
-                        "persistenceValue(value[{}], {}, false)",
+                        "persistenceValue(createValue[{}], {}, false)",
                         ts_string(&field.name.text),
                         ts_string(&self.representation_root_for(&field.field_type))
                     )
@@ -3334,10 +4143,34 @@ export const temporal = Object.freeze({
                     "    if (!transactional) return this.transaction((transaction: any) => transaction.create_{name}(value));"
                 ),
             );
+            if schedule_hook.is_some() {
+                line(&mut output, "    return client.transaction(async () => {");
+                line(&mut output, "      const changed = await (async () => {");
+            }
+            line(
+                &mut output,
+                "    if (value === null || typeof value !== \"object\" || Array.isArray(value)) throw new PersistenceFault(\"create.input\", \"data\", new Error(\"create requires a record\"));",
+            );
+            line(
+                &mut output,
+                "    const createValue: Record<string, unknown> = { ...value };",
+            );
+            for (index, (field, expression)) in lifecycle_initial.iter().enumerate() {
+                let local = format!("lifecycleInitial{index}");
+                line(&mut output, &format!("    const {local} = {expression};"));
+                line(
+                    &mut output,
+                    &format!("    if (Object.prototype.hasOwnProperty.call(value, {}) && !Object.is(value[{}], {local})) throw new PersistenceFault(\"create.lifecycle.initial\", \"data\", new Error(\"caller cannot set lifecycle-owned initial state\"));", ts_string(field), ts_string(field)),
+                );
+                line(
+                    &mut output,
+                    &format!("    createValue[{}] = {local};", ts_string(field)),
+                );
+            }
             line(
                 &mut output,
                 &format!(
-                    "    if (!(await policyAllowsWrite({}, \"create\", value, Object.keys(value), policy, postgres, sqlite))) throw new PolicyFault(policy.operation);",
+                    "    assertTransactionActive(); if (!(await policyAllowsWrite({}, \"create\", createValue, Object.keys(createValue), policy, postgres, sqlite))) throw new PolicyFault(policy.operation);",
                     ts_string(name)
                 ),
             );
@@ -3380,6 +4213,12 @@ export const temporal = Object.freeze({
                 );
             }
             line(&mut output, "    return row;");
+            if let Some(hook) = schedule_hook {
+                line(&mut output, "      })();");
+                line(&mut output, &format!("      await client.establish_delivery_schedule_revision({}, String((changed as Record<string, unknown>)[{}]));", ts_string(name), ts_string(&snake_case(hook))));
+                line(&mut output, "      return changed;");
+                line(&mut output, "    });");
+            }
             line(&mut output, "  },");
             for field in &entity.fields {
                 let field_name = &field.name.text;
@@ -3399,11 +4238,11 @@ export const temporal = Object.freeze({
                     line(&mut output, "    const rows = postgres !== null");
                     line(
                         &mut output,
-                        &format!("      ? await persistenceAsync(\"touch.{name}.{field_name}\", () => postgres`UPDATE {table} SET {updated_column} = ${{persistenceValue(operationTime, \"Instant\", true)}} WHERE {predicate_column} = ${{persistenceValue(value, {}, true)}} RETURNING {returned}`)", ts_string(&self.representation_root_for(&field.field_type))),
+                        &format!("      ? await persistenceAsync(\"touch.{name}.{field_name}\", () => postgres`UPDATE {table} SET {updated_column} = ${{persistenceValue(operationTime, \"Instant\", true)}} WHERE {predicate_column} = ${{persistenceValue(value, {}, true)}}{lifecycle_write_guard} RETURNING {returned}`)", ts_string(&self.representation_root_for(&field.field_type))),
                     );
                     line(
                         &mut output,
-                        &format!("      : persistenceSync(\"touch.{name}.{field_name}\", () => sqlite!.prepare({}).all(persistenceValue(operationTime, \"Instant\", false), persistenceValue(value, {}, false)));", ts_string(&format!("UPDATE {table} SET {updated_column} = ?1 WHERE {predicate_column} = ?2 RETURNING {returned}")), ts_string(&self.representation_root_for(&field.field_type))),
+                        &format!("      : persistenceSync(\"touch.{name}.{field_name}\", () => sqlite!.prepare({}).all(persistenceValue(operationTime, \"Instant\", false), persistenceValue(value, {}, false)));", ts_string(&format!("UPDATE {table} SET {updated_column} = ?1 WHERE {predicate_column} = ?2{lifecycle_write_guard} RETURNING {returned}")), ts_string(&self.representation_root_for(&field.field_type))),
                     );
                     line(&mut output, "    if (rows.length > 1) throw new PersistenceFault(\"touch.cardinality\", \"cardinality\", new Error(\"generated timestamp update returned too many rows\"));");
                     if self.entity_has_derived_representations(name) {
@@ -3561,17 +4400,20 @@ export const temporal = Object.freeze({
                     self.select_optional_sql(name, entity, predicate_name, SqlDialect::Sqlite);
                 for change in &entity.fields {
                     let change_name = &change.name.text;
+                    if change.generated.is_some() || lifecycle_owned_fields.contains(change_name) {
+                        continue;
+                    }
                     let change_kind = ts_string(&self.representation_root_for(&change.field_type));
                     let ignored_semantic_field = generated_change_field(entity)
                         .map(|field| ts_string(&field.name.text))
                         .unwrap_or_else(|| "null".to_owned());
                     let sqlite_update = format!(
-                        "UPDATE {table} SET {} = ?1 WHERE {} = ?2 RETURNING {fields}",
+                        "UPDATE {table} SET {} = ?1 WHERE {} = ?2{lifecycle_write_guard} RETURNING {fields}",
                         sql_identifier(change_name),
                         sql_identifier(predicate_name)
                     );
                     let postgres_scoped_update = format!(
-                        "UPDATE {table} SET {} = $1 WHERE {} = $2 RETURNING {fields}",
+                        "UPDATE {table} SET {} = $1 WHERE {} = $2{lifecycle_write_guard} RETURNING {fields}",
                         sql_identifier(change_name),
                         sql_identifier(predicate_name)
                     );
@@ -3696,6 +4538,9 @@ export const temporal = Object.freeze({
                         &format!("    return persistenceSync({}, () => mutate(predicateValue, replacement));", ts_string(&operation)),
                     );
                     line(&mut output, "  },");
+                }
+                if !lifecycle_write_guard.is_empty() {
+                    continue;
                 }
                 let sqlite_delete = format!(
                     "DELETE FROM {table} WHERE {} = ?1 RETURNING {fields}",
@@ -3835,6 +4680,7 @@ export const temporal = Object.freeze({
                     .expect("checked patch input resolves to a record");
                 let suffix = patch_method_suffix(update, &patch_fields);
                 let method = format!("update_required_{name}_by_{}_{suffix}", update.field.text);
+                let schedule_hook = self.delivery_patch_hook(callable, &name);
                 if !emitted_patch_updates.insert(method.clone()) {
                     continue;
                 }
@@ -3843,6 +4689,10 @@ export const temporal = Object.freeze({
                     .get(&name)
                     .expect("checked patch target entity exists");
                 let table = sql_identifier(&snake_case(&name));
+                let lifecycle_write_guard = self
+                    .lifecycle_visibility_sql(&name)
+                    .map(|predicate| format!(" AND ({predicate})"))
+                    .unwrap_or_default();
                 let returned_fields = entity
                     .fields
                     .iter()
@@ -3867,13 +4717,24 @@ export const temporal = Object.freeze({
                 );
                 let sqlite_select =
                     self.select_optional_sql(&name, entity, &update.field.text, SqlDialect::Sqlite);
+                // Patch input fields may be owning references (Todo.due_at),
+                // not direct primitive aliases. Encode against the checked
+                // destination field so Instant values use the adapter's actual
+                // representation instead of reaching SQLite as raw text.
+                let patch_encoding_kind = |field: &FieldDeclaration| {
+                    let destination = entity
+                        .fields
+                        .iter()
+                        .find(|candidate| candidate.name.text == field.name.text)
+                        .expect("checked patch field belongs to destination entity");
+                    ts_string(&self.representation_root_for(&destination.field_type))
+                };
                 let mut postgres_set = patch_fields
                     .iter()
                     .map(|field| {
                         let column = sql_identifier(&field.name.text);
                         let key = ts_string(&field.name.text);
-                        let kind =
-                            ts_string(&self.representation_root_for(&field.field_type));
+                        let kind = patch_encoding_kind(field);
                         format!(
                             "{column} = CASE WHEN ${{hasOwn(patchValue, {key})}} THEN ${{persistenceValue(hasOwn(patchValue, {key}) ? patchValue[{key}] : null, {kind}, true)}} ELSE {column} END"
                         )
@@ -3930,20 +4791,19 @@ export const temporal = Object.freeze({
                 let sqlite_set = sqlite_set.join(", ");
                 let sqlite_predicate = patch_fields.len() * 2 + derived.len() + 1;
                 let sqlite_update = format!(
-                    "UPDATE {table} SET {sqlite_set} WHERE {} = ?{sqlite_predicate} RETURNING {returned_fields}",
+                    "UPDATE {table} SET {sqlite_set} WHERE {} = ?{sqlite_predicate}{lifecycle_write_guard} RETURNING {returned_fields}",
                     sql_identifier(&update.field.text)
                 );
                 let postgres_scoped_set = sqlite_set.replace('?', "$");
                 let postgres_scoped_update = format!(
-                    "UPDATE {table} SET {postgres_scoped_set} WHERE {} = ${sqlite_predicate} RETURNING {returned_fields}",
+                    "UPDATE {table} SET {postgres_scoped_set} WHERE {} = ${sqlite_predicate}{lifecycle_write_guard} RETURNING {returned_fields}",
                     sql_identifier(&update.field.text)
                 );
                 let mut patch_arguments = patch_fields
                     .iter()
                     .flat_map(|field| {
                         let key = ts_string(&field.name.text);
-                        let kind =
-                            ts_string(&self.representation_root_for(&field.field_type));
+                        let kind = patch_encoding_kind(field);
                         [
                             format!("hasOwn(patchValue, {key})"),
                             format!("persistenceValue(hasOwn(patchValue, {key}) ? patchValue[{key}] : null, {kind}, false)"),
@@ -3964,8 +4824,7 @@ export const temporal = Object.freeze({
                     .iter()
                     .flat_map(|field| {
                         let key = ts_string(&field.name.text);
-                        let kind =
-                            ts_string(&self.representation_root_for(&field.field_type));
+                        let kind = patch_encoding_kind(field);
                         [
                             format!("hasOwn(patchValue, {key})"),
                             format!("persistenceValue(hasOwn(patchValue, {key}) ? patchValue[{key}] : null, {kind}, true)"),
@@ -4019,6 +4878,11 @@ export const temporal = Object.freeze({
                         "  async {method}(predicateValue: unknown, patchValue: Record<string, unknown>{signature_suffix}): Promise<unknown | null> {{"
                     ),
                 );
+                if schedule_hook.is_some() {
+                    line(&mut output, &format!("    if (!transactional) return client.transaction((transaction: any) => transaction.{method}(predicateValue, patchValue{call_suffix}));"));
+                    line(&mut output, "    return client.transaction(async () => {");
+                    line(&mut output, "      const changed = await (async () => {");
+                }
                 line(&mut output, "    if (postgres !== null) {");
                 line(&mut output, "      const execute = async (tx: SQL) => {");
                 line(
@@ -4137,6 +5001,12 @@ export const temporal = Object.freeze({
                         ts_string(&operation)
                     ),
                 );
+                if let Some((identity, supplied)) = schedule_hook {
+                    line(&mut output, "      })();");
+                    line(&mut output, &format!("      if (changed !== null && hasOwn(patchValue, {})) await client.advance_delivery_schedule_revision({}, String((changed as Record<string, unknown>)[{}]));", ts_string(supplied), ts_string(&name), ts_string(&snake_case(identity))));
+                    line(&mut output, "      return changed;");
+                    line(&mut output, "    });");
+                }
                 line(&mut output, "  },");
             }
         }
@@ -4174,6 +5044,10 @@ export const temporal = Object.freeze({
                     .get(&name)
                     .expect("checked update entity exists");
                 let table = sql_identifier(&snake_case(&name));
+                let lifecycle_write_guard = self
+                    .lifecycle_visibility_sql(&name)
+                    .map(|predicate| format!(" AND ({predicate})"))
+                    .unwrap_or_default();
                 let fields = entity
                     .fields
                     .iter()
@@ -4248,7 +5122,7 @@ export const temporal = Object.freeze({
                     .collect::<Vec<_>>()
                     .join(", ");
                 let postgres_scoped_update = format!(
-                    "UPDATE {table} SET {postgres_scoped_set} WHERE {} = ${} RETURNING {fields}",
+                    "UPDATE {table} SET {postgres_scoped_set} WHERE {} = ${}{lifecycle_write_guard} RETURNING {fields}",
                     sql_identifier(&update.field.text),
                     update.changes.len() + 1
                 );
@@ -4257,7 +5131,7 @@ export const temporal = Object.freeze({
                     sql_identifier(&update.field.text)
                 );
                 let sqlite_update = format!(
-                    "UPDATE {table} SET {sqlite_set} WHERE {} = ?{} RETURNING {fields}",
+                    "UPDATE {table} SET {sqlite_set} WHERE {} = ?{}{lifecycle_write_guard} RETURNING {fields}",
                     sql_identifier(&update.field.text),
                     update.changes.len() + 1
                 );
@@ -4422,6 +5296,271 @@ export const temporal = Object.freeze({
                 line(&mut output, "  },");
             }
         }
+        let mut emitted_lifecycle_transitions = BTreeSet::new();
+        for callable in self.callables.values() {
+            let mut updates = Vec::new();
+            collect_update_expressions(&callable.body, &mut updates);
+            for update in updates
+                .into_iter()
+                .filter(|update| update.transition.is_some())
+            {
+                let name = update
+                    .target
+                    .path
+                    .iter()
+                    .map(|part| part.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                let transition_name = update
+                    .transition
+                    .as_ref()
+                    .expect("filtered lifecycle transition exists")
+                    .text
+                    .as_str();
+                let method = format!(
+                    "transition_required_{name}_by_{}_{}",
+                    update.field.text, transition_name
+                );
+                if !emitted_lifecycle_transitions.insert(method.clone()) {
+                    continue;
+                }
+                let entity = self
+                    .records
+                    .get(&name)
+                    .expect("checked lifecycle transition entity exists");
+                let lifecycle = entity
+                    .dossier
+                    .as_ref()
+                    .and_then(|dossier| dossier.lifecycle.as_ref())
+                    .expect("checked lifecycle transition has an entity contract");
+                let transition = lifecycle
+                    .transitions
+                    .iter()
+                    .find(|candidate| candidate.name.text == transition_name)
+                    .expect("checked lifecycle transition exists");
+                let table = sql_identifier(&snake_case(&name));
+                let returned_fields = entity
+                    .fields
+                    .iter()
+                    .map(|field| sql_identifier(&field.name.text))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let predicate_field = entity
+                    .fields
+                    .iter()
+                    .find(|field| field.name.text == update.field.text)
+                    .expect("checked transition predicate field exists");
+                let predicate_kind =
+                    ts_string(&self.representation_root_for(&predicate_field.field_type));
+                let mut assignments = transition
+                    .set
+                    .iter()
+                    .map(|field| (&field.name, Some(&field.value)))
+                    .collect::<Vec<_>>();
+                if let Some(generated) = generated_change_field(entity) {
+                    if !assignments
+                        .iter()
+                        .any(|(name, _)| name.text == generated.name.text)
+                    {
+                        assignments.push((&generated.name, None));
+                    }
+                }
+                let mut postgres_set = Vec::new();
+                let mut sqlite_set = Vec::new();
+                let mut postgres_values = Vec::new();
+                let mut sqlite_values = Vec::new();
+                let mut changed_fields = Vec::new();
+                for (index, assignment) in assignments.iter().enumerate() {
+                    let field = entity
+                        .fields
+                        .iter()
+                        .find(|field| field.name.text == assignment.0.text)
+                        .expect("checked lifecycle assignment field exists");
+                    let kind = ts_string(&self.representation_root_for(&field.field_type));
+                    let value = if assignment.1.is_none()
+                        || matches!(
+                            assignment.1,
+                            Some(Expression::Name(name))
+                                if name.path.len() == 2
+                                    && name.path[0].text == "clock"
+                                    && name.path[1].text == "now"
+                        ) {
+                        "operationTime".to_owned()
+                    } else {
+                        self.lifecycle_value_expression(
+                            assignment.1.expect("authored lifecycle value exists"),
+                        )
+                    };
+                    let column = sql_identifier(&assignment.0.text);
+                    postgres_set.push(format!("{column} = ${}", index + 1));
+                    sqlite_set.push(format!("{column} = ?{}", index + 1));
+                    postgres_values.push(format!("persistenceValue({value}, {kind}, true)"));
+                    sqlite_values.push(format!("persistenceValue({value}, {kind}, false)"));
+                    changed_fields.push(ts_string(&assignment.0.text));
+                }
+                let postgres_predicate_index = assignments.len() + 1;
+                let sqlite_predicate_index = assignments.len() + 1;
+                let visibility = self.lifecycle_visibility_sql(&name);
+                let transition_from = self
+                    .lifecycle_predicate_sql(&name, &transition.from)
+                    .expect("checked transition guard lowers to SQL");
+                let mut guards = Vec::new();
+                if visibility.as_deref() != Some(transition_from.as_str()) {
+                    if let Some(visibility) = visibility.as_deref() {
+                        guards.push(format!("({visibility})"));
+                    }
+                }
+                guards.push(format!("({transition_from})"));
+                let guard = guards.join(" AND ");
+                let postgres_update = format!(
+                    "UPDATE {table} SET {} WHERE {} = ${postgres_predicate_index} AND {guard} RETURNING {returned_fields}",
+                    postgres_set.join(", "),
+                    sql_identifier(&update.field.text)
+                );
+                let sqlite_update = format!(
+                    "UPDATE {table} SET {} WHERE {} = ?{sqlite_predicate_index} AND {guard} RETURNING {returned_fields}",
+                    sqlite_set.join(", "),
+                    sql_identifier(&update.field.text)
+                );
+                let select_guard = if visibility.as_deref() == Some(transition_from.as_str()) {
+                    String::new()
+                } else {
+                    format!(" AND ({transition_from})")
+                };
+                let postgres_policy_select = self
+                    .select_optional_sql(&name, entity, &update.field.text, SqlDialect::Postgres)
+                    .replace(" LIMIT 2", &format!("{select_guard} LIMIT 2 FOR UPDATE"));
+                let sqlite_select = self
+                    .select_optional_sql(&name, entity, &update.field.text, SqlDialect::Sqlite)
+                    .replace(" LIMIT 2", &format!("{select_guard} LIMIT 2"));
+                let policy_effect =
+                    crate::entity_model::lifecycle_transition_policy_effect(transition_name);
+                let policy_fields = changed_fields.join(", ");
+                let ignored_semantic_field = generated_change_field(entity)
+                    .map(|field| ts_string(&field.name.text))
+                    .unwrap_or_else(|| "null".to_owned());
+                let mut postgres_arguments = postgres_values.clone();
+                postgres_arguments.push(format!(
+                    "persistenceValue(predicateValue, {predicate_kind}, true)"
+                ));
+                let mut sqlite_arguments = sqlite_values.clone();
+                sqlite_arguments.push(format!(
+                    "persistenceValue(predicateValue, {predicate_kind}, false)"
+                ));
+                let operation = format!("lifecycle.{name}.{transition_name}");
+                line(
+                    &mut output,
+                    &format!(
+                        "  async {method}(predicateValue: unknown): Promise<unknown | null> {{"
+                    ),
+                );
+                line(&mut output, "    if (operationTime === null) throw new PersistenceFault(\"lifecycle.operation_time\", \"data\", new Error(\"lifecycle transitions require an operation instant\"));");
+                line(&mut output, "    if (postgres !== null) {");
+                line(&mut output, "      const execute = async (tx: SQL) => {");
+                line(
+                    &mut output,
+                    &format!(
+                        "        const matches = await policyPostgresMutationRows(tx, {}, {}, [{}], {}, [persistenceValue(predicateValue, {predicate_kind}, true)]);",
+                        ts_string(&name),
+                        ts_string(policy_effect),
+                        policy_fields,
+                        ts_string(&postgres_policy_select),
+                    ),
+                );
+                line(&mut output, "        if (matches.length > 1) throw new PersistenceFault(\"lifecycle.cardinality\", \"cardinality\", new Error(\"identity transition matched more than one row\"));");
+                line(
+                    &mut output,
+                    "        if (matches.length === 0) return null;",
+                );
+                line(
+                    &mut output,
+                    &format!(
+                        "        if (!(await policyAllowsWrite({}, {}, matches[0] as Record<string, unknown>, [{}], policy, tx, null))) return null;",
+                        ts_string(&name),
+                        ts_string(policy_effect),
+                        policy_fields,
+                    ),
+                );
+                line(
+                    &mut output,
+                    &format!(
+                        "        const rows = await policyPostgresMutationRows(tx, {}, {}, [{}], {}, [{}]);",
+                        ts_string(&name),
+                        ts_string(policy_effect),
+                        policy_fields,
+                        ts_string(&postgres_update),
+                        postgres_arguments.join(", "),
+                    ),
+                );
+                line(&mut output, "        if (rows.length > 1) throw new PersistenceFault(\"lifecycle.cardinality\", \"cardinality\", new Error(\"identity transition changed more than one row\"));");
+                line(&mut output, "        if (rows.length === 0) return null;");
+                line(&mut output, &format!("        recordSemanticChange(matches[0], rows[0], {ignored_semantic_field});"));
+                line(&mut output, "        return rows[0];");
+                line(&mut output, "      };");
+                line(
+                    &mut output,
+                    &format!(
+                        "      return persistenceAsync({}, () => transactional ? execute(postgres) : postgres.begin(tx => execute(tx as SQL)));",
+                        ts_string(&operation)
+                    ),
+                );
+                line(&mut output, "    }");
+                line(
+                    &mut output,
+                    "    const execute = (predicateValue: unknown) => {",
+                );
+                line(
+                    &mut output,
+                    &format!(
+                        "      const matches = policySqliteMutationRows({}, {}, [{}], {}, [persistenceValue(predicateValue, {predicate_kind}, false)]);",
+                        ts_string(&name),
+                        ts_string(policy_effect),
+                        policy_fields,
+                        ts_string(&sqlite_select),
+                    ),
+                );
+                line(&mut output, "      if (matches.length > 1) throw new PersistenceFault(\"lifecycle.cardinality\", \"cardinality\", new Error(\"identity transition matched more than one row\"));");
+                line(&mut output, "      if (matches.length === 0) return null;");
+                line(
+                    &mut output,
+                    &format!(
+                        "      if (!policyAllowsWriteSqlite({}, {}, matches[0] as Record<string, unknown>, [{}], policy, sqlite!)) return null;",
+                        ts_string(&name),
+                        ts_string(policy_effect),
+                        policy_fields,
+                    ),
+                );
+                line(
+                    &mut output,
+                    &format!(
+                        "      const rows = policySqliteMutationRows({}, {}, [{}], {}, [{}]);",
+                        ts_string(&name),
+                        ts_string(policy_effect),
+                        policy_fields,
+                        ts_string(&sqlite_update),
+                        sqlite_arguments.join(", "),
+                    ),
+                );
+                line(&mut output, "      if (rows.length > 1) throw new PersistenceFault(\"lifecycle.cardinality\", \"cardinality\", new Error(\"identity transition changed more than one row\"));");
+                line(&mut output, "      if (rows.length === 0) return null;");
+                line(&mut output, &format!("      recordSemanticChange(matches[0], rows[0], {ignored_semantic_field});"));
+                line(&mut output, "      return rows[0];");
+                line(&mut output, "    };");
+                line(&mut output, "    if (transactional) return persistenceSync(\"lifecycle.transactional\", () => execute(predicateValue));");
+                line(
+                    &mut output,
+                    "    const mutate = sqlite!.transaction(execute);",
+                );
+                line(
+                    &mut output,
+                    &format!(
+                        "    return persistenceSync({}, () => mutate(predicateValue));",
+                        ts_string(&operation)
+                    ),
+                );
+                line(&mut output, "  },");
+            }
+        }
         for (child_name, child) in self.entities() {
             for relationship in child
                 .fields
@@ -4477,10 +5616,22 @@ export const temporal = Object.freeze({
                                 "    const related = await this.query_optional_{parent_name}_by_{target_field}(foreignValue);"
                             ),
                         );
-                        line(
-                            &mut output,
-                            "    if (related === null) throw new PersistenceFault(\"query.relationship\", \"cardinality\", new Error(\"owning reference target is missing\"));",
-                        );
+                        if self.lifecycle_visibility_sql(parent_name).is_some() {
+                            let hidden_result = if cardinality == "required" {
+                                "    if (related === null) return null;".to_owned()
+                            } else {
+                                format!(
+                                    "    if (related === null) return {{ parent, {}: null }};",
+                                    relationship_name
+                                )
+                            };
+                            line(&mut output, &hidden_result);
+                        } else {
+                            line(
+                                &mut output,
+                                "    if (related === null) throw new PersistenceFault(\"query.relationship\", \"cardinality\", new Error(\"owning reference target is missing\"));",
+                            );
+                        }
                         line(
                             &mut output,
                             &format!("    return {{ parent, {}: related }};", relationship_name),
@@ -4539,10 +5690,14 @@ export const temporal = Object.freeze({
                                         ts_string(&relationship.name.text)
                                     ),
                                 );
-                                line(
-                                    &mut output,
-                                    "    if (owner === null) throw new PersistenceFault(\"query.relationship\", \"cardinality\", new Error(\"nested owning reference target is missing\"));",
-                                );
+                                if self.lifecycle_visibility_sql(parent_name).is_some() {
+                                    line(&mut output, "    if (owner === null) return null;");
+                                } else {
+                                    line(
+                                        &mut output,
+                                        "    if (owner === null) throw new PersistenceFault(\"query.relationship\", \"cardinality\", new Error(\"nested owning reference target is missing\"));",
+                                    );
+                                }
                                 line(
                                     &mut output,
                                     &format!(
@@ -4560,6 +5715,116 @@ export const temporal = Object.freeze({
                                 );
                                 line(&mut output, "  },");
                             }
+                        }
+                    }
+                }
+            }
+        }
+        for (child_name, child) in self.entities() {
+            for relationship in child
+                .fields
+                .iter()
+                .filter(|field| field.reference.is_some())
+            {
+                let reference = relationship
+                    .reference
+                    .as_ref()
+                    .expect("filtered owning reference exists");
+                let relationship_name = owning_relationship_name(relationship);
+                let parent_name = &reference.target.path[0].text;
+                let target_field = &reference.target.path[1].text;
+                let Some(parent) = self.records.get(parent_name) else {
+                    continue;
+                };
+                let child_object = child
+                    .fields
+                    .iter()
+                    .map(|field| {
+                        format!(
+                            "{}: row[{}]",
+                            field.name.text,
+                            ts_string(&format!("child__{}", field.name.text))
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let parent_object = parent
+                    .fields
+                    .iter()
+                    .map(|field| {
+                        format!(
+                            "{}: row[{}]",
+                            field.name.text,
+                            ts_string(&format!("owner__{}", field.name.text))
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                for predicate in &child.fields {
+                    let predicate_kind =
+                        ts_string(&self.representation_root_for(&predicate.field_type));
+                    for order in child.fields.iter().filter(|field| {
+                        has_modifier(field, PersistenceModifier::Identity)
+                            || has_modifier(field, PersistenceModifier::Unique)
+                    }) {
+                        for direction in ["asc", "desc"] {
+                            let method = format!(
+                                "query_many_{child_name}_with_{relationship_name}_required_by_{}_order_by_{}_{direction}_paginated",
+                                predicate.name.text,
+                                order.name.text
+                            );
+                            let postgres_sql = self.select_many_with_owning_sql(
+                                child_name,
+                                child,
+                                &predicate.name.text,
+                                &order.name.text,
+                                &direction.to_ascii_uppercase(),
+                                parent_name,
+                                parent,
+                                &relationship.name.text,
+                                target_field,
+                                SqlDialect::Postgres,
+                            );
+                            let sqlite_sql = self.select_many_with_owning_sql(
+                                child_name,
+                                child,
+                                &predicate.name.text,
+                                &order.name.text,
+                                &direction.to_ascii_uppercase(),
+                                parent_name,
+                                parent,
+                                &relationship.name.text,
+                                target_field,
+                                SqlDialect::Sqlite,
+                            );
+                            let operation =
+                                format!("query_many_include.{child_name}.{relationship_name}");
+                            line(
+                                &mut output,
+                                &format!("  async {method}(value: unknown, limit: unknown, offset: unknown): Promise<unknown[]> {{"),
+                            );
+                            line(&mut output, "    const dialect = postgres !== null ? \"postgres\" : \"sqlite\";");
+                            line(&mut output, &format!("    const childScope = policySqlScope({}, \"read\", policy, dialect, 3);", ts_string(child_name)));
+                            line(&mut output, &format!("    const ownerScope = policySqlScope({}, \"read\", policy, dialect, 3 + childScope.values.length);", ts_string(parent_name)));
+                            line(&mut output, "    if (!childScope.permitted || !ownerScope.permitted) return [];");
+                            line(&mut output, &format!("    const postgresSql = {}.replace(\"__JADPO_CHILD_POLICY__\", childScope.clause).replace(\"__JADPO_OWNER_POLICY__\", ownerScope.clause);", ts_string(&postgres_sql)));
+                            line(&mut output, &format!("    const sqliteSql = {}.replace(\"__JADPO_CHILD_POLICY__\", childScope.clause).replace(\"__JADPO_OWNER_POLICY__\", ownerScope.clause);", ts_string(&sqlite_sql)));
+                            line(&mut output, &format!("    const postgresValues = [persistenceValue(value, {predicate_kind}, true), limit, offset, ...childScope.values, ...ownerScope.values];"));
+                            line(&mut output, &format!("    const sqliteValues = [persistenceValue(value, {predicate_kind}, false), limit, offset, ...childScope.values, ...ownerScope.values];"));
+                            line(&mut output, "    const rows = postgres !== null");
+                            line(&mut output, &format!("      ? await persistenceAsync({}, () => postgres!.unsafe(postgresSql, postgresValues))", ts_string(&operation)));
+                            line(&mut output, &format!("      : persistenceSync({}, () => {{ const statement = sqlite!.prepare(sqliteSql); try {{ return statement.all(...sqliteValues); }} finally {{ statement.finalize(); }} }});", ts_string(&operation)));
+                            line(
+                                &mut output,
+                                "    return (rows as Array<Record<string, unknown>>).map(row => ({",
+                            );
+                            line(&mut output, &format!("      parent: {{ {child_object} }},"));
+                            line(
+                                &mut output,
+                                &format!("      {relationship_name}: {{ {parent_object} }},"),
+                            );
+                            line(&mut output, "    }));");
+                            line(&mut output, "  },");
                         }
                     }
                 }
@@ -4851,10 +6116,34 @@ export const temporal = Object.freeze({
         line(&mut output, "return client;");
         line(&mut output, "}");
         line(&mut output, "");
+        line(&mut output, "await initializePersistenceOnce();");
         line(
             &mut output,
-            "export const persistence = createPersistenceClient(postgres, sqlite);",
+            "let activePersistenceClient = createPersistenceClient(postgres, sqlite);",
         );
+        output.push_str(include_str!("runtime/readiness_gate.ts"));
+        line(
+            &mut output,
+            "export function isPersistenceReady(): boolean { return persistenceReady; }",
+        );
+        line(&mut output, "export function isPersistenceInitializationFatal(): boolean { return persistenceInitializationFatal; }");
+        line(&mut output, "async function probePersistence(setCancel: (cancel: () => void) => void): Promise<void> {");
+        line(&mut output, "  if (postgres !== null) { const query = postgres`SELECT 1`.execute(); setCancel(() => { query.cancel(); }); await query; return; }");
+        line(&mut output, "  if (sqlite !== null) { persistenceSync(\"health.database\", () => sqlite!.prepare(\"PRAGMA schema_version\").get()); return; }");
+        line(&mut output, "  throw new Error(\"database unavailable\");");
+        line(&mut output, "}");
+        line(&mut output, "const readinessGate = createReadinessGate({");
+        line(&mut output, "  ready: () => persistenceReady, fatal: () => persistenceInitializationFatal, needsProbe: () => persistenceProbeNeeded, invalidation: () => persistenceInvalidationGeneration,");
+        line(&mut output, "  check: async (recovering, setCancel) => recovering ? initializePersistenceOnce(false) : (await probePersistence(setCancel), true),");
+        line(&mut output, "  prepare: (recovering) => recovering ? createPersistenceClient(postgres, sqlite) : null,");
+        line(&mut output, "  publish: (candidate) => { if (candidate !== null) activePersistenceClient = candidate; persistenceReady = true; persistenceProbeNeeded = false; persistenceDependencyUnavailableReported = false; persistenceStartupFaultReported = false; },");
+        line(
+            &mut output,
+            "  unavailable: () => { persistenceReady = false; },",
+        );
+        line(&mut output, "});");
+        line(&mut output, "export function refreshPersistenceReadiness(): Promise<boolean> { return readinessGate.refresh(); }");
+        line(&mut output, "export const persistence = new Proxy(activePersistenceClient, { get(_target, property) { return Reflect.get(activePersistenceClient, property, activePersistenceClient); } });");
         if !self.tests.is_empty() {
             line(&mut output, "");
             line(
@@ -4990,7 +6279,7 @@ export const temporal = Object.freeze({
 
     fn index_statements(&self, name: &str, entity: &RecordDeclaration) -> Vec<String> {
         let table = sql_identifier(&snake_case(name));
-        entity
+        let mut statements = entity
             .fields
             .iter()
             .filter(|field| {
@@ -5005,7 +6294,56 @@ export const temporal = Object.freeze({
                 let column = sql_identifier(&field.name.text);
                 format!("CREATE INDEX IF NOT EXISTS {index} ON {table} ({column});")
             })
-            .collect()
+            .collect::<Vec<_>>();
+        let mut queries = Vec::new();
+        for callable in self.callables.values() {
+            collect_query_expressions(&callable.body, &mut queries);
+        }
+        let mut seen = BTreeSet::new();
+        for query in queries {
+            let target = query
+                .target
+                .path
+                .iter()
+                .map(|part| part.text.as_str())
+                .collect::<Vec<_>>()
+                .join(".");
+            let Some(page) = query.page.as_ref().filter(|_| target == name) else {
+                continue;
+            };
+            let columns = query_page_index_columns(page);
+            let predicate_fields = query_page_index_predicate_fields(page);
+            if columns.is_empty() || !seen.insert((columns.clone(), predicate_fields.clone())) {
+                continue;
+            }
+            let index = sql_identifier(&query_page_index_name(name, &columns, &predicate_fields));
+            let columns = columns
+                .iter()
+                .map(|field| {
+                    let direction = page
+                        .order
+                        .iter()
+                        .find(|order| order.field.text == *field)
+                        .map(|order| match order.direction {
+                            jadpo_syntax::QueryOrderDirection::Ascending => "ASC",
+                            jadpo_syntax::QueryOrderDirection::Descending => "DESC",
+                        })
+                        .unwrap_or("ASC");
+                    format!("{} {direction}", sql_identifier(field))
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            let predicate = query_page_index_predicates(page);
+            let predicate = if predicate.is_empty() {
+                String::new()
+            } else {
+                format!(" WHERE {}", predicate.join(" AND "))
+            };
+            statements.push(format!(
+                "CREATE INDEX IF NOT EXISTS {index} ON {table} ({columns}){predicate};"
+            ));
+        }
+        statements
     }
 
     fn insert_sql(&self, name: &str, entity: &RecordDeclaration, dialect: SqlDialect) -> String {
@@ -5029,6 +6367,481 @@ export const temporal = Object.freeze({
         )
     }
 
+    fn lifecycle_visibility_sql(&self, entity_name: &str) -> Option<String> {
+        let visible = self
+            .records
+            .get(entity_name)?
+            .dossier
+            .as_ref()?
+            .lifecycle
+            .as_ref()?
+            .visible
+            .as_ref()?;
+        self.lifecycle_predicate_sql(entity_name, visible)
+    }
+
+    fn lifecycle_purge_config_fields(&self) -> Vec<String> {
+        self.entities()
+            .filter_map(|(_, record)| {
+                let purge = record
+                    .dossier
+                    .as_ref()?
+                    .lifecycle
+                    .as_ref()?
+                    .purge
+                    .as_ref()?;
+                let Expression::Name(binding) = &purge.after else {
+                    return None;
+                };
+                (binding.path.len() == 2 && binding.path[0].text == "config")
+                    .then(|| binding.path[1].text.clone())
+            })
+            .collect()
+    }
+
+    fn lifecycle_initial_values(&self, entity_name: &str) -> Vec<(String, String)> {
+        let Some(initial) = self
+            .records
+            .get(entity_name)
+            .and_then(|record| record.dossier.as_ref())
+            .and_then(|dossier| dossier.lifecycle.as_ref())
+            .and_then(|lifecycle| lifecycle.initial.as_ref())
+        else {
+            return Vec::new();
+        };
+        initial
+            .iter()
+            .map(|field| {
+                (
+                    field.name.text.clone(),
+                    self.lifecycle_initial_expression(&field.value)
+                        .expect("checked lifecycle initial expressions have a persistence value"),
+                )
+            })
+            .collect()
+    }
+
+    fn lifecycle_initial_expression(&self, expression: &Expression) -> Option<String> {
+        match expression {
+            Expression::Literal(literal) => Some(if literal.kind == LiteralKind::None {
+                "null".to_owned()
+            } else {
+                literal.text.clone()
+            }),
+            Expression::Grouped(grouped) => self.lifecycle_initial_expression(&grouped.value),
+            Expression::Name(name)
+                if name.path.len() == 2
+                    && name.path[0].text == "clock"
+                    && name.path[1].text == "now" =>
+            {
+                Some("(operationTime ?? new Date().toISOString())".to_owned())
+            }
+            Expression::Name(name)
+                if name.path.len() == 2 && self.enums.contains_key(&name.path[0].text) =>
+            {
+                Some(ts_string(&name.path[1].text))
+            }
+            Expression::Invocation(invocation)
+                if invocation.arguments.len() == 1 && invocation.named_arguments.is_empty() =>
+            {
+                self.lifecycle_initial_expression(&invocation.arguments[0])
+            }
+            _ => None,
+        }
+    }
+
+    fn has_lifecycle_purges(&self) -> bool {
+        self.entities().any(|(_, record)| {
+            record
+                .dossier
+                .as_ref()
+                .and_then(|dossier| dossier.lifecycle.as_ref())
+                .is_some_and(|lifecycle| lifecycle.purge.is_some())
+        })
+    }
+
+    fn has_lifecycles(&self) -> bool {
+        self.entities().any(|(_, record)| {
+            record
+                .dossier
+                .as_ref()
+                .and_then(|dossier| dossier.lifecycle.as_ref())
+                .is_some()
+        })
+    }
+
+    fn lifecycle_manifest(&self, project_path: &Path) -> String {
+        let normalized = |source: &str| {
+            crate::artifacts::normalized_source(
+                crate::artifacts::project_root(project_path),
+                source,
+            )
+        };
+        let entities = self
+            .entities()
+            .filter_map(|(name, record)| {
+                let lifecycle = record.dossier.as_ref()?.lifecycle.as_ref()?;
+                let source = self.project.syntax.sources.iter().find(|source| {
+                    source.file.declarations.iter().any(|declaration| {
+                        matches!(declaration, Declaration::Record(candidate) if candidate.name.text == name.as_str())
+                    })
+                });
+                let source_name = source.map(|source| source.source_name.as_str()).unwrap_or("");
+                let node_facts = |prefix: String| {
+                    self.project
+                        .semantics
+                        .nodes
+                        .iter()
+                        .filter(|node| {
+                            node.source == source_name
+                                && (node.name == prefix
+                                    || node.name.starts_with(&format!("{prefix}.")))
+                        })
+                        .map(|node| {
+                            serde_json::json!({
+                                "id": node.id.0,
+                                "kind": node.kind.as_str(),
+                                "name": node.name,
+                                "source": normalized(&node.source),
+                                "start": node.range.start,
+                                "end": node.range.end,
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                };
+                let transitions = lifecycle
+                    .transitions
+                    .iter()
+                    .map(|transition| {
+                        serde_json::json!({
+                            "name": transition.name.text,
+                            "source": normalized(source_name),
+                            "start": transition.range.start,
+                            "end": transition.range.end,
+                            "assignments": transition.set.iter().map(|field| field.name.text.as_str()).collect::<Vec<_>>(),
+                            "logical_policy_effect": crate::entity_model::lifecycle_transition_policy_effect(&transition.name.text),
+                            "sql_verb": "UPDATE",
+                            "guarded_sql": ["identity", "lifecycle_visibility", "transition_from"],
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                let generated_fields = record
+                    .fields
+                    .iter()
+                    .filter(|field| field.generated.is_some())
+                    .map(|field| {
+                        let node_name = format!("{name}.{}.generated", field.name.text);
+                        let node = self.project.semantics.nodes.iter().find(|node| {
+                            node.source == source_name && node.name == node_name
+                        });
+                        serde_json::json!({
+                            "name": field.name.text,
+                            "node_id": node.map(|node| node.id.0),
+                            "source": normalized(source_name),
+                            "start": field.name.range.start,
+                            "end": field.name.range.end,
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                Some(serde_json::json!({
+                    "entity": name,
+                    "source": normalized(source_name),
+                    "lifecycle_nodes": node_facts(format!("{name}.lifecycle")),
+                    "policy_nodes": node_facts(format!("{name}.policy")),
+                    "owned_fields": lifecycle.initial.as_ref().map(|fields| fields.iter().map(|field| field.name.text.as_str()).collect::<Vec<_>>()).unwrap_or_default(),
+                    "generated_fields": generated_fields,
+                    "transitions": transitions,
+                    "purge": lifecycle.purge.as_ref().map(|purge| serde_json::json!({
+                        "source": normalized(source_name),
+                        "start": purge.range.start,
+                        "end": purge.range.end,
+                        "timestamp_field": purge.from.text,
+                    })),
+                }))
+            })
+            .collect::<Vec<_>>();
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schema_version": 1,
+            "kind": "entity_lifecycle_contracts",
+            "entities": entities,
+        }))
+        .expect("lifecycle contract manifest should be serializable")
+            + "\n"
+    }
+
+    fn lifecycle_purge_state_sql(&self, entity_name: &str) -> Option<String> {
+        let lifecycle = self
+            .records
+            .get(entity_name)?
+            .dossier
+            .as_ref()?
+            .lifecycle
+            .as_ref()?;
+        let purge = lifecycle.purge.as_ref()?;
+        let mut transition_states = Vec::new();
+        for transition in &lifecycle.transitions {
+            if !transition
+                .set
+                .iter()
+                .any(|field| field.name.text == purge.from.text)
+            {
+                continue;
+            }
+            let mut predicates = Vec::new();
+            for field in transition
+                .set
+                .iter()
+                .filter(|field| field.name.text != purge.from.text)
+            {
+                let column = sql_identifier(&field.name.text);
+                let value = match &field.value {
+                    Expression::Literal(literal) if literal.kind == LiteralKind::None => {
+                        predicates.push(format!("{column} IS NULL"));
+                        continue;
+                    }
+                    Expression::Name(name)
+                        if name.path.len() == 2
+                            && name.path[0].text == "clock"
+                            && name.path[1].text == "now" =>
+                    {
+                        sql_identifier(&purge.from.text)
+                    }
+                    value => self.lifecycle_value_sql(entity_name, value)?,
+                };
+                predicates.push(format!("{column} = {value}"));
+            }
+            transition_states.push(if predicates.is_empty() {
+                "1 = 1".to_owned()
+            } else {
+                predicates.join(" AND ")
+            });
+        }
+        (!transition_states.is_empty()).then(|| {
+            transition_states
+                .into_iter()
+                .map(|state| format!("({state})"))
+                .collect::<Vec<_>>()
+                .join(" OR ")
+        })
+    }
+
+    fn lifecycle_maintenance_manifest(&self) -> String {
+        let capabilities = self
+            .entities()
+            .filter_map(|(name, record)| {
+                let purge = record
+                    .dossier
+                    .as_ref()?
+                    .lifecycle
+                    .as_ref()?
+                    .purge
+                    .as_ref()?;
+                let retention = match &purge.after {
+                    Expression::Name(binding)
+                        if binding.path.len() == 2 && binding.path[0].text == "config" =>
+                    {
+                        format!("config.{}", binding.path[1].text)
+                    }
+                    _ => String::new(),
+                };
+                let identity = identity_field_name(record).unwrap_or_default();
+                Some(serde_json::json!({
+                    "entity": name,
+                    "clause": format!("{name}.lifecycle.purge"),
+                    "effect": format!("retention_purge({name})"),
+                    "capability": "compiler_maintenance_plane",
+                    "source_callable": false,
+                    "retention_binding": retention,
+                    "timestamp_field": purge.from.text,
+                    "identity_field": identity,
+                    "eligibility": [
+                        "timestamp_present",
+                        "timestamp_before_attempt_minus_positive_retention",
+                        "ordinary_visibility_false",
+                        "declared_soft_delete_transition_state"
+                    ],
+                    "order_by": [purge.from.text, identity],
+                    "batch_limit": 500,
+                    "transaction": "select_and_final_predicate_recheck_and_delete",
+                    "audit_event": "retention.purge.batch"
+                }))
+            })
+            .collect::<Vec<_>>();
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schema_version": 1,
+            "kind": "compiler_maintenance_authority",
+            "default": "deny",
+            "ordinary_policy_effects": "separate",
+            "capabilities": capabilities
+        }))
+        .expect("maintenance authority manifest should be serializable")
+            + "\n"
+    }
+
+    fn lifecycle_owned_field_names(&self, entity_name: &str) -> BTreeSet<String> {
+        let Some(lifecycle) = self
+            .records
+            .get(entity_name)
+            .and_then(|record| record.dossier.as_ref())
+            .and_then(|dossier| dossier.lifecycle.as_ref())
+        else {
+            return BTreeSet::new();
+        };
+        lifecycle
+            .initial
+            .iter()
+            .flat_map(|initial| initial.iter().map(|field| field.name.text.clone()))
+            .chain(
+                lifecycle.transitions.iter().flat_map(|transition| {
+                    transition.set.iter().map(|field| field.name.text.clone())
+                }),
+            )
+            .chain(lifecycle.purge.iter().map(|purge| purge.from.text.clone()))
+            .collect()
+    }
+
+    fn lifecycle_value_expression(&self, expression: &Expression) -> String {
+        match expression {
+            Expression::Grouped(grouped) => self.lifecycle_value_expression(&grouped.value),
+            Expression::Invocation(invocation)
+                if self
+                    .field_validator_name(
+                        &invocation
+                            .callee
+                            .path
+                            .iter()
+                            .map(|part| part.text.as_str())
+                            .collect::<Vec<_>>()
+                            .join("."),
+                    )
+                    .is_some() =>
+            {
+                invocation
+                    .arguments
+                    .first()
+                    .map(|value| self.lifecycle_value_expression(value))
+                    .unwrap_or_else(|| "undefined".to_owned())
+            }
+            _ => self.expression(expression),
+        }
+    }
+
+    fn lifecycle_predicate_sql(
+        &self,
+        entity_name: &str,
+        expression: &Expression,
+    ) -> Option<String> {
+        match expression {
+            Expression::Grouped(grouped) => {
+                self.lifecycle_predicate_sql(entity_name, &grouped.value)
+            }
+            Expression::Binary(binary) if binary.operator == jadpo_syntax::BinaryOperator::And => {
+                Some(format!(
+                    "({}) AND ({})",
+                    self.lifecycle_predicate_sql(entity_name, &binary.left)?,
+                    self.lifecycle_predicate_sql(entity_name, &binary.right)?
+                ))
+            }
+            Expression::Binary(binary)
+                if binary.operator == jadpo_syntax::BinaryOperator::Equal =>
+            {
+                let left_none = matches!(
+                    binary.left.as_ref(),
+                    Expression::Literal(literal) if literal.kind == LiteralKind::None
+                );
+                let right_none = matches!(
+                    binary.right.as_ref(),
+                    Expression::Literal(literal) if literal.kind == LiteralKind::None
+                );
+                if left_none || right_none {
+                    let field = if left_none {
+                        self.lifecycle_field_column(entity_name, &binary.right)?
+                    } else {
+                        self.lifecycle_field_column(entity_name, &binary.left)?
+                    };
+                    return Some(format!("{field} IS NULL"));
+                }
+                Some(format!(
+                    "{} = {}",
+                    self.lifecycle_value_sql(entity_name, &binary.left)?,
+                    self.lifecycle_value_sql(entity_name, &binary.right)?
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    fn lifecycle_field_column(&self, entity_name: &str, expression: &Expression) -> Option<String> {
+        let Expression::Name(name) = expression else {
+            return None;
+        };
+        if name.path.len() != 1
+            || !self
+                .records
+                .get(entity_name)?
+                .fields
+                .iter()
+                .any(|field| field.name.text == name.path[0].text)
+        {
+            return None;
+        }
+        Some(sql_identifier(&name.path[0].text))
+    }
+
+    fn lifecycle_value_sql(&self, entity_name: &str, expression: &Expression) -> Option<String> {
+        if let Some(column) = self.lifecycle_field_column(entity_name, expression) {
+            return Some(column);
+        }
+        match expression {
+            Expression::Grouped(grouped) => self.lifecycle_value_sql(entity_name, &grouped.value),
+            Expression::Invocation(invocation)
+                if self
+                    .field_validator_name(
+                        &invocation
+                            .callee
+                            .path
+                            .iter()
+                            .map(|part| part.text.as_str())
+                            .collect::<Vec<_>>()
+                            .join("."),
+                    )
+                    .is_some() =>
+            {
+                invocation
+                    .arguments
+                    .first()
+                    .and_then(|value| self.lifecycle_value_sql(entity_name, value))
+            }
+            Expression::Literal(literal) => match literal.kind {
+                LiteralKind::None => None,
+                LiteralKind::Boolean => Some(match literal.text.as_str() {
+                    "true" => "TRUE".to_owned(),
+                    "false" => "FALSE".to_owned(),
+                    _ => return None,
+                }),
+                LiteralKind::Integer | LiteralKind::Decimal => Some(literal.text.clone()),
+                LiteralKind::String => {
+                    let decoded = decode_string_literal(&literal.text)?;
+                    Some(sql_string_literal(&decoded))
+                }
+            },
+            Expression::Name(name) if name.path.len() == 2 => {
+                let enum_name = &name.path[0].text;
+                let variant_name = &name.path[1].text;
+                let declaration = self.enums.get(enum_name)?;
+                if enum_is_tagged(declaration)
+                    || !declaration.variants.iter().any(|variant| {
+                        variant.name.text == *variant_name && variant.fields.is_empty()
+                    })
+                {
+                    return None;
+                }
+                Some(sql_string_literal(variant_name))
+            }
+            _ => None,
+        }
+    }
+
     fn select_optional_sql(
         &self,
         name: &str,
@@ -5047,8 +6860,12 @@ export const temporal = Object.freeze({
             SqlDialect::Postgres => "$1",
             SqlDialect::Sqlite => "?1",
         };
+        let visibility = self
+            .lifecycle_visibility_sql(name)
+            .map(|predicate| format!(" AND ({predicate})"))
+            .unwrap_or_default();
         format!(
-            "SELECT {fields} FROM {table} WHERE {} = {placeholder} LIMIT 2",
+            "SELECT {fields} FROM {table} WHERE {} = {placeholder}{visibility} LIMIT 2",
             sql_identifier(predicate_field)
         )
     }
@@ -5073,8 +6890,12 @@ export const temporal = Object.freeze({
             SqlDialect::Postgres => "$1",
             SqlDialect::Sqlite => "?1",
         };
+        let visibility = self
+            .lifecycle_visibility_sql(name)
+            .map(|predicate| format!(" AND ({predicate})"))
+            .unwrap_or_default();
         format!(
-            "SELECT {fields} FROM {table} WHERE {} = {placeholder} ORDER BY {} {direction}",
+            "SELECT {fields} FROM {table} WHERE {} = {placeholder}{visibility} ORDER BY {} {direction}",
             sql_identifier(predicate_field),
             sql_identifier(order_field)
         )
@@ -5100,9 +6921,84 @@ export const temporal = Object.freeze({
             SqlDialect::Postgres => ("$1", "$2", "$3"),
             SqlDialect::Sqlite => ("?1", "?2", "?3"),
         };
+        let visibility = self
+            .lifecycle_visibility_sql(name)
+            .map(|predicate| format!(" AND ({predicate})"))
+            .unwrap_or_default();
         format!(
-            "SELECT {fields} FROM {table} WHERE {} = {predicate} ORDER BY {} {direction} LIMIT {limit} OFFSET {offset}",
+            "SELECT {fields} FROM {table} WHERE {} = {predicate}{visibility} ORDER BY {} {direction} LIMIT {limit} OFFSET {offset}",
             sql_identifier(predicate_field),
+            sql_identifier(order_field)
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn select_many_with_owning_sql(
+        &self,
+        child_name: &str,
+        child: &RecordDeclaration,
+        predicate_field: &str,
+        order_field: &str,
+        direction: &str,
+        parent_name: &str,
+        parent: &RecordDeclaration,
+        reference_field: &str,
+        target_field: &str,
+        dialect: SqlDialect,
+    ) -> String {
+        let child_table = sql_identifier(&snake_case(child_name));
+        let parent_table = sql_identifier(&snake_case(parent_name));
+        let child_fields = child
+            .fields
+            .iter()
+            .map(|field| sql_identifier(&field.name.text))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let selected_child = child
+            .fields
+            .iter()
+            .map(|field| {
+                format!(
+                    "\"child_page\".{} AS {}",
+                    sql_identifier(&field.name.text),
+                    sql_identifier(&format!("child__{}", field.name.text))
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let selected_parent = parent
+            .fields
+            .iter()
+            .map(|field| {
+                format!(
+                    "\"owner_page\".{} AS {}",
+                    sql_identifier(&field.name.text),
+                    sql_identifier(&format!("owner__{}", field.name.text))
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let (predicate, limit, offset) = match dialect {
+            SqlDialect::Postgres => ("$1", "$2", "$3"),
+            SqlDialect::Sqlite => ("?1", "?2", "?3"),
+        };
+        let child_visibility = self
+            .lifecycle_visibility_sql(child_name)
+            .map(|predicate| format!(" AND ({predicate})"))
+            .unwrap_or_default();
+        let parent_visibility = self
+            .lifecycle_visibility_sql(parent_name)
+            .map(|predicate| format!(" AND ({predicate})"))
+            .unwrap_or_default();
+        format!(
+            "WITH \"child_page\" AS (SELECT {child_fields} FROM {child_table} WHERE {} = {predicate}{child_visibility} AND (__JADPO_CHILD_POLICY__) AND EXISTS (SELECT 1 FROM {parent_table} WHERE {}.{} = {child_table}.{}{parent_visibility} AND (__JADPO_OWNER_POLICY__)) ORDER BY {} {direction} LIMIT {limit} OFFSET {offset}) SELECT {selected_child}, {selected_parent} FROM \"child_page\" INNER JOIN {parent_table} AS \"owner_page\" ON \"child_page\".{} = \"owner_page\".{} ORDER BY \"child_page\".{} {direction}",
+            sql_identifier(predicate_field),
+            parent_table,
+            sql_identifier(target_field),
+            sql_identifier(reference_field),
+            sql_identifier(order_field),
+            sql_identifier(reference_field),
+            sql_identifier(target_field),
             sql_identifier(order_field)
         )
     }
@@ -5165,8 +7061,16 @@ export const temporal = Object.freeze({
             SqlDialect::Postgres => ("$1", "$2", "$3", "$4", "$5"),
             SqlDialect::Sqlite => ("?1", "?2", "?3", "?4", "?5"),
         };
+        let parent_visibility = self
+            .lifecycle_visibility_sql(parent_name)
+            .map(|predicate| format!(" AND ({predicate})"))
+            .unwrap_or_default();
+        let child_visibility = self
+            .lifecycle_visibility_sql(child_name)
+            .map(|predicate| format!(" AND ({predicate})"))
+            .unwrap_or_default();
         format!(
-            "WITH \"parent_page\" AS (SELECT {parent_fields} FROM {parent_table} WHERE {} = {predicate} ORDER BY {} {parent_direction} LIMIT {parent_limit} OFFSET {parent_offset}), \"child_page\" AS (SELECT {child_fields}, ROW_NUMBER() OVER (PARTITION BY {} ORDER BY {} {child_direction}) AS \"__row_number\" FROM {child_table} WHERE {} IN (SELECT {} FROM \"parent_page\")) SELECT {selected_parent}, {selected_child} FROM \"parent_page\" LEFT JOIN \"child_page\" ON \"child_page\".{} = \"parent_page\".{} AND \"child_page\".\"__row_number\" > {child_offset} AND \"child_page\".\"__row_number\" <= ({child_offset} + {child_limit}) ORDER BY \"parent_page\".{} {parent_direction}, \"child_page\".{} {child_direction}",
+            "WITH \"parent_page\" AS (SELECT {parent_fields} FROM {parent_table} WHERE {} = {predicate}{parent_visibility} ORDER BY {} {parent_direction} LIMIT {parent_limit} OFFSET {parent_offset}), \"child_page\" AS (SELECT {child_fields}, ROW_NUMBER() OVER (PARTITION BY {} ORDER BY {} {child_direction}) AS \"__row_number\" FROM {child_table} WHERE {} IN (SELECT {} FROM \"parent_page\"){child_visibility}) SELECT {selected_parent}, {selected_child} FROM \"parent_page\" LEFT JOIN \"child_page\" ON \"child_page\".{} = \"parent_page\".{} AND \"child_page\".\"__row_number\" > {child_offset} AND \"child_page\".\"__row_number\" <= ({child_offset} + {child_limit}) ORDER BY \"parent_page\".{} {parent_direction}, \"child_page\".{} {child_direction}",
             sql_identifier(predicate_field),
             sql_identifier(parent_order_field),
             sql_identifier(via_field),
@@ -5263,7 +7167,77 @@ export const temporal = Object.freeze({
         line(output, "};");
         line(output, "");
         line(output, "class ValidationError extends Error {}");
+        line(output, "class RequestSyntaxError extends Error {}");
         line(output, "");
+        if self.has_route_headers() {
+            line(
+                output,
+                "const rawHeaderCounts = new WeakMap<Request, ReadonlyMap<string, number>>();",
+            );
+            line(
+                output,
+                "function declaredHeaderValue(request: Request, name: string): string | null {",
+            );
+            line(output, "  const counts = rawHeaderCounts.get(request);");
+            line(output, "  if (counts === undefined) throw new RequestSyntaxError(\"raw header metadata is unavailable\");");
+            line(output, "  if ((counts.get(name.toLowerCase()) ?? 0) > 1) throw new RequestSyntaxError(\"duplicate declared header\");");
+            line(output, "  return request.headers.get(name);");
+            line(output, "}");
+            line(output, "");
+            line(
+                output,
+                "async function requestFromNode(incoming: IncomingMessage): Promise<Request> {",
+            );
+            line(output, "  const headers = new Headers();");
+            line(output, "  const counts = new Map<string, number>();");
+            line(
+                output,
+                "  for (let index = 0; index < incoming.rawHeaders.length; index += 2) {",
+            );
+            line(output, "    const name = incoming.rawHeaders[index]; const value = incoming.rawHeaders[index + 1] ?? \"\";");
+            line(output, "    headers.append(name, value); const folded = name.toLowerCase(); counts.set(folded, (counts.get(folded) ?? 0) + 1);");
+            line(output, "  }");
+            line(output, "  const method = incoming.method ?? \"GET\";");
+            line(output, "  const body = method === \"GET\" || method === \"HEAD\" ? undefined : Readable.toWeb(incoming) as ReadableStream<Uint8Array>;");
+            line(output, "  const request = new Request(`http://localhost${incoming.url ?? \"/\"}`, { method, headers, body });");
+            line(
+                output,
+                "  rawHeaderCounts.set(request, counts); return request;",
+            );
+            line(output, "}");
+            line(output, "");
+            line(output, "async function writeNodeResponse(outgoing: ServerResponse, response: Response): Promise<void> {");
+            line(output, "  outgoing.statusCode = response.status;");
+            line(
+                output,
+                "  for (const [name, value] of response.headers) outgoing.setHeader(name, value);",
+            );
+            line(output, "  const setCookies = (response.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.() ?? [];");
+            line(
+                output,
+                "  if (setCookies.length > 0) outgoing.setHeader(\"set-cookie\", setCookies);",
+            );
+            line(
+                output,
+                "  outgoing.end(Buffer.from(await response.arrayBuffer()));",
+            );
+            line(output, "}");
+            line(output, "");
+            line(output, "export function createApplicationServer() {");
+            line(
+                output,
+                "  return createServer(async (incoming, outgoing) => {",
+            );
+            line(output, "    try { await writeNodeResponse(outgoing, await handleRequest(await requestFromNode(incoming))); }");
+            line(output, "    catch { outgoing.statusCode = 500; outgoing.setHeader(\"content-type\", \"application/json\"); outgoing.end(JSON.stringify({ error: { code: \"internal_fault\", message: \"An internal error occurred.\" } })); }");
+            line(
+                output,
+                "    finally { if (!incoming.complete) incoming.resume(); }",
+            );
+            line(output, "  });");
+            line(output, "}");
+            line(output, "");
+        }
         line(output, "class AuthorizationFault extends Error {");
         line(
             output,
@@ -5280,6 +7254,51 @@ export const temporal = Object.freeze({
         line(output, "    super(failureName);");
         line(output, "  }");
         line(output, "}");
+        line(output, "");
+        line(
+            output,
+            "function decodeQueryComponent(value: string): string {",
+        );
+        line(output, "  if (/%(?![0-9A-Fa-f]{2})/u.test(value)) throw new RequestSyntaxError(\"invalid percent escape\");");
+        line(output, "  try { return decodeURIComponent(value.replaceAll(\"+\", \" \")); } catch { throw new RequestSyntaxError(\"invalid query encoding\"); }");
+        line(output, "}");
+        line(output, "");
+        line(
+            output,
+            "function parseRawQuery(url: string): Map<string, string[]> {",
+        );
+        line(output, "  const question = url.indexOf(\"?\");");
+        line(output, "  const output = new Map<string, string[]>();");
+        line(output, "  if (question < 0) return output;");
+        line(output, "  const hash = url.indexOf(\"#\", question + 1);");
+        line(
+            output,
+            "  const raw = url.slice(question + 1, hash < 0 ? undefined : hash);",
+        );
+        line(output, "  if (raw.length === 0) return output;");
+        line(output, "  for (const item of raw.split(\"&\")) {");
+        line(
+            output,
+            "    if (item.length === 0) throw new RequestSyntaxError(\"empty query item\");",
+        );
+        line(output, "    const equals = item.indexOf(\"=\");");
+        line(
+            output,
+            "    const name = decodeQueryComponent(equals < 0 ? item : item.slice(0, equals));",
+        );
+        line(
+            output,
+            "    const value = decodeQueryComponent(equals < 0 ? \"\" : item.slice(equals + 1));",
+        );
+        line(output, "    const values = output.get(name) ?? []; values.push(value); output.set(name, values);");
+        line(output, "  }");
+        line(output, "  return output;");
+        line(output, "}");
+        line(output, "");
+        line(output, "function queryInteger(value: string): number { if (!/^-?(?:0|[1-9][0-9]*)$/u.test(value)) throw new RequestSyntaxError(\"invalid integer\"); const result = Number(value); if (!Number.isSafeInteger(result)) throw new ValidationError(\"integer outside safe range\"); return result; }");
+        line(output, "function queryDecimal(value: string): number { if (!/^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$/u.test(value)) throw new RequestSyntaxError(\"invalid decimal\"); return Number(value); }");
+        line(output, "function queryBoolean(value: string): boolean { if (value === \"true\") return true; if (value === \"false\") return false; throw new RequestSyntaxError(\"invalid boolean\"); }");
+        line(output, "function queryJson(value: string): unknown { try { return JSON.parse(value); } catch { throw new RequestSyntaxError(\"invalid JSON query value\"); } }");
         line(output, "");
         line(
             output,
@@ -5801,6 +7820,16 @@ export const temporal = Object.freeze({
         line(output, "      throw new AuthorizationFault();");
         line(output, "  }");
         line(output, "}");
+        line(
+            output,
+            &format!(
+                "function requirePrincipalVariant<K extends {}[\"tag\"]>(value: {}, tag: K): Extract<{}, {{ tag: K }}> {{ if (value.tag !== tag) throw new AuthorizationFault(); return value as Extract<{}, {{ tag: K }}>; }}",
+                principal.name.text,
+                principal.name.text,
+                principal.name.text,
+                principal.name.text,
+            ),
+        );
         line(output, "");
     }
 
@@ -6011,7 +8040,7 @@ export const temporal = Object.freeze({
                 &format!("  rejectUnknownFields(object, [{fields}], path);"),
             );
             for field in &declaration.fields {
-                if !field.optional {
+                if !field.optional && field.default.is_none() {
                     line(
                         output,
                         &format!(
@@ -6029,7 +8058,23 @@ export const temporal = Object.freeze({
                     &format!("object[{}]", ts_string(&field.name.text)),
                     &format!("`${{path}}.{}`", field.name.text),
                 );
-                if field.optional {
+                if field.default.is_some() {
+                    let default = field.default.as_ref().map_or_else(
+                        || "null".to_owned(),
+                        |literal| match literal.kind {
+                            LiteralKind::None => "null".to_owned(),
+                            _ => literal.text.clone(),
+                        },
+                    );
+                    line(
+                        output,
+                        &format!(
+                            "    {}: hasOwn(object, {}) ? {value} : {default},",
+                            field.name.text,
+                            ts_string(&field.name.text)
+                        ),
+                    );
+                } else if field.optional {
                     line(
                         output,
                         &format!(
@@ -6053,7 +8098,13 @@ export const temporal = Object.freeze({
         for contract in &self.project.failures.contracts {
             line(output, &format!("  {}: {{", contract.name));
             line(output, &format!("    code: {},", ts_string(&contract.code)));
-            line(output, &format!("    status: {},", contract.http_status));
+            line(
+                output,
+                &format!(
+                    "    status: {},",
+                    bun_failure_http_status(&contract.kind, contract.http_status)
+                ),
+            );
             line(
                 output,
                 &format!(
@@ -6139,6 +8190,8 @@ export const temporal = Object.freeze({
 
     fn callable_implementations(&self, output: &mut String) {
         for declaration in self.callables.values() {
+            let mutative = self.callable_is_mutative(&declaration.name.text);
+            let replayable = mutative && self.callable_is_repeatable(&declaration.name.text);
             let mut parameters = declaration
                 .parameters
                 .iter()
@@ -6193,7 +8246,7 @@ export const temporal = Object.freeze({
                     ),
                 );
             }
-            if declaration.policy.is_some() {
+            if declaration.policy.is_some() && !mutative {
                 let persistence_client = if needs_persistence {
                     "__persistence"
                 } else {
@@ -6206,27 +8259,102 @@ export const temporal = Object.freeze({
                     ),
                 );
             }
-            if self.callable_is_mutative(&declaration.name.text) {
+            if mutative {
+                let operation_id = if self.project.policy.active {
+                    "__policyOperation".to_owned()
+                } else {
+                    ts_string(&declaration.name.text)
+                };
                 if self.project.policy.active {
-                    line(output, "  return __persistence.withOperationTime(__operation.now).withPolicy(__operation.principal, __policyOperation).transaction(async persistence => {");
+                    line(output, "  return __persistence.withDeadline(__operation.deadlineAt).withSignal(__operation.signal).withOperationTime(__operation.now).withPolicy(__operation.principal, __policyOperation).transaction(async persistence => {");
                 } else {
                     line(
                         output,
-                        "  return __persistence.withOperationTime(__operation.now).transaction(async persistence => {",
+                        "  return __persistence.withDeadline(__operation.deadlineAt).withSignal(__operation.signal).withOperationTime(__operation.now).transaction(async persistence => {",
                     );
                 }
+                if declaration.policy.is_some() {
+                    line(output, &format!("    if (!(await authorizeInvoke({operation_id}, __operation.principal, persistence))) throw new AuthorizationFault();"));
+                }
                 self.block(output, &declaration.body, 4);
-                line(output, "  });");
+                line(output, &format!("  }}, {{ replayable: {} && __operation.retryAllowed, operationId: __operation.operationId, operation: {}, startedAt: __operation.monotonicStartedAt, deadlineAt: __operation.deadlineAt, signal: __operation.signal, refreshOperationTime: () => {{ __operation = refreshOperation(__operation); return __operation.now; }} }});", replayable, operation_id));
             } else {
                 if needs_persistence {
                     if self.project.policy.active {
-                        line(output, "  const persistence = __persistence.withPolicy(__operation.principal, __policyOperation);");
+                        line(output, "  const persistence = __persistence.withDeadline(__operation.deadlineAt).withSignal(__operation.signal).withPolicy(__operation.principal, __policyOperation);");
                     } else {
-                        line(output, "  const persistence = __persistence;");
+                        line(output, "  const persistence = __persistence.withDeadline(__operation.deadlineAt).withSignal(__operation.signal);");
                     }
                 }
                 self.block(output, &declaration.body, 2);
             }
+            line(output, "}");
+            line(output, "");
+        }
+    }
+
+    fn service_operation_implementations(&self, output: &mut String) {
+        for effect in &self.project.semantics.external_effects {
+            let qualified_name = format!("{}.{}", effect.service, effect.operation);
+            let function_name = format!("__service_{}", ts_callable_name(&qualified_name));
+            let input = &effect.input;
+            let output_type = &effect.output;
+            let credential_field = effect
+                .credential_slot
+                .strip_prefix("config.")
+                .expect("checked service credential slot is config-owned");
+            let recipient_failure = effect
+                .outcome_mappings
+                .iter()
+                .find(|(source, _)| source == "provider.invalid_recipient")
+                .map(|(_, target)| target.as_str())
+                .expect("checked service contract has recipient mapping");
+            let unavailable_failure = effect
+                .outcome_mappings
+                .iter()
+                .find(|(source, _)| source == "provider.rate_limited")
+                .map(|(_, target)| target.as_str())
+                .expect("checked service contract has rate-limit mapping");
+
+            line(output, &format!("async function {function_name}(input: {input}, __operation: OperationContext, __deliveryCredential: string | null = null): Promise<{output_type}> {{"));
+            line(
+                output,
+                "  if (__deliveryCredential === null && configuration === undefined) configuration = loadConfiguration(Bun.env);",
+            );
+            line(
+                output,
+                &format!(
+                    "  const checkedInput = validate_{input}(input, {});",
+                    ts_string(&format!("service.{qualified_name}.input"))
+                ),
+            );
+            line(output, &format!("  if (__operation.testServiceFakes !== null && !Object.prototype.hasOwnProperty.call(__operation.testServiceFakes, {})) throw new ServiceAdapterFault(\"outcome_unknown\");", ts_string(&qualified_name)));
+            line(output, &format!("  const result = await invokeReferenceMail(checkedInput as unknown as Readonly<Record<string, unknown>>, __deliveryCredential ?? configuration.{credential_field}, __operation, __operation.testServiceFakes?.[{}] ?? null);", ts_string(&qualified_name)));
+            line(
+                output,
+                "  if (result.kind === \"recipient_rejected\") throw new DomainFailure(",
+            );
+            line(
+                output,
+                &format!("    {}, {{}}, {{}},", ts_string(recipient_failure)),
+            );
+            line(output, "  );");
+            line(
+                output,
+                "  if (result.kind === \"temporarily_unavailable\") throw new DomainFailure(",
+            );
+            line(
+                output,
+                &format!("    {}, {{}}, {{}},", ts_string(unavailable_failure)),
+            );
+            line(output, "  );");
+            line(
+                output,
+                &format!(
+                    "  return validate_{output_type}({{ accepted_at: result.accepted_at }}, {});",
+                    ts_string(&format!("service.{qualified_name}.output"))
+                ),
+            );
             line(output, "}");
             line(output, "");
         }
@@ -6251,9 +8379,54 @@ export const temporal = Object.freeze({
                 output,
                 &format!("  let __testClockNow: Instant = {fixed_clock};"),
             );
+            let fixture_service_fakes = test
+                .fixture
+                .as_ref()
+                .and_then(|fixture| self.fixtures.get(&fixture.text))
+                .map(|fixture| fixture.service_fakes.as_slice())
+                .unwrap_or_default();
+            let mut fake_outcomes = BTreeMap::<String, Vec<String>>::new();
+            for fake in fixture_service_fakes {
+                for outcome in &fake.outcomes {
+                    let operation = format!("{}.{}", fake.service.text, outcome.operation.text);
+                    let encoded = match &outcome.value {
+                        jadpo_syntax::FixtureServiceFakeValue::Accepted(value) => format!(
+                            "{{ kind: \"accepted\", value: {} }}",
+                            self.expression(value)
+                        ),
+                        jadpo_syntax::FixtureServiceFakeValue::Declared(value) => format!(
+                            "{{ kind: \"declared\", name: {} }}",
+                            ts_string(
+                                &value
+                                    .path
+                                    .iter()
+                                    .map(|part| part.text.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(".")
+                            )
+                        ),
+                    };
+                    fake_outcomes.entry(operation).or_default().push(encoded);
+                }
+            }
+            {
+                line(output, "  const __testServiceFakes: TestServiceFakes = {");
+                for (operation, outcomes) in &fake_outcomes {
+                    line(
+                        output,
+                        &format!(
+                            "    {}: {{ outcomes: [{}], cursor: {{ index: 0 }}, elapsedMs: 0 }},",
+                            ts_string(operation),
+                            outcomes.join(", ")
+                        ),
+                    );
+                }
+                line(output, "  };");
+            }
+            let test_service_fakes = ", null, __testServiceFakes";
             line(
                 output,
-                "  const __operation = captureOperation(__testClockNow);",
+                &format!("  const __operation = captureOperation(__testClockNow, null, () => __testClockNow, true{test_service_fakes});"),
             );
             let fixture_configuration = test
                 .fixture
@@ -6415,12 +8588,24 @@ export const temporal = Object.freeze({
         })
     }
 
+    fn has_route_headers(&self) -> bool {
+        self.project.syntax.sources.iter().any(|source| {
+            source.file.declarations.iter().any(|declaration| {
+                matches!(declaration, Declaration::Route(route) if !route.headers.is_empty())
+            })
+        })
+    }
+
     fn http_handler(&self, output: &mut String) {
+        let readiness_advisories = self.readiness_advisories();
         line(
             output,
             "export async function handleRequest(request: Request): Promise<Response> {",
         );
-        line(output, "  let __operation = captureOperation();");
+        line(
+            output,
+            "  let __operation = captureOperation(null, null, undefined, false, request.signal);",
+        );
         line(output, "  const requestId = `req_${crypto.randomUUID()}`;");
         line(
             output,
@@ -6430,33 +8615,119 @@ export const temporal = Object.freeze({
             ),
         );
         line(output, "  let semanticOperationId = \"http:unmatched\";");
+        line(output, "  let checkedReadOnlyOperation = false;");
         line(output, "  let requestPath = \"<unparsed>\";");
         line(output, "  try {");
         line(output, "    const url = new URL(request.url);");
         line(output, "    requestPath = url.pathname;");
+
+        line(output, "    if (request.method === \"GET\" && url.pathname === \"/health/live\") return json(200, { status: \"live\" }, requestId);");
+        if self.has_entities() {
+            line(output, &format!("    if (request.method === \"GET\" && url.pathname === \"/health/ready\") {{ const ready = await refreshDatabaseReadiness(); return json(ready ? 200 : 503, {{ status: ready ? \"ready\" : \"not_ready\", checks: {{ database: ready ? \"available\" : \"unavailable\" }}, advisories: {readiness_advisories} }}, requestId); }}"));
+            line(output, "    if (!databaseIsReady()) return json(503, errorEnvelope(\"dependency_unavailable\", \"A required dependency is unavailable.\", requestId), requestId);");
+        } else {
+            line(output, &format!("    if (request.method === \"GET\" && url.pathname === \"/health/ready\") return json(200, {{ status: \"ready\", checks: {{}}, advisories: {readiness_advisories} }}, requestId);"));
+        }
 
         if !self.has_authored_health_route() {
             line(
                 output,
                 "    if (request.method === \"GET\" && url.pathname === \"/health\") {",
             );
-            line(
-                output,
-                "      return json(200, { ready: true }, requestId);",
-            );
+            if self.has_entities() {
+                line(
+                    output,
+                    "      const ready = await refreshDatabaseReadiness();",
+                );
+                line(
+                    output,
+                    "      return json(ready ? 200 : 503, { ready }, requestId);",
+                );
+            } else {
+                line(
+                    output,
+                    "      return json(200, { ready: true }, requestId);",
+                );
+            }
             line(output, "    }");
         }
 
+        if self.has_service_credential_exchange() {
+            for strategy in &self.authentication_strategies {
+                let Some(exchange) = &strategy.exchange else {
+                    continue;
+                };
+                let path = unquote(&exchange.path.text);
+                line(
+                    output,
+                    &format!(
+                        "    if (request.method === \"POST\" && url.pathname === {}) {{",
+                        ts_string(path)
+                    ),
+                );
+                line(
+                    output,
+                    &format!(
+                        "      semanticOperationId = {};",
+                        ts_string(&format!("route:POST:{path}"))
+                    ),
+                );
+                line(
+                    output,
+                    "      if (!firstPartyAuthentication) throw new AuthenticationFault(\"authentication_misconfigured\", 503);",
+                );
+                line(
+                    output,
+                    "      if ((request.headers.get(\"cookie\")?.length ?? 0) > 16384 || (request.headers.get(\"authorization\")?.length ?? 0) > 8192) throw new AuthenticationFault(\"invalid_credentials\", 401);",
+                );
+                line(
+                    output,
+                    "      const presented = inventoryAuthenticationCredentials(request).filter(candidate => candidate.values.length > 0);",
+                );
+                line(
+                    output,
+                    "      if (presented.length === 0) throw new AuthenticationFault(\"authentication_required\", 401);",
+                );
+                line(
+                    output,
+                    "      if (presented.length !== 1 || presented[0].values.length !== 1) throw new AuthenticationFault(\"ambiguous_credentials\", 401);",
+                );
+                line(output, "      const candidate = presented[0];");
+                line(
+                    output,
+                    &format!(
+                        "      if (candidate.malformed || candidate.strategy !== {}) throw new AuthenticationFault(\"invalid_credentials\", 401);",
+                        ts_string(&strategy.name.text)
+                    ),
+                );
+                line(
+                    output,
+                    &format!(
+                        "      const exchanged = await firstPartyAuthentication.exchangeServiceCredential({}, candidate.values[0], Date.parse(__operation.now));",
+                        ts_string(&strategy.name.text)
+                    ),
+                );
+                line(
+                    output,
+                    "      return json(200, { access_token: exchanged.credential, token_type: \"Bearer\", expires_at: new Date(exchanged.expires).toISOString() }, requestId);",
+                );
+                line(output, "    }");
+            }
+        }
+
+        let mut route_id = 0usize;
         for source in &self.project.syntax.sources {
             for declaration in &source.file.declarations {
                 let Declaration::Route(route) = declaration else {
                     continue;
                 };
+                let current_route_id = route_id;
+                route_id += 1;
                 line(
                     output,
                     &format!(
                         "    const routePath{} = matchRoutePath({}, url.pathname);",
-                        route.range.start,
+                        current_route_id,
                         ts_string(&route.path)
                     ),
                 );
@@ -6465,7 +8736,7 @@ export const temporal = Object.freeze({
                     &format!(
                         "    if (request.method === {} && routePath{} !== null) {{",
                         ts_string(method_name(route.method)),
-                        route.range.start
+                        current_route_id
                     ),
                 );
                 line(
@@ -6495,6 +8766,158 @@ export const temporal = Object.freeze({
                         });
                     line(output, &format!("      const authenticated = await firstPartyAuthentication.authenticate(request, {}, Date.parse(__operation.now), {mutates});", route.fresh_authority));
                     line(output, "      __operation = Object.freeze({ ...__operation, principal: authenticated });");
+                    line(output, "      const current_principal = materializePrincipal(__operation.principal);");
+                }
+                // Queries cannot mutate or call actions. The repeatability walk
+                // additionally excludes opaque calls and unknown effects. Set
+                // this only after authentication's separate operational boundary.
+                let read_only = route
+                    .run
+                    .as_ref()
+                    .filter(|run| {
+                        run.arguments.iter().all(|argument| {
+                            matches!(argument, Expression::Name(_) | Expression::Literal(_))
+                        }) && run.named_arguments.iter().all(|argument| {
+                            matches!(argument.value, Expression::Name(_) | Expression::Literal(_))
+                        })
+                    })
+                    .and_then(|run| resolved_callable_name(&run.callee.path, &self.callables))
+                    .is_some_and(|name| {
+                        self.callables.get(&name).is_some_and(|callable| {
+                            callable.kind == jadpo_syntax::CallableKind::Query
+                        }) && self.callable_is_repeatable(&name)
+                            && !self.callable_is_mutative(&name)
+                    });
+                line(
+                    output,
+                    &format!("      checkedReadOnlyOperation = {read_only};"),
+                );
+                line(
+                    output,
+                    &format!(
+                        "      __operation = allowOperationRetries(__operation, {});",
+                        route.public
+                    ),
+                );
+                if let Some(query_reference) = &route.query {
+                    let query_name = self.schema_declaration(&type_name(query_reference));
+                    let query_record = self
+                        .records
+                        .get(&query_name)
+                        .expect("checked route query resolves to a record");
+                    let allowed = query_record
+                        .fields
+                        .iter()
+                        .map(|field| ts_string(&field.name.text))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    line(
+                        output,
+                        &format!("      let query: {};", self.ts_type(query_reference)),
+                    );
+                    line(output, "      try {");
+                    line(
+                        output,
+                        "        const queryParameters = parseRawQuery(request.url);",
+                    );
+                    line(
+                        output,
+                        &format!("        const allowedQueryParameters = new Set([{allowed}]);"),
+                    );
+                    line(output, "        for (const name of queryParameters.keys()) if (!allowedQueryParameters.has(name)) throw new RequestSyntaxError(\"unknown query parameter\");");
+                    line(output, "        const queryValue: JsonObject = {};");
+                    for field in &query_record.fields {
+                        let field_name = ts_string(&field.name.text);
+                        let decoded = self.query_decode_expression(
+                            &field.field_type,
+                            &format!("values_{0}[0]", field.name.text),
+                        );
+                        line(
+                            output,
+                            &format!(
+                                "        const values_{} = queryParameters.get({field_name});",
+                                field.name.text
+                            ),
+                        );
+                        line(
+                            output,
+                            &format!(
+                                "        if ((values_{}?.length ?? 0) > 1) throw new RequestSyntaxError(\"duplicate query parameter\");",
+                                field.name.text
+                            ),
+                        );
+                        line(
+                            output,
+                            &format!(
+                                "        if (values_{} !== undefined) queryValue[{field_name}] = {decoded};",
+                                field.name.text
+                            ),
+                        );
+                    }
+                    line(
+                        output,
+                        &format!(
+                            "        query = validate_{query_name}(queryValue, \"request.query\");"
+                        ),
+                    );
+                    line(output, "      } catch (error) {");
+                    line(output, "        if (error instanceof RequestSyntaxError) return json(400, errorEnvelope(\"invalid_request\", \"Request query syntax is invalid.\", requestId), requestId);");
+                    line(output, "        if (error instanceof ValidationError) return json(422, errorEnvelope(\"invalid_value\", \"Request query value is invalid.\", requestId), requestId);");
+                    line(output, "        throw error;");
+                    line(output, "      }");
+                }
+                if !route.headers.is_empty() {
+                    let header_type = route
+                        .headers
+                        .iter()
+                        .map(|header| {
+                            format!(
+                                "{}{}: {}",
+                                header.name.text,
+                                if header.optional { "?" } else { "" },
+                                self.ts_type(&header.field_type)
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    line(output, &format!("      let headers: {{ {header_type} }};"));
+                    line(output, "      try {");
+                    line(output, "        headers = {");
+                    for header in &route.headers {
+                        let raw = format!("raw_header_{}", header.name.text);
+                        let wire_name = unquote(&header.wire_name.text);
+                        line(output, &format!("          ...((({raw}) => {{",));
+                        let decoded = self.query_decode_expression(&header.field_type, &raw);
+                        let validated = self.validation_expression(
+                            &header.field_type,
+                            &decoded,
+                            &ts_string(&format!("request.headers.{}", header.name.text)),
+                        );
+                        if header.optional {
+                            line(
+                                output,
+                                &format!(
+                                    "            if ({raw} === null) return {{}}; return {{ {}: {validated} }};",
+                                    header.name.text
+                                ),
+                            );
+                        } else {
+                            line(output, &format!("            if ({raw} === null) throw new RequestSyntaxError(\"missing declared header\"); return {{ {}: {validated} }};", header.name.text));
+                        }
+                        line(
+                            output,
+                            &format!(
+                                "          }})(declaredHeaderValue(request, {}))),",
+                                ts_string(wire_name)
+                            ),
+                        );
+                    }
+                    line(output, "        };");
+                    line(output, "      } catch (error) {");
+                    line(output, "        if (error instanceof RequestSyntaxError) return json(400, errorEnvelope(\"invalid_request\", \"Request header syntax is invalid.\", requestId), requestId);");
+                    line(output, "        if (error instanceof ValidationError) return json(422, errorEnvelope(\"invalid_value\", \"Request header value is invalid.\", requestId), requestId);");
+                    line(output, "        throw error;");
+                    line(output, "      }");
                 }
                 if !route.path_fields.is_empty() {
                     let path_type = route
@@ -6511,7 +8934,7 @@ export const temporal = Object.freeze({
                     for field in &route.path_fields {
                         let raw = format!(
                             "routePath{}[{}]",
-                            route.range.start,
+                            current_route_id,
                             ts_string(&field.name.text)
                         );
                         line(
@@ -6559,6 +8982,16 @@ export const temporal = Object.freeze({
                     );
                     line(output, "      }");
                 }
+                if let Some(deadline) = &route.deadline {
+                    let milliseconds = deadline
+                        .milliseconds()
+                        .expect("typechecked route deadline is a positive portable duration");
+                    line(
+                        output,
+                        &format!("      __operation = withOperationDeadline(__operation, {milliseconds});"),
+                    );
+                    line(output, "      assertOperationDeadline(__operation);");
+                }
                 if let Some(run) = &route.run {
                     let invocation = self.invocation(run);
                     line(output, &format!("      const output = {invocation};"));
@@ -6566,9 +8999,9 @@ export const temporal = Object.freeze({
                     let mut visiting = BTreeSet::new();
                     if block_contains_mutation(&action.body, &self.callables, &mut visiting) {
                         if self.project.policy.active {
-                            line(output, "      const output = await rootPersistence.withOperationTime(__operation.now).withPolicy(__operation.principal, semanticOperationId).transaction(async persistence => {");
+                            line(output, "      const output = await rootPersistence.withDeadline(__operation.deadlineAt).withSignal(__operation.signal).withOperationTime(__operation.now).withPolicy(__operation.principal, semanticOperationId).transaction(async persistence => {");
                         } else {
-                            line(output, "      const output = await rootPersistence.withOperationTime(__operation.now).transaction(async persistence => {");
+                            line(output, "      const output = await rootPersistence.withDeadline(__operation.deadlineAt).withSignal(__operation.signal).withOperationTime(__operation.now).transaction(async persistence => {");
                         }
                         self.block(output, &action.body, 8);
                         line(output, "      });");
@@ -6582,9 +9015,9 @@ export const temporal = Object.freeze({
                         );
                         if suspending && self.has_entities() {
                             if self.project.policy.active {
-                                line(output, "        const persistence = rootPersistence.withPolicy(__operation.principal, semanticOperationId);");
+                                line(output, "        const persistence = rootPersistence.withDeadline(__operation.deadlineAt).withSignal(__operation.signal).withPolicy(__operation.principal, semanticOperationId);");
                             } else {
-                                line(output, "        const persistence = rootPersistence;");
+                                line(output, "        const persistence = rootPersistence.withDeadline(__operation.deadlineAt).withSignal(__operation.signal).withOperationTime(__operation.now);");
                             }
                         }
                         self.block(output, &action.body, 8);
@@ -6593,16 +9026,33 @@ export const temporal = Object.freeze({
                 } else {
                     line(output, "      const output = undefined;");
                 }
-                let validated = route.output.as_ref().map_or_else(
-                    || "null".to_owned(),
-                    |output_type| {
-                        self.validation_expression(output_type, "output", "\"response.body\"")
-                    },
-                );
-                line(
-                    output,
-                    &format!("      return json(200, {validated}, requestId);"),
-                );
+                match route.success {
+                    RouteSuccess::NoContent => line(
+                        output,
+                        "      return new Response(null, { status: 204, headers: { \"x-request-id\": requestId, \"cache-control\": \"no-store\" } });",
+                    ),
+                    RouteSuccess::Ok | RouteSuccess::Created => {
+                        let validated = route.output.as_ref().map_or_else(
+                            || "null".to_owned(),
+                            |output_type| {
+                                self.validation_expression(
+                                    output_type,
+                                    "output",
+                                    "\"response.body\"",
+                                )
+                            },
+                        );
+                        let status = if route.success == RouteSuccess::Created {
+                            201
+                        } else {
+                            200
+                        };
+                        line(
+                            output,
+                            &format!("      return json({status}, {validated}, requestId);"),
+                        );
+                    }
+                }
                 line(output, "    }");
             }
         }
@@ -6612,6 +9062,11 @@ export const temporal = Object.freeze({
             "    return json(404, errorEnvelope(\"route_not_found\", \"Route not found.\", requestId), requestId);",
         );
         line(output, "  } catch (error) {");
+        if self.has_entities() {
+            line(output, "    if (error instanceof RequestDeadlineFault || error instanceof PersistenceFault && error.deadlineExceeded && error.kind !== \"unknown\") return json(504, errorEnvelope(\"deadline_exceeded\", \"The operation exceeded its declared deadline.\", requestId), requestId);");
+        } else {
+            line(output, "    if (error instanceof RequestDeadlineFault) return json(504, errorEnvelope(\"deadline_exceeded\", \"The operation exceeded its declared deadline.\", requestId), requestId);");
+        }
         if self.first_party_supported() {
             line(output, "    if (error instanceof AuthenticationFault) {");
             line(output, "      if (error.declaredFailure !== null) {");
@@ -6652,9 +9107,37 @@ export const temporal = Object.freeze({
             line(output, "      return json(403, errorEnvelope(\"not_permitted\", \"This operation is not permitted.\", requestId), requestId);");
             line(output, "    }");
         }
+        if self.has_service_operations() {
+            line(output, "    if (error instanceof ServiceAdapterFault) {");
+            line(output, "      if (error.kind === \"deadline_exceeded\") return json(504, errorEnvelope(\"deadline_exceeded\", \"The operation exceeded its declared deadline.\", requestId), requestId);");
+            line(output, "      if (error.kind === \"unavailable\") return json(503, errorEnvelope(\"service_unavailable\", \"A temporary service issue prevented the operation.\", requestId), requestId);");
+            line(output, "      if (error.kind === \"outcome_unknown\") {");
+            line(output, "        reportRuntimeFault(\"RUNTIME_OUTCOME_UNKNOWN\", semanticOperationId, sourceRevision, requestId, error);");
+            line(output, "        return json(500, errorEnvelope(\"outcome_unknown\", \"The operation may have completed.\", requestId), requestId);");
+            line(output, "      }");
+            line(output, "      reportRuntimeFault(\"RUNTIME_SERVICE_MISCONFIGURED\", semanticOperationId, sourceRevision, requestId, error);");
+            line(output, "      return json(500, errorEnvelope(\"internal_fault\", \"An internal error occurred.\", requestId), requestId);");
+            line(output, "    }");
+        }
         line(output, "    if (error instanceof AuthorizationFault) {");
         line(output, "      return json(403, errorEnvelope(\"not_permitted\", \"This operation is not permitted.\", requestId), requestId);");
         line(output, "    }");
+        if self.has_entities() {
+            line(
+                output,
+                "    if (error instanceof PersistenceFault && error.kind === \"unknown\") {",
+            );
+            line(output, "      reportRuntimeFault(\"RUNTIME_OUTCOME_UNKNOWN\", semanticOperationId, sourceRevision, requestId, error);");
+            line(output, "      return json(500, errorEnvelope(\"outcome_unknown\", \"The operation may have completed.\", requestId), requestId);");
+            line(output, "    }");
+            line(output, "    if (error instanceof PersistenceFault && error.kind === \"driver\" && error.transaction?.outcome === \"no_commit\" && (error.transaction.phase === \"begin\" || error.transaction.rollbackProven)) {");
+            line(output, "      return json(503, errorEnvelope(\"transaction_unavailable\", \"A temporary storage issue prevented the operation.\", requestId), requestId);");
+            line(output, "    }");
+            line(output, "    if (checkedReadOnlyOperation && error instanceof PersistenceFault && error.isReadUnavailable()) {");
+            line(output, "      reportRuntimeFault(\"RUNTIME_READ_UNAVAILABLE\", semanticOperationId, sourceRevision, requestId, error);");
+            line(output, "      return json(503, errorEnvelope(\"read_unavailable\", \"A temporary storage issue prevented the read.\", requestId), requestId);");
+            line(output, "    }");
+        }
         line(output, "    reportRuntimeFault(");
         line(output, "      \"RUNTIME_UNHANDLED_FAULT\",");
         line(output, "      semanticOperationId,");
@@ -6675,15 +9158,36 @@ export const temporal = Object.freeze({
         if self.configuration.is_some() {
             line(output, "    configuration = loadConfiguration(Bun.env);");
         }
+        if self.has_entities() {
+            line(output, "    if (persistenceInitializationFatal()) throw new Error(\"required persistence schema is unavailable\");");
+        }
         if self.first_party_supported() {
             line(output, "    await initializeAuthentication();");
         }
-        line(output, "    Bun.serve({ port, fetch: handleRequest });");
+        if self.has_route_headers() {
+            line(
+                output,
+                "    createApplicationServer().listen(port, \"0.0.0.0\");",
+            );
+        } else {
+            line(output, "    Bun.serve({ port, fetch: handleRequest });");
+        }
         line(output, "    console.log(JSON.stringify({");
         line(output, "      schemaVersion: 1,");
         line(output, "      kind: \"operational_log_event\",");
-        line(output, "      eventName: \"runtime.ready\",");
-        line(output, "      classification: \"ready\",");
+        if self.has_entities() {
+            line(
+                output,
+                "      eventName: databaseIsReady() ? \"runtime.ready\" : \"runtime.live\",",
+            );
+            line(
+                output,
+                "      classification: databaseIsReady() ? \"ready\" : \"live\",",
+            );
+        } else {
+            line(output, "      eventName: \"runtime.ready\",");
+            line(output, "      classification: \"ready\",");
+        }
         line(output, "      requestId: \"startup\",");
         line(output, "      traceId: null,");
         line(output, "      semanticOperationId: \"runtime:start\",");
@@ -6694,7 +9198,11 @@ export const temporal = Object.freeze({
                 ts_string(&self.source_revision())
             ),
         );
-        line(output, "      attributes: { port },");
+        if self.has_entities() {
+            line(output, "      attributes: { port, readiness: databaseIsReady() ? \"ready\" : \"not_ready\" },");
+        } else {
+            line(output, "      attributes: { port },");
+        }
         line(output, "    }));");
         line(output, "  } catch (error) {");
         line(output, "    reportRuntimeFault(");
@@ -6923,6 +9431,14 @@ export const temporal = Object.freeze({
             {
                 "__operation.now".to_owned()
             }
+            Expression::Name(name)
+                if name.path.len() == 2 && name.path[0].text == "current_principal" =>
+            {
+                format!(
+                    "requirePrincipalVariant(current_principal, {})",
+                    ts_string(&name.path[1].text)
+                )
+            }
             Expression::Name(name) => name
                 .path
                 .first()
@@ -7035,7 +9551,9 @@ export const temporal = Object.freeze({
                     .map(|part| part.text.as_str())
                     .collect::<Vec<_>>()
                     .join(".");
-                if query.includes.len() > 1 {
+                if let Some(page) = &query.page {
+                    self.query_page_expression(page, &name)
+                } else if query.includes.len() > 1 {
                     self.multi_include_expression(query, &name)
                 } else if let Some(include) = query.includes.first() {
                     let result = type_name(&include.result);
@@ -7060,6 +9578,34 @@ export const temporal = Object.freeze({
                             "((value: unknown) => {{ if (value === null) throw new DomainFailure({}); return validate_{result}(value, {}); }})({operation})",
                             self.domain_failure_arguments(missing),
                             ts_string(&format!("database.{result}"))
+                        );
+                    }
+                    if query.cardinality == jadpo_syntax::QueryCardinality::Many
+                        && include.cardinality == jadpo_syntax::QueryIncludeCardinality::Required
+                    {
+                        let order = query
+                            .order
+                            .as_ref()
+                            .expect("many owning-reference includes have explicit ordering");
+                        let pagination = query
+                            .pagination
+                            .as_ref()
+                            .expect("many owning-reference includes have explicit pagination");
+                        let direction = match order.direction {
+                            jadpo_syntax::QueryOrderDirection::Ascending => "asc",
+                            jadpo_syntax::QueryOrderDirection::Descending => "desc",
+                        };
+                        let operation = format!(
+                            "await persistence.query_many_{name}_with_{}_required_by_{}_order_by_{}_{direction}_paginated({}, {}, {})",
+                            include.relationship.text,
+                            query.field.text,
+                            order.field.text,
+                            self.expression(&query.value),
+                            self.expression(&pagination.limit),
+                            self.expression(&pagination.offset)
+                        );
+                        return format!(
+                            "({operation}).map((value: unknown, index: number) => validate_{result}(value, `database.{result}[${{index}}]`))"
                         );
                     }
                     if include.cardinality != jadpo_syntax::QueryIncludeCardinality::Many {
@@ -7200,6 +9746,20 @@ export const temporal = Object.freeze({
                     .map(|part| part.text.as_str())
                     .collect::<Vec<_>>()
                     .join(".");
+                if let Some(transition) = &update.transition {
+                    let method = format!(
+                        "transition_required_{name}_by_{}_{}",
+                        update.field.text, transition.text
+                    );
+                    let operation =
+                        format!("persistence.{method}({})", self.expression(&update.value));
+                    return self.required_mutation_expression(
+                        &name,
+                        &operation,
+                        &update.missing,
+                        &update.conflicts,
+                    );
+                }
                 if let Some(patch) = &update.patch {
                     let patch_fields = self
                         .patch_fields_for_update(update)
@@ -7336,6 +9896,274 @@ export const temporal = Object.freeze({
         }
     }
 
+    fn query_page_expression(&self, page: &jadpo_syntax::QueryPage, entity_name: &str) -> String {
+        let postgres_first_sql =
+            self.query_page_sql(entity_name, page, SqlDialect::Postgres, false);
+        let postgres_after_sql = self.query_page_sql(entity_name, page, SqlDialect::Postgres, true);
+        let sqlite_first_sql = self.query_page_sql(entity_name, page, SqlDialect::Sqlite, false);
+        let sqlite_after_sql = self.query_page_sql(entity_name, page, SqlDialect::Sqlite, true);
+        let values = self.query_page_values(entity_name, page);
+        let projection_name = type_name(&page.projection);
+        let result_name = type_name(&page.result);
+        let cursor_name = type_name(&page.cursor);
+        let projection = self
+            .records
+            .get(&projection_name)
+            .expect("checked page projection exists");
+        let entity = self
+            .records
+            .get(entity_name)
+            .expect("checked page entity exists");
+        let projection_fields = projection
+            .fields
+            .iter()
+            .map(|field| {
+                let entity_field = entity
+                    .fields
+                    .iter()
+                    .find(|candidate| candidate.name.text == field.name.text)
+                    .expect("checked projection field exists on page entity");
+                let raw = format!("row[{}]", ts_string(&field.name.text));
+                let path = format!(
+                    "`database.{result_name}.items[${{index}}].{}`",
+                    field.name.text
+                );
+                let decoded =
+                    self.database_decode_expression(&entity_field.field_type, &raw, &path);
+                format!("{}: {decoded}", field.name.text)
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let cursor_fields = page
+            .cursor_fields
+            .iter()
+            .map(|field| {
+                let entity_field = entity
+                    .fields
+                    .iter()
+                    .find(|candidate| candidate.name.text == field.text)
+                    .expect("checked cursor field exists on page entity");
+                let raw = format!("last[{}]", ts_string(&field.text));
+                let path = ts_string(&format!("database.{result_name}.next.{}", field.text));
+                let decoded =
+                    self.database_decode_expression(&entity_field.field_type, &raw, &path);
+                format!("{}: {decoded}", field.text)
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let result_path = ts_string(&format!("database.{result_name}"));
+        let next_path = ts_string(&format!("database.{result_name}.next"));
+        let operation = ts_string(&format!("query.{entity_name}.page"));
+        let page_size = self.expression(&page.limit);
+        let after = self.expression(&page.after);
+        format!(
+            "(await (async () => {{ const values = [{values}]; const pageRows = await persistence.query_page_rows({operation}, {}, {}, {}, {}, {}, values, ({after} !== undefined && {after} !== null)); const pageSize = {page_size}; const hasNext = pageRows.length > pageSize; const selected = pageRows.slice(0, pageSize); const items = selected.map((value: unknown, index: number) => {{ const row = expectObject(value, `database.{result_name}.items[${{index}}]`); return validate_{projection_name}({{ {projection_fields} }}, `database.{result_name}.items[${{index}}]`); }}); const last = selected[selected.length - 1] as Record<string, unknown> | undefined; const next = hasNext && last !== undefined ? validate_{cursor_name}({{ {cursor_fields} }}, {}) : null; return validate_{result_name}({{ items, next }}, {}); }})())",
+            ts_string(entity_name),
+            ts_string(&postgres_first_sql),
+            ts_string(&sqlite_first_sql),
+            ts_string(&postgres_after_sql),
+            ts_string(&sqlite_after_sql),
+            next_path,
+            result_path,
+        )
+    }
+
+    fn query_page_values(&self, entity_name: &str, page: &jadpo_syntax::QueryPage) -> String {
+        let entity = self
+            .records
+            .get(entity_name)
+            .expect("checked page entity exists");
+        let mut values = Vec::new();
+        for predicate in &page.predicates {
+            if predicate.operator == jadpo_syntax::QueryPagePredicateOperator::Equal
+                && matches!(
+                    predicate.value.as_ref(),
+                    Expression::Literal(literal) if literal.kind == LiteralKind::None
+                )
+            {
+                continue;
+            }
+            let field = entity
+                .fields
+                .iter()
+                .find(|field| field.name.text == predicate.field.text)
+                .expect("checked page predicate field exists");
+            let value = self.expression(&predicate.value);
+            let value = if predicate.operator == jadpo_syntax::QueryPagePredicateOperator::Equal {
+                value
+            } else {
+                format!("({value} ?? null)")
+            };
+            values.push(format!(
+                "{{ value: {value}, kind: {} }}",
+                ts_string(&self.representation_root_for(&field.field_type))
+            ));
+        }
+        let after = self.expression(&page.after);
+        for field_name in &page.cursor_fields {
+            let field = entity
+                .fields
+                .iter()
+                .find(|field| field.name.text == field_name.text)
+                .expect("checked cursor field exists");
+            values.push(format!(
+                "{{ value: ({after}?.{} ?? null), kind: {} }}",
+                field_name.text,
+                ts_string(&self.representation_root_for(&field.field_type))
+            ));
+        }
+        values.push(format!(
+            "{{ value: ({} + 1), kind: \"Int\" }}",
+            self.expression(&page.limit)
+        ));
+        values.join(", ")
+    }
+
+    fn query_page_sql(
+        &self,
+        entity_name: &str,
+        page: &jadpo_syntax::QueryPage,
+        dialect: SqlDialect,
+        continuation: bool,
+    ) -> String {
+        let entity = self
+            .records
+            .get(entity_name)
+            .expect("checked page entity exists");
+        let projection = self
+            .records
+            .get(&type_name(&page.projection))
+            .expect("checked page projection exists");
+        let mut selected = projection
+            .fields
+            .iter()
+            .map(|field| field.name.text.clone())
+            .collect::<Vec<_>>();
+        for field in &page.cursor_fields {
+            if !selected.contains(&field.text) {
+                selected.push(field.text.clone());
+            }
+        }
+        let selected = selected
+            .iter()
+            .map(|field| {
+                let column = sql_identifier(field);
+                format!("{column} AS {column}")
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let placeholder = |index: usize| match dialect {
+            SqlDialect::Postgres => format!("${index}"),
+            SqlDialect::Sqlite => format!("?{index}"),
+        };
+        let mut parameter = 1;
+        let mut conditions = Vec::new();
+        for predicate in &page.predicates {
+            let column = sql_identifier(&predicate.field.text);
+            let none = matches!(
+                predicate.value.as_ref(),
+                Expression::Literal(literal) if literal.kind == LiteralKind::None
+            );
+            match predicate.operator {
+                jadpo_syntax::QueryPagePredicateOperator::Equal if none => {
+                    conditions.push(format!("{column} IS NULL"));
+                }
+                jadpo_syntax::QueryPagePredicateOperator::Equal => {
+                    conditions.push(format!("{column} = {}", placeholder(parameter)));
+                    parameter += 1;
+                }
+                jadpo_syntax::QueryPagePredicateOperator::OptionalEqual => {
+                    let value = match dialect {
+                        SqlDialect::Postgres => {
+                            let field = entity
+                                .fields
+                                .iter()
+                                .find(|field| field.name.text == predicate.field.text)
+                                .expect("checked page predicate field exists");
+                            format!(
+                                "{}::{}",
+                                placeholder(parameter),
+                                self.sql_type(&field.field_type, dialect)
+                            )
+                        }
+                        SqlDialect::Sqlite => placeholder(parameter),
+                    };
+                    conditions.push(format!("({value} IS NULL OR {column} = {value})"));
+                    parameter += 1;
+                }
+                jadpo_syntax::QueryPagePredicateOperator::OptionalLessEqual => {
+                    let value = match dialect {
+                        SqlDialect::Postgres => {
+                            let field = entity
+                                .fields
+                                .iter()
+                                .find(|field| field.name.text == predicate.field.text)
+                                .expect("checked page predicate field exists");
+                            format!(
+                                "{}::{}",
+                                placeholder(parameter),
+                                self.sql_type(&field.field_type, dialect)
+                            )
+                        }
+                        SqlDialect::Sqlite => placeholder(parameter),
+                    };
+                    conditions.push(format!("({value} IS NULL OR {column} <= {value})"));
+                    parameter += 1;
+                }
+            }
+        }
+        let after_start = parameter;
+        parameter += page.cursor_fields.len();
+        if continuation {
+            let direction = page.order[0].direction;
+            let comparison = match direction {
+                jadpo_syntax::QueryOrderDirection::Ascending => ">",
+                jadpo_syntax::QueryOrderDirection::Descending => "<",
+            };
+            let columns = page
+                .order
+                .iter()
+                .map(|order| sql_identifier(&order.field.text))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let cursor = (0..page.cursor_fields.len())
+                .map(|index| placeholder(after_start + index))
+                .collect::<Vec<_>>()
+                .join(", ");
+            conditions.push(format!("(({columns}) {comparison} ({cursor}))"));
+        } else {
+            for index in 0..page.cursor_fields.len() {
+                let cursor_parameter = placeholder(after_start + index);
+                let absent = match dialect {
+                    SqlDialect::Postgres => format!("{cursor_parameter}::text IS NULL"),
+                    SqlDialect::Sqlite => format!("{cursor_parameter} IS NULL"),
+                };
+                conditions.push(absent);
+            }
+        }
+        if let Some(visibility) = self.lifecycle_visibility_sql(entity_name) {
+            conditions.push(format!("({visibility})"));
+        }
+        let limit = placeholder(parameter);
+        let where_clause = conditions.join(" AND ");
+        let order = page
+            .order
+            .iter()
+            .map(|field| {
+                let direction = match field.direction {
+                    jadpo_syntax::QueryOrderDirection::Ascending => "ASC",
+                    jadpo_syntax::QueryOrderDirection::Descending => "DESC",
+                };
+                format!("{} {direction}", sql_identifier(&field.field.text))
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "SELECT {selected} FROM {} WHERE {where_clause} ORDER BY {order} LIMIT {limit}",
+            sql_identifier(&snake_case(entity_name))
+        )
+    }
+
     fn fixture_configuration_expression(&self, expression: &Expression) -> String {
         if let Expression::Invocation(invocation) = expression {
             if invocation.callee.path.len() == 1
@@ -7383,18 +10211,20 @@ export const temporal = Object.freeze({
             })
             .collect::<Vec<_>>()
             .join(" ");
-        let suspending = expression_may_suspend(
-            &Expression::OutcomeMatch(outcome.clone()),
-            &self.callables,
-            &mut BTreeSet::new(),
-        );
+        let suspending = self.expression_may_suspend(&Expression::OutcomeMatch(outcome.clone()));
         let (open, close) = if suspending {
             ("(await (async () => {", "})())")
         } else {
             ("(() => {", "})()")
         };
+        let failure_dispatch = if self.project.semantics.external_effects.is_empty() {
+            "if (!(error instanceof DomainFailure)) throw error; switch (error.failureName)"
+                .to_owned()
+        } else {
+            "const failureName = error instanceof DomainFailure ? error.failureName : error instanceof ServiceAdapterFault ? ({ unavailable: \"Unavailable\", misconfigured: \"Misconfigured\", outcome_unknown: \"OutcomeUnknown\" } as const)[error.kind] : null; if (failureName === null) throw error; switch (failureName)".to_owned()
+        };
         format!(
-            "{open} try {{ const {} = {}; return {success_value}; }} catch (error) {{ if (!(error instanceof DomainFailure)) throw error; switch (error.failureName) {{ {failure_cases} default: throw error; }} }} {close}",
+            "{open} try {{ const {} = {}; return {success_value}; }} catch (error) {{ {failure_dispatch} {{ {failure_cases} default: throw error; }} }} {close}",
             success.0.text,
             self.expression(&outcome.subject),
         )
@@ -7775,6 +10605,13 @@ export const temporal = Object.freeze({
                 .unwrap_or("undefined");
             return format!("{validator}({argument}, {})", ts_string(&authored_name));
         }
+        if self.service_effect(&authored_name).is_some() {
+            return format!(
+                "await __service_{}({}, __operation)",
+                ts_callable_name(&authored_name),
+                rendered_arguments.join(", ")
+            );
+        }
         if !self.callables.contains_key(&name) && invocation.callee.path.len() >= 2 {
             let operation = invocation
                 .callee
@@ -7859,7 +10696,7 @@ export const temporal = Object.freeze({
             .iter()
             .map(|argument| self.expression(argument))
             .collect::<Vec<_>>();
-        arguments.push("captureOperation(__testClockNow)".to_owned());
+        arguments.push("captureOperation(__testClockNow, null, () => __testClockNow, true, null, __operation.testServiceFakes)".to_owned());
         let suspending = self.callable_may_suspend(&name);
         if suspending && self.has_entities() {
             arguments.push("persistence".to_owned());
@@ -7916,10 +10753,25 @@ export const temporal = Object.freeze({
             .map(|field| format!("{}: {}", field.name.text, self.expression(&field.value)))
             .collect::<Vec<_>>();
         if let Some(record) = self.records.get(entity) {
+            if let Some(initial) = record
+                .dossier
+                .as_ref()
+                .and_then(|dossier| dossier.lifecycle.as_ref())
+                .and_then(|lifecycle| lifecycle.initial.as_ref())
+            {
+                entries.extend(initial.iter().map(|field| {
+                    format!("{}: {}", field.name.text, self.expression(&field.value))
+                }));
+            }
             entries.extend(record.fields.iter().filter_map(|field| {
-                field
-                    .generated
-                    .map(|_| format!("{}: __operation.now", field.name.text))
+                field.generated.map(|role| {
+                    let value = match role {
+                        jadpo_syntax::GeneratedFieldRole::Identity => "crypto.randomUUID()",
+                        jadpo_syntax::GeneratedFieldRole::Create
+                        | jadpo_syntax::GeneratedFieldRole::CreateOrChange => "__operation.now",
+                    };
+                    format!("{}: {value}", field.name.text)
+                })
             }));
         }
         format!("{{ {} }}", entries.join(", "))
@@ -8141,6 +10993,22 @@ export const temporal = Object.freeze({
         }
     }
 
+    fn query_decode_expression(&self, reference: &TypeReference, value: &str) -> String {
+        let name = self.schema_declaration(&type_name(reference));
+        if self.records.contains_key(&name) {
+            return format!("queryJson({value})");
+        }
+        if self.enums.contains_key(&name) {
+            return value.to_owned();
+        }
+        match self.representation_root_for(reference).as_str() {
+            "Int" => format!("queryInteger({value})"),
+            "Decimal" => format!("queryDecimal({value})"),
+            "Bool" => format!("queryBoolean({value})"),
+            _ => value.to_owned(),
+        }
+    }
+
     fn database_decode_expression(
         &self,
         reference: &TypeReference,
@@ -8333,6 +11201,31 @@ fn unquote(value: &str) -> &str {
         .unwrap_or(value)
 }
 
+fn decode_string_literal(value: &str) -> Option<String> {
+    let value = value.strip_prefix('"')?.strip_suffix('"')?;
+    let mut decoded = String::with_capacity(value.len());
+    let mut characters = value.chars();
+    while let Some(character) = characters.next() {
+        if character != '\\' {
+            decoded.push(character);
+            continue;
+        }
+        decoded.push(match characters.next()? {
+            '"' => '"',
+            '\\' => '\\',
+            'n' => '\n',
+            'r' => '\r',
+            't' => '\t',
+            _ => return None,
+        });
+    }
+    Some(decoded)
+}
+
+fn sql_string_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
 fn standard_variant_name(value: &str) -> String {
     let mut result = String::with_capacity(value.len());
     let mut separator = false;
@@ -8508,6 +11401,13 @@ fn expression_uses_runtime_name(expression: &Expression, requested: &str) -> boo
             .any(|field| expression_uses_runtime_name(&field.value, requested)),
         Expression::Query(query) => {
             expression_uses_runtime_name(&query.value, requested)
+                || query.page.as_ref().is_some_and(|page| {
+                    page.predicates
+                        .iter()
+                        .any(|predicate| expression_uses_runtime_name(&predicate.value, requested))
+                        || expression_uses_runtime_name(&page.after, requested)
+                        || expression_uses_runtime_name(&page.limit, requested)
+                })
                 || query.pagination.as_ref().is_some_and(|pagination| {
                     expression_uses_runtime_name(&pagination.limit, requested)
                         || expression_uses_runtime_name(&pagination.offset, requested)
@@ -8566,6 +11466,13 @@ fn collect_queries_from_expression<'expression>(
         Expression::Query(query) => {
             queries.push(query);
             collect_queries_from_expression(&query.value, queries);
+            if let Some(page) = &query.page {
+                for predicate in &page.predicates {
+                    collect_queries_from_expression(&predicate.value, queries);
+                }
+                collect_queries_from_expression(&page.after, queries);
+                collect_queries_from_expression(&page.limit, queries);
+            }
             if let Some(pagination) = &query.pagination {
                 collect_queries_from_expression(&pagination.limit, queries);
                 collect_queries_from_expression(&pagination.offset, queries);
@@ -8782,6 +11689,13 @@ fn collect_updates_from_expression<'expression>(
         }
         Expression::Query(query) => {
             collect_updates_from_expression(&query.value, updates);
+            if let Some(page) = &query.page {
+                for predicate in &page.predicates {
+                    collect_updates_from_expression(&predicate.value, updates);
+                }
+                collect_updates_from_expression(&page.after, updates);
+                collect_updates_from_expression(&page.limit, updates);
+            }
             if let Some(pagination) = &query.pagination {
                 collect_updates_from_expression(&pagination.limit, updates);
                 collect_updates_from_expression(&pagination.offset, updates);
@@ -8906,6 +11820,13 @@ fn expression_contains_test_call(expression: &Expression) -> bool {
             .any(|field| expression_contains_test_call(&field.value)),
         Expression::Query(value) => {
             expression_contains_test_call(&value.value)
+                || value.page.as_ref().is_some_and(|page| {
+                    page.predicates
+                        .iter()
+                        .any(|predicate| expression_contains_test_call(&predicate.value))
+                        || expression_contains_test_call(&page.after)
+                        || expression_contains_test_call(&page.limit)
+                })
                 || value.pagination.as_ref().is_some_and(|pagination| {
                     expression_contains_test_call(&pagination.limit)
                         || expression_contains_test_call(&pagination.offset)
@@ -9013,13 +11934,15 @@ fn expression_contains_persistence(expression: &Expression) -> bool {
 fn callable_may_suspend(
     name: &str,
     callables: &BTreeMap<String, &CallableDeclaration>,
+    service_operations: &BTreeSet<String>,
     visiting: &mut BTreeSet<String>,
 ) -> bool {
     if !visiting.insert(name.to_owned()) {
         return false;
     }
     let result = callables.get(name).is_some_and(|callable| {
-        callable.policy.is_some() || block_may_suspend(&callable.body, callables, visiting)
+        callable.policy.is_some()
+            || block_may_suspend(&callable.body, callables, service_operations, visiting)
     });
     visiting.remove(name);
     result
@@ -9028,42 +11951,51 @@ fn callable_may_suspend(
 fn block_may_suspend(
     block: &Block,
     callables: &BTreeMap<String, &CallableDeclaration>,
+    service_operations: &BTreeSet<String>,
     visiting: &mut BTreeSet<String>,
 ) -> bool {
     block.statements.iter().any(|statement| match statement {
         Statement::Binding(statement) => {
-            expression_may_suspend(&statement.value, callables, visiting)
+            expression_may_suspend(&statement.value, callables, service_operations, visiting)
         }
         Statement::Assignment(statement) => {
-            expression_may_suspend(&statement.value, callables, visiting)
+            expression_may_suspend(&statement.value, callables, service_operations, visiting)
         }
         Statement::Return(statement) => {
-            expression_may_suspend(&statement.value, callables, visiting)
+            expression_may_suspend(&statement.value, callables, service_operations, visiting)
         }
-        Statement::Reject(statement) => statement
-            .values
-            .iter()
-            .any(|field| expression_may_suspend(&field.value, callables, visiting)),
+        Statement::Reject(statement) => statement.values.iter().any(|field| {
+            expression_may_suspend(&field.value, callables, service_operations, visiting)
+        }),
         Statement::If(statement) => {
-            expression_may_suspend(&statement.condition, callables, visiting)
-                || block_may_suspend(&statement.then_block, callables, visiting)
-                || statement
-                    .else_block
-                    .as_ref()
-                    .is_some_and(|block| block_may_suspend(block, callables, visiting))
+            expression_may_suspend(
+                &statement.condition,
+                callables,
+                service_operations,
+                visiting,
+            ) || block_may_suspend(
+                &statement.then_block,
+                callables,
+                service_operations,
+                visiting,
+            ) || statement.else_block.as_ref().is_some_and(|block| {
+                block_may_suspend(block, callables, service_operations, visiting)
+            })
         }
         Statement::Match(statement) => {
-            expression_may_suspend(&statement.subject, callables, visiting)
-                || statement
-                    .arms
-                    .iter()
-                    .any(|arm| block_may_suspend(&arm.body, callables, visiting))
+            expression_may_suspend(&statement.subject, callables, service_operations, visiting)
+                || statement.arms.iter().any(|arm| {
+                    block_may_suspend(&arm.body, callables, service_operations, visiting)
+                })
         }
-        Statement::Assert(statement) => {
-            expression_may_suspend(&statement.condition, callables, visiting)
-        }
+        Statement::Assert(statement) => expression_may_suspend(
+            &statement.condition,
+            callables,
+            service_operations,
+            visiting,
+        ),
         Statement::AdvanceClock(statement) => {
-            expression_may_suspend(&statement.duration, callables, visiting)
+            expression_may_suspend(&statement.duration, callables, service_operations, visiting)
         }
         Statement::Unsupported(_) => false,
     })
@@ -9072,6 +12004,7 @@ fn block_may_suspend(
 fn expression_may_suspend(
     expression: &Expression,
     callables: &BTreeMap<String, &CallableDeclaration>,
+    service_operations: &BTreeSet<String>,
     visiting: &mut BTreeSet<String>,
 ) -> bool {
     match expression {
@@ -9080,55 +12013,75 @@ fn expression_may_suspend(
         | Expression::Update(_)
         | Expression::Delete(_) => true,
         Expression::Invocation(invocation) => {
-            invocation
-                .arguments
-                .iter()
-                .any(|argument| expression_may_suspend(argument, callables, visiting))
-                || invocation
-                    .named_arguments
+            invocation.arguments.iter().any(|argument| {
+                expression_may_suspend(argument, callables, service_operations, visiting)
+            }) || invocation.named_arguments.iter().any(|argument| {
+                expression_may_suspend(&argument.value, callables, service_operations, visiting)
+            }) || service_operations.contains(
+                &invocation
+                    .callee
+                    .path
                     .iter()
-                    .any(|argument| expression_may_suspend(&argument.value, callables, visiting))
-                || resolved_callable_name(&invocation.callee.path, callables)
-                    .is_some_and(|callee| callable_may_suspend(&callee, callables, visiting))
+                    .map(|part| part.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("."),
+            ) || resolved_callable_name(&invocation.callee.path, callables).is_some_and(|callee| {
+                callable_may_suspend(&callee, callables, service_operations, visiting)
+            })
         }
         Expression::TestCall(call) => {
             let invocation = &call.invocation;
-            invocation
-                .arguments
-                .iter()
-                .any(|argument| expression_may_suspend(argument, callables, visiting))
-                || invocation
-                    .named_arguments
+            invocation.arguments.iter().any(|argument| {
+                expression_may_suspend(argument, callables, service_operations, visiting)
+            }) || invocation.named_arguments.iter().any(|argument| {
+                expression_may_suspend(&argument.value, callables, service_operations, visiting)
+            }) || service_operations.contains(
+                &invocation
+                    .callee
+                    .path
                     .iter()
-                    .any(|argument| expression_may_suspend(&argument.value, callables, visiting))
-                || resolved_callable_name(&invocation.callee.path, callables)
-                    .is_some_and(|callee| callable_may_suspend(&callee, callables, visiting))
+                    .map(|part| part.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("."),
+            ) || resolved_callable_name(&invocation.callee.path, callables).is_some_and(|callee| {
+                callable_may_suspend(&callee, callables, service_operations, visiting)
+            })
         }
-        Expression::Construction(construction) => construction
-            .fields
-            .iter()
-            .any(|field| expression_may_suspend(&field.value, callables, visiting)),
-        Expression::Object(object) => object
-            .fields
-            .iter()
-            .any(|field| expression_may_suspend(&field.value, callables, visiting)),
+        Expression::Construction(construction) => construction.fields.iter().any(|field| {
+            expression_may_suspend(&field.value, callables, service_operations, visiting)
+        }),
+        Expression::Object(object) => object.fields.iter().any(|field| {
+            expression_may_suspend(&field.value, callables, service_operations, visiting)
+        }),
         Expression::Binary(binary) => {
-            expression_may_suspend(&binary.left, callables, visiting)
-                || expression_may_suspend(&binary.right, callables, visiting)
+            expression_may_suspend(&binary.left, callables, service_operations, visiting)
+                || expression_may_suspend(&binary.right, callables, service_operations, visiting)
         }
-        Expression::Unary(unary) => expression_may_suspend(&unary.value, callables, visiting),
-        Expression::Grouped(grouped) => expression_may_suspend(&grouped.value, callables, visiting),
-        Expression::Attempt(attempt) => expression_may_suspend(&attempt.value, callables, visiting),
+        Expression::Unary(unary) => {
+            expression_may_suspend(&unary.value, callables, service_operations, visiting)
+        }
+        Expression::Grouped(grouped) => {
+            expression_may_suspend(&grouped.value, callables, service_operations, visiting)
+        }
+        Expression::Attempt(attempt) => {
+            expression_may_suspend(&attempt.value, callables, service_operations, visiting)
+        }
         Expression::OutcomeMatch(outcome) => {
-            expression_may_suspend(&outcome.subject, callables, visiting)
+            expression_may_suspend(&outcome.subject, callables, service_operations, visiting)
                 || outcome.arms.iter().any(|arm| match &arm.body {
                     jadpo_syntax::OutcomeMatchArmBody::Value(value) => {
-                        expression_may_suspend(value, callables, visiting)
+                        expression_may_suspend(value, callables, service_operations, visiting)
                     }
-                    jadpo_syntax::OutcomeMatchArmBody::Reject(rejection) => rejection
-                        .values
-                        .iter()
-                        .any(|field| expression_may_suspend(&field.value, callables, visiting)),
+                    jadpo_syntax::OutcomeMatchArmBody::Reject(rejection) => {
+                        rejection.values.iter().any(|field| {
+                            expression_may_suspend(
+                                &field.value,
+                                callables,
+                                service_operations,
+                                visiting,
+                            )
+                        })
+                    }
                     jadpo_syntax::OutcomeMatchArmBody::Propagate(_) => false,
                 })
         }
@@ -9204,6 +12157,12 @@ fn expression_contains_mutation(
         Expression::Create(_) | Expression::Update(_) | Expression::Delete(_) => true,
         Expression::Query(query) => {
             expression_contains_mutation(&query.value, callables, visiting)
+                || query.page.as_ref().is_some_and(|page| {
+                    page.predicates.iter().any(|predicate| {
+                        expression_contains_mutation(&predicate.value, callables, visiting)
+                    }) || expression_contains_mutation(&page.after, callables, visiting)
+                        || expression_contains_mutation(&page.limit, callables, visiting)
+                })
                 || query.pagination.as_ref().is_some_and(|pagination| {
                     expression_contains_mutation(&pagination.limit, callables, visiting)
                         || expression_contains_mutation(&pagination.offset, callables, visiting)
@@ -9269,6 +12228,213 @@ fn expression_contains_mutation(
     }
 }
 
+fn callable_is_repeatable(
+    name: &str,
+    callables: &BTreeMap<String, &CallableDeclaration>,
+    type_names: &BTreeSet<String>,
+    visiting: &mut BTreeSet<String>,
+) -> bool {
+    if !visiting.insert(name.to_owned()) {
+        return false;
+    }
+    let result = callables.get(name).is_some_and(|callable| {
+        callable.policy.is_none()
+            && block_is_repeatable(&callable.body, callables, type_names, visiting)
+    });
+    visiting.remove(name);
+    result
+}
+
+fn block_is_repeatable(
+    block: &Block,
+    callables: &BTreeMap<String, &CallableDeclaration>,
+    type_names: &BTreeSet<String>,
+    visiting: &mut BTreeSet<String>,
+) -> bool {
+    block.statements.iter().all(|statement| match statement {
+        Statement::Binding(statement) => {
+            expression_is_repeatable(&statement.value, callables, type_names, visiting)
+        }
+        Statement::Assignment(statement) => {
+            expression_is_repeatable(&statement.value, callables, type_names, visiting)
+        }
+        Statement::Return(statement) => {
+            expression_is_repeatable(&statement.value, callables, type_names, visiting)
+        }
+        Statement::Reject(statement) => {
+            fields_are_repeatable(&statement.values, callables, type_names, visiting)
+        }
+        Statement::If(statement) => {
+            expression_is_repeatable(&statement.condition, callables, type_names, visiting)
+                && block_is_repeatable(&statement.then_block, callables, type_names, visiting)
+                && statement.else_block.as_ref().map_or(true, |block| {
+                    block_is_repeatable(block, callables, type_names, visiting)
+                })
+        }
+        Statement::Match(statement) => {
+            expression_is_repeatable(&statement.subject, callables, type_names, visiting)
+                && statement
+                    .arms
+                    .iter()
+                    .all(|arm| block_is_repeatable(&arm.body, callables, type_names, visiting))
+        }
+        Statement::Assert(statement) => {
+            expression_is_repeatable(&statement.condition, callables, type_names, visiting)
+        }
+        Statement::AdvanceClock(_) | Statement::Unsupported(_) => false,
+    })
+}
+
+fn fields_are_repeatable(
+    fields: &[FieldInitialiser],
+    callables: &BTreeMap<String, &CallableDeclaration>,
+    type_names: &BTreeSet<String>,
+    visiting: &mut BTreeSet<String>,
+) -> bool {
+    fields
+        .iter()
+        .all(|field| expression_is_repeatable(&field.value, callables, type_names, visiting))
+}
+
+fn rejection_is_repeatable(
+    rejection: &jadpo_syntax::RejectStatement,
+    callables: &BTreeMap<String, &CallableDeclaration>,
+    type_names: &BTreeSet<String>,
+    visiting: &mut BTreeSet<String>,
+) -> bool {
+    fields_are_repeatable(&rejection.values, callables, type_names, visiting)
+}
+
+fn expression_is_repeatable(
+    expression: &Expression,
+    callables: &BTreeMap<String, &CallableDeclaration>,
+    type_names: &BTreeSet<String>,
+    visiting: &mut BTreeSet<String>,
+) -> bool {
+    match expression {
+        Expression::Literal(_) | Expression::Name(_) => true,
+        Expression::Invocation(invocation) => {
+            let arguments_are_repeatable = invocation.arguments.iter().all(|argument| {
+                expression_is_repeatable(argument, callables, type_names, visiting)
+            }) && fields_are_repeatable(
+                &invocation.named_arguments,
+                callables,
+                type_names,
+                visiting,
+            );
+            if !arguments_are_repeatable {
+                return false;
+            }
+            if let Some(callee) = resolved_callable_name(&invocation.callee.path, callables) {
+                return callable_is_repeatable(&callee, callables, type_names, visiting);
+            }
+            let authored = invocation
+                .callee
+                .path
+                .iter()
+                .map(|part| part.text.as_str())
+                .collect::<Vec<_>>()
+                .join(".");
+            matches!(authored.as_str(), "Instant" | "CalendarDate" | "Duration")
+                || type_names.contains(&authored)
+                || authored.starts_with("temporal.")
+        }
+        Expression::TestCall(_) | Expression::Missing(_) => false,
+        Expression::Object(object) => {
+            fields_are_repeatable(&object.fields, callables, type_names, visiting)
+        }
+        Expression::Construction(construction) => {
+            fields_are_repeatable(&construction.fields, callables, type_names, visiting)
+        }
+        Expression::Create(create) => {
+            fields_are_repeatable(&create.fields, callables, type_names, visiting)
+                && create.conflicts.iter().all(|binding| {
+                    rejection_is_repeatable(&binding.rejection, callables, type_names, visiting)
+                })
+        }
+        Expression::Query(query) => {
+            expression_is_repeatable(&query.value, callables, type_names, visiting)
+                && query.pagination.as_ref().map_or(true, |pagination| {
+                    expression_is_repeatable(&pagination.limit, callables, type_names, visiting)
+                        && expression_is_repeatable(
+                            &pagination.offset,
+                            callables,
+                            type_names,
+                            visiting,
+                        )
+                })
+                && query.page.as_ref().map_or(true, |page| {
+                    page.predicates.iter().all(|predicate| {
+                        expression_is_repeatable(&predicate.value, callables, type_names, visiting)
+                    }) && expression_is_repeatable(&page.after, callables, type_names, visiting)
+                        && expression_is_repeatable(&page.limit, callables, type_names, visiting)
+                })
+                && query.includes.iter().all(|include| {
+                    expression_is_repeatable(
+                        &include.pagination.limit,
+                        callables,
+                        type_names,
+                        visiting,
+                    ) && expression_is_repeatable(
+                        &include.pagination.offset,
+                        callables,
+                        type_names,
+                        visiting,
+                    )
+                })
+                && query.missing.as_ref().map_or(true, |rejection| {
+                    rejection_is_repeatable(rejection, callables, type_names, visiting)
+                })
+        }
+        Expression::Update(update) => {
+            expression_is_repeatable(&update.value, callables, type_names, visiting)
+                && fields_are_repeatable(&update.changes, callables, type_names, visiting)
+                && update.conditional_changes.iter().all(|change| {
+                    expression_is_repeatable(&change.change.value, callables, type_names, visiting)
+                })
+                && update.empty.as_ref().map_or(true, |rejection| {
+                    rejection_is_repeatable(rejection, callables, type_names, visiting)
+                })
+                && rejection_is_repeatable(&update.missing, callables, type_names, visiting)
+                && update.conflicts.iter().all(|binding| {
+                    rejection_is_repeatable(&binding.rejection, callables, type_names, visiting)
+                })
+        }
+        Expression::Delete(delete) => {
+            expression_is_repeatable(&delete.value, callables, type_names, visiting)
+                && rejection_is_repeatable(&delete.missing, callables, type_names, visiting)
+                && delete.conflicts.iter().all(|binding| {
+                    rejection_is_repeatable(&binding.rejection, callables, type_names, visiting)
+                })
+        }
+        Expression::Attempt(attempt) => {
+            expression_is_repeatable(&attempt.value, callables, type_names, visiting)
+        }
+        Expression::OutcomeMatch(outcome) => {
+            expression_is_repeatable(&outcome.subject, callables, type_names, visiting)
+                && outcome.arms.iter().all(|arm| match &arm.body {
+                    jadpo_syntax::OutcomeMatchArmBody::Value(value) => {
+                        expression_is_repeatable(value, callables, type_names, visiting)
+                    }
+                    jadpo_syntax::OutcomeMatchArmBody::Reject(rejection) => {
+                        rejection_is_repeatable(rejection, callables, type_names, visiting)
+                    }
+                    jadpo_syntax::OutcomeMatchArmBody::Propagate(_) => true,
+                })
+        }
+        Expression::Unary(unary) => {
+            expression_is_repeatable(&unary.value, callables, type_names, visiting)
+        }
+        Expression::Binary(binary) => {
+            expression_is_repeatable(&binary.left, callables, type_names, visiting)
+                && expression_is_repeatable(&binary.right, callables, type_names, visiting)
+        }
+        Expression::Grouped(grouped) => {
+            expression_is_repeatable(&grouped.value, callables, type_names, visiting)
+        }
+    }
+}
+
 fn resolved_callable_name(
     path: &[jadpo_syntax::Name],
     callables: &BTreeMap<String, &CallableDeclaration>,
@@ -9309,6 +12475,77 @@ fn enum_is_tagged(declaration: &EnumDeclaration) -> bool {
         .variants
         .iter()
         .any(|variant| !variant.fields.is_empty())
+}
+
+fn query_page_index_columns(page: &jadpo_syntax::QueryPage) -> Vec<String> {
+    let mut columns = Vec::new();
+    for predicate in &page.predicates {
+        if predicate.operator == jadpo_syntax::QueryPagePredicateOperator::Equal
+            && !matches!(
+                predicate.value.as_ref(),
+                Expression::Literal(literal) if literal.kind == LiteralKind::None
+            )
+            && !columns.contains(&predicate.field.text)
+        {
+            columns.push(predicate.field.text.clone());
+        }
+    }
+    for order in &page.order {
+        if !columns.contains(&order.field.text) {
+            columns.push(order.field.text.clone());
+        }
+    }
+    columns
+}
+
+fn query_page_index_predicates(page: &jadpo_syntax::QueryPage) -> Vec<String> {
+    query_page_index_predicate_fields(page)
+        .iter()
+        .map(|field| format!("{} IS NULL", sql_identifier(field)))
+        .collect()
+}
+
+fn query_page_index_predicate_fields(page: &jadpo_syntax::QueryPage) -> Vec<String> {
+    let mut fields = page
+        .predicates
+        .iter()
+        .filter(|predicate| {
+            predicate.operator == jadpo_syntax::QueryPagePredicateOperator::Equal
+                && matches!(
+                    predicate.value.as_ref(),
+                    Expression::Literal(literal) if literal.kind == LiteralKind::None
+                )
+        })
+        .map(|predicate| predicate.field.text.clone())
+        .collect::<Vec<_>>();
+    fields.sort();
+    fields.dedup();
+    fields
+}
+
+fn query_page_index_name(entity: &str, columns: &[String], predicate_fields: &[String]) -> String {
+    let predicate_suffix = if predicate_fields.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "_where_{}_is_null",
+            predicate_fields
+                .iter()
+                .map(|field| snake_case(field))
+                .collect::<Vec<_>>()
+                .join("_and_")
+        )
+    };
+    format!(
+        "{}_page_{}{}_idx",
+        snake_case(entity),
+        columns
+            .iter()
+            .map(|field| snake_case(field))
+            .collect::<Vec<_>>()
+            .join("_"),
+        predicate_suffix
+    )
 }
 
 fn sql_identifier(value: &str) -> String {
@@ -9376,6 +12613,307 @@ mod tests {
     use std::path::Path;
 
     #[test]
+    fn delivery_schedule_hook_components_keep_full_execution_disabled() {
+        use super::{SqlDialect, TargetGenerator};
+        use jadpo_syntax::{Declaration, SourceFile};
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .unwrap();
+        let mut sources =
+            crate::discover_sources(&root.join("examples/golden-todo-migration")).unwrap();
+        let contracts = sources
+            .iter_mut()
+            .find(|source| source.path.ends_with("values/contracts.jadpo"))
+            .unwrap();
+        contracts.text = contracts.text.replacen(
+            "idempotency_key: Todo.id",
+            "idempotency_key: ReminderIntentId",
+            1,
+        );
+        sources.push(SourceFile::new(
+            root.join("tests/validation/fixtures/reminder-delivery-v1.jadpo"),
+            include_str!("../../../../tests/validation/fixtures/reminder-delivery-v1.jadpo")
+                .to_owned(),
+        ));
+        if std::env::var("JADPO_DELIVERY_HOOK_COMPONENT_VARIANT").as_deref()
+            == Ok("completion-representation")
+        {
+            // Additional checked-source control, not a rewrite of emitted code
+            // or the frozen golden fixture: field-role naming independence and
+            // the existing durable derived-representation mutation machinery.
+            for source in &mut sources {
+                source.text = source.text.replace("updated_at", "modified_at");
+                if source.path.ends_with("entities/todo.jadpo") {
+                    source.text = source.text.replacen(
+                        "    query by_id(",
+                        "    cache hot {\n        store: redis\n        from: primary\n        strategy: invalidate\n        delivery: durable\n    }\n\n    query by_id(",
+                        1,
+                    );
+                }
+            }
+        }
+        let project = crate::analyze_sources(sources).unwrap();
+        let errors = project
+            .syntax
+            .diagnostics()
+            .chain(project.semantics.diagnostics.iter())
+            .chain(project.typing.diagnostics.iter())
+            .chain(project.failures.diagnostics.iter())
+            .chain(project.entity_model.diagnostics.iter())
+            .chain(project.policy.diagnostics.iter())
+            .filter(|diagnostic| diagnostic.severity == jadpo_diagnostics::Severity::Error)
+            .collect::<Vec<_>>();
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(project.delivery_model().bindings().len(), 1);
+        assert_eq!(
+            derive_target(root, &project).unwrap_err().code,
+            "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
+        );
+        // Inspect the actual production persistence renderer on the complete
+        // checked source. Do not remove declarations, clear errors, alter hooks,
+        // or turn this component sink into a publicly executable job target.
+        let mut generator = TargetGenerator {
+            project: &project,
+            types: Default::default(),
+            enums: Default::default(),
+            records: Default::default(),
+            failures: Default::default(),
+            callables: Default::default(),
+            fixtures: Default::default(),
+            tests: vec![],
+            configuration: None,
+            application: None,
+            locales: None,
+            principal: None,
+            authentication_strategies: vec![],
+            source_revision: crate::checked_source_revision(root, &project),
+        };
+        for source in &project.syntax.sources {
+            for declaration in &source.file.declarations {
+                match declaration {
+                    Declaration::Type(value) => {
+                        generator.types.insert(value.name.text.clone(), value);
+                    }
+                    Declaration::Enum(value) => {
+                        generator.enums.insert(value.name.text.clone(), value);
+                    }
+                    Declaration::Record(value) => {
+                        generator.records.insert(value.name.text.clone(), value);
+                    }
+                    Declaration::Callable(value) => {
+                        generator.callables.insert(value.name.text.clone(), value);
+                    }
+                    Declaration::Failure(value) => {
+                        generator.failures.insert(value.name.text.clone(), value);
+                    }
+                    Declaration::Fixture(value) => {
+                        generator.fixtures.insert(value.name.text.clone(), value);
+                    }
+                    Declaration::Test(value) => generator.tests.push(value),
+                    Declaration::Config(value) => generator.configuration = Some(value),
+                    Declaration::Application(value) => generator.application = Some(value),
+                    Declaration::Locales(value) => generator.locales = Some(value),
+                    Declaration::Principal(value) => generator.principal = Some(value),
+                    Declaration::AuthenticationStrategy(value) => {
+                        generator.authentication_strategies.push(value)
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let persistence = generator.persistence_target();
+        assert_eq!(
+            persistence
+                .matches("await client.establish_delivery_schedule_revision(\"Todo\"")
+                .count(),
+            1
+        );
+        assert_eq!(
+            persistence
+                .matches("await client.advance_delivery_schedule_revision(\"Todo\"")
+                .count(),
+            1
+        );
+        assert!(persistence.contains("if (changed !== null && hasOwn(patchValue, \"due_at\"))"));
+        assert!(persistence.contains("async update_required_Todo_by_id_patch_title_and_status_and_due_at_set_reminder_sent_at"));
+        assert_eq!(
+            derive_target(root, &project).unwrap_err().code,
+            "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
+        );
+        if let Some(sink) = std::env::var_os("JADPO_DELIVERY_HOOK_COMPONENT_OUTPUT") {
+            let sink = std::path::PathBuf::from(sink);
+            assert!(
+                sink.is_absolute() && sink.is_dir(),
+                "test-owned component directory required"
+            );
+            fs::write(sink.join("persistence.ts"), persistence).unwrap();
+            // Unmodified actual app/auth renderers for native credential handoff
+            // components. This still does not bypass public job derivation.
+            fs::write(sink.join("app.ts"), generator.generate()).unwrap();
+            fs::write(
+                sink.join("authentication.ts"),
+                generator.authentication_target(),
+            )
+            .unwrap();
+            fs::write(
+                sink.join("first-party-authentication.ts"),
+                include_str!("runtime/first_party_authentication.ts"),
+            )
+            .unwrap();
+            fs::write(
+                sink.join("jwt-authentication.ts"),
+                include_str!("runtime/jwt_authentication.ts"),
+            )
+            .unwrap();
+            fs::write(
+                sink.join("service-adapter.ts"),
+                include_str!("runtime/service_adapter.ts"),
+            )
+            .unwrap();
+            fs::write(
+                sink.join("postgres.sql"),
+                generator.schema_sql(SqlDialect::Postgres),
+            )
+            .unwrap();
+            fs::write(
+                sink.join("sqlite.sql"),
+                generator.schema_sql(SqlDialect::Sqlite),
+            )
+            .unwrap();
+            fs::write(
+                sink.join("binding.json"),
+                serde_json::to_vec_pretty(&project.delivery_model().bindings()[0].source_facts())
+                    .unwrap(),
+            )
+            .unwrap();
+            // Public ordinary-target control for destination-field encoding:
+            // no delivery descriptor, private component constructor or job.
+            let ordinary = crate::analyze_sources(vec![SourceFile::new(
+                sink.join("ordinary.jadpo"),
+                r#"
+entity Alarm {
+    id: Uuid
+    due: Instant?
+    identity: id
+    persistence { store: primary role: authority }
+    action patch_alarm(input: AlarmUpdate) fails AlarmMissing, AlarmConflict, AlarmEmpty -> Alarm {
+        var changes: AlarmPatch = input.changes
+        return attempt update required Alarm {
+            where: id == input.id patch: changes
+            empty: AlarmEmpty missing: AlarmMissing conflict: AlarmConflict
+        }
+    }
+}
+type AlarmPatch = Object { due: Alarm.due optional }
+type AlarmUpdate = Object { id: Alarm.id changes: AlarmPatch }
+failure AlarmMissing { kind: NotFound code: "alarm_missing" }
+failure AlarmConflict { kind: Conflict code: "alarm_conflict" }
+failure AlarmEmpty { kind: InvalidValue code: "alarm_empty" }
+"#
+                .to_owned(),
+            )])
+            .unwrap();
+            let ordinary_errors = ordinary
+                .syntax
+                .diagnostics()
+                .chain(ordinary.semantics.diagnostics.iter())
+                .chain(ordinary.typing.diagnostics.iter())
+                .chain(ordinary.failures.diagnostics.iter())
+                .chain(ordinary.entity_model.diagnostics.iter())
+                .chain(ordinary.policy.diagnostics.iter())
+                .filter(|diagnostic| diagnostic.severity == jadpo_diagnostics::Severity::Error)
+                .collect::<Vec<_>>();
+            assert!(ordinary_errors.is_empty(), "{ordinary_errors:?}");
+            let artifacts = derive_target(&sink, &ordinary).unwrap();
+            fs::write(
+                sink.join("ordinary-persistence.ts"),
+                &artifacts
+                    .iter()
+                    .find(|artifact| artifact.relative_path == "target/persistence.ts")
+                    .unwrap()
+                    .contents,
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn typed_query_lowering_uses_raw_decoding_and_split_boundary_failures() {
+        let path = Path::new("route-query.jadpo");
+        let project = crate::analyze_sources(vec![jadpo_syntax::SourceFile::new(
+            path.to_owned(),
+            r#"
+type PageSize = Int { min: 1 max: 100 }
+type ListTodos = Object { page_size: PageSize default 25 }
+route GET /todos { auth: none query: ListTodos output: ListTodos action: { return query } }
+"#
+            .to_owned(),
+        )])
+        .expect("query source should analyze");
+        let outputs = derive_target(path, &project).expect("typed query should lower");
+        let app = &outputs
+            .iter()
+            .find(|output| output.relative_path == "target/app.ts")
+            .unwrap()
+            .contents;
+        for expected in [
+            "parseRawQuery(request.url)",
+            "duplicate query parameter",
+            "queryInteger(values_page_size[0])",
+            "validate_ListTodos(queryValue, \"request.query\")",
+            "errorEnvelope(\"invalid_request\"",
+            "errorEnvelope(\"invalid_value\"",
+            "hasOwn(object, \"page_size\") ?",
+            ": 25,",
+        ] {
+            assert!(app.contains(expected), "{expected}");
+        }
+    }
+
+    #[test]
+    fn route_headers_generate_a_raw_multiplicity_adapter() {
+        let source_path =
+            repository_root().join("tests/compile/pass/165_route_query_headers.jadpo");
+        let project = analyze_project(&source_path).expect("header fixture should analyze");
+        let outputs = derive_target(&source_path, &project).expect("header adapter should lower");
+        let app = &outputs
+            .iter()
+            .find(|output| output.relative_path == "target/app.ts")
+            .unwrap()
+            .contents;
+        for expected in [
+            "from \"node:http\"",
+            "from \"node:stream\"",
+            "incoming.rawHeaders",
+            "Readable.toWeb(incoming)",
+            "duplicate declared header",
+            "declaredHeaderValue(request, \"X-Trace\")",
+            "createApplicationServer().listen",
+        ] {
+            assert!(app.contains(expected), "{expected}");
+        }
+    }
+
+    #[test]
+    fn declared_service_exchange_generates_a_fail_closed_http_endpoint() {
+        let source_path = repository_root().join("tests/compile/pass/163_service_exchange.jadpo");
+        let project = analyze_project(&source_path).expect("exchange fixture should check");
+        let outputs =
+            derive_target(&source_path, &project).expect("reviewed service exchange should lower");
+        let app = &outputs
+            .iter()
+            .find(|output| output.relative_path == "target/app.ts")
+            .unwrap()
+            .contents;
+        assert!(app.contains("POST\" && url.pathname === \"/auth/exchange\""));
+        assert!(app.contains("inventoryAuthenticationCredentials(request).filter"));
+        assert!(app.contains("candidate.strategy !== \"api_bearer\""));
+        assert!(app.contains("exchangeServiceCredential(\"api_bearer\", candidate.values[0]"));
+        assert!(app.contains("new Date(exchanged.expires).toISOString()"));
+    }
+
+    #[test]
     fn first_party_authentication_opens_only_complete_supported_routes() {
         let source_path = repository_root().join("examples/first-party-authentication/app.jadpo");
         let source = fs::read_to_string(&source_path).unwrap();
@@ -9439,11 +12977,389 @@ mod tests {
             .any(|d| d.code == "TYPE_AUTH_ADAPTER_SETTING"));
     }
 
+    #[test]
+    fn first_party_authentication_checks_strength_vocabulary_not_type_name() {
+        let project_path = repository_root().join("examples/golden-todo-migration");
+        let checked = |enum_name: &str, variants: &str| {
+            let sources = crate::discover_sources(&project_path)
+                .unwrap()
+                .into_iter()
+                .map(|source| {
+                    jadpo_syntax::SourceFile::new(
+                        source.path,
+                        source
+                            .text
+                            .replace("    primary\n    multi_factor", variants)
+                            .replace("AuthenticationStrength", enum_name),
+                    )
+                })
+                .collect();
+            let project = crate::analyze_sources(sources).unwrap();
+            assert!(project.syntax.diagnostics().next().is_none());
+            assert!(
+                project.typing.diagnostics.is_empty(),
+                "{:?}",
+                project.typing.diagnostics
+            );
+            project
+        };
+        let renamed = checked("LoginAssurance", "    primary\n    multi_factor");
+        assert!(derive_target(&project_path, &renamed).is_ok());
+        for variants in [
+            "    multi_factor",
+            "    primary\n    multi_factor\n    trusted",
+            "    signed\n    api_key",
+        ] {
+            let project = checked("AuthenticationStrength", variants);
+            assert_eq!(
+                derive_target(&project_path, &project).unwrap_err().code,
+                "JADPO_TARGET_AUTH_NOT_IMPLEMENTED",
+                "{variants}"
+            );
+        }
+    }
+
+    #[test]
+    fn first_party_authentication_binds_credentials_to_separate_service_identity() {
+        let project_path = repository_root().join("examples/golden-todo-migration");
+        let analyzed = analyze_project(&project_path).expect("golden migration should analyze");
+        assert!(
+            analyzed.typing.diagnostics.is_empty(),
+            "{:?}",
+            analyzed.typing.diagnostics
+        );
+        assert!(
+            analyzed.failures.diagnostics.is_empty(),
+            "{:?}",
+            analyzed.failures.diagnostics
+        );
+        let outputs = derive_target(&project_path, &analyzed)
+            .expect("a credential authority may reference a separate service identity");
+        assert!(outputs
+            .iter()
+            .any(|output| output.relative_path == "target/first-party-authentication.ts"));
+        let app = &outputs
+            .iter()
+            .find(|output| output.relative_path == "target/app.ts")
+            .expect("application target should exist")
+            .contents;
+        assert!(app.contains("values: { service_id: id }"));
+        assert!(!app.contains("verifier: authorityRow[\"verifier\"]"));
+        assert_eq!(app.matches("const routePath").count(), 8);
+        for route_id in 0..8 {
+            assert!(app.contains(&format!("const routePath{route_id} =")));
+        }
+        for replacement in [
+            "id: Uuid\n    unsupplied: Text",
+            "id: Uuid\n    unsupplied: Int",
+            "id: Uuid\n    changed_at: Instant generated { on: create_or_change }",
+        ] {
+            let sources = crate::discover_sources(&project_path)
+                .unwrap()
+                .into_iter()
+                .map(|source| {
+                    let text = if source.text.contains("entity ServiceCredential {") {
+                        source.text.replace("id: Uuid", replacement)
+                    } else {
+                        source.text
+                    };
+                    jadpo_syntax::SourceFile::new(source.path, text)
+                })
+                .collect();
+            let project = crate::analyze_sources(sources).unwrap();
+            assert!(
+                project.typing.diagnostics.is_empty(),
+                "{:?}",
+                project.typing.diagnostics
+            );
+            assert_eq!(
+                derive_target(&project_path, &project).unwrap_err().code,
+                "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
+            );
+        }
+    }
+
+    #[test]
+    fn lifecycle_authority_lookup_projects_only_subject_identity_and_lifecycle_state() {
+        let project_path = repository_root().join("examples/golden-todo-migration");
+        let lifecycle = r#"    lifecycle {
+        initial: {
+            status: User.status(UserStatus.active)
+            disabled_at: none
+        }
+        visible when status == UserStatus.active
+        transition disable {
+            from: status == UserStatus.active
+            set: {
+                status: User.status(UserStatus.disabled)
+                disabled_at: clock.now
+            }
+        }
+        purge after config.soft_delete_retention from disabled_at
+    }
+
+"#;
+        let analyze = |authentication_replacement: Option<(&str, &str)>| {
+            let sources = crate::discover_sources(&project_path)
+                .unwrap()
+                .into_iter()
+                .map(|source| {
+                    let mut text = source.text;
+                    if source
+                        .path
+                        .to_string_lossy()
+                        .ends_with("entities/user.jadpo")
+                    {
+                        text = text.replace(
+                            "    policy {\n        UserRole.self: [read]\n    }",
+                            &format!(
+                                "{lifecycle}    policy {{\n        UserRole.self: [read]\n    }}"
+                            ),
+                        );
+                    }
+                    if source
+                        .path
+                        .to_string_lossy()
+                        .ends_with("authentication.jadpo")
+                    {
+                        if let Some((before, after)) = authentication_replacement {
+                            text = text.replace(before, after);
+                        }
+                    }
+                    jadpo_syntax::SourceFile::new(source.path, text)
+                })
+                .collect();
+            crate::analyze_sources(sources).expect("lifecycle authentication should analyze")
+        };
+
+        let analyzed = analyze(None);
+        assert!(
+            analyzed.typing.diagnostics.is_empty(),
+            "{:?}",
+            analyzed.typing.diagnostics
+        );
+        let outputs = derive_target(&project_path, &analyzed).expect("lifecycle auth should lower");
+        let persistence = &outputs
+            .iter()
+            .find(|output| output.relative_path == "target/persistence.ts")
+            .expect("persistence target should exist")
+            .contents;
+        let authority_line = persistence
+            .lines()
+            .find(|line| line.contains("browser_session:user"))
+            .expect("user authority lookup should exist");
+        for field in ["id", "authentication_subject", "status", "disabled_at"] {
+            assert!(authority_line.contains(field), "{authority_line}");
+        }
+        assert!(!authority_line.contains("email"), "{authority_line}");
+        let app = &outputs
+            .iter()
+            .find(|output| output.relative_path == "target/app.ts")
+            .expect("application target should exist")
+            .contents;
+        assert!(app.contains("const status = validateField_4_User_status("));
+        assert!(app.contains("const disabled_at = validateField_4_User_disabled_at("));
+        assert!(app.contains("bindLifecycleRetention(configuration)"));
+        assert!(!app.contains("const email = validateField_4_User_email("));
+
+        let private_active = analyze(Some((
+            "active: status == UserStatus.active",
+            "active: email == email",
+        )));
+        assert!(private_active
+            .typing
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "TYPE_AUTH_LIFECYCLE_ACTIVE_FIELD"));
+        let private_mapping = analyze(Some((
+            "authentication_subject -> Principal.user.subject",
+            "email -> Principal.user.subject",
+        )));
+        assert!(private_mapping
+            .typing
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "TYPE_AUTH_LIFECYCLE_MAPPING_SCOPE"));
+    }
+
     fn repository_root() -> &'static Path {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .nth(3)
             .expect("compiler crate should be inside the repository")
+    }
+
+    #[test]
+    fn creates_compiler_owned_uuid_identity_values() {
+        let fixture = repository_root().join("tests/compile/pass/137_generated_identity.jadpo");
+        let analyzed =
+            analyze_project(&fixture).expect("generated identity fixture should analyze");
+        assert!(
+            analyzed.typing.diagnostics.is_empty(),
+            "{:?}",
+            analyzed.typing.diagnostics
+        );
+        let targets = derive_target(&fixture, &analyzed).expect("identity target should generate");
+        let app = &targets
+            .iter()
+            .find(|target| target.relative_path == "target/app.ts")
+            .expect("app target should exist")
+            .contents;
+        assert!(app.contains("id: crypto.randomUUID()"));
+        let entities = &targets
+            .iter()
+            .find(|target| target.relative_path == "persistence/entities.json")
+            .expect("persistence contract should exist")
+            .contents;
+        assert!(entities.contains("\"generated\":\"identity\""));
+    }
+
+    #[test]
+    fn applies_entity_lifecycle_initial_values_to_created_rows() {
+        let fixture = repository_root()
+            .join("tests/compile/pass/lifecycle/170_lifecycle_initial_values.jadpo");
+        let analyzed = analyze_project(&fixture).expect("lifecycle fixture should analyze");
+        assert!(
+            analyzed.typing.diagnostics.is_empty(),
+            "{:?}",
+            analyzed.typing.diagnostics
+        );
+        let targets = derive_target(&fixture, &analyzed).expect("lifecycle target should generate");
+        let app = &targets
+            .iter()
+            .find(|target| target.relative_path == "target/app.ts")
+            .expect("app target should exist")
+            .contents;
+        assert!(app.contains("status: validateField_4_User_status(\"active\", \"User.status\")"));
+        assert!(app.contains("status: status, deleted_at: null"));
+        assert!(app.contains("id: crypto.randomUUID()"));
+        assert!(app.contains("transition_required_User_by_id_disable"));
+        assert!(app.contains("runLifecycleMaintenance"));
+        assert!(app.contains("bindLifecycleRetention(configuration)"));
+        assert!(app.contains("Retention must be positive: config.soft_delete_retention"));
+        assert!(app.contains("retention.purge.batch"));
+        let persistence = &targets
+            .iter()
+            .find(|target| {
+                target
+                    .contents
+                    .contains("async transition_required_User_by_id_disable")
+            })
+            .expect("persistence transition method should be generated")
+            .contents;
+        let transition_method = persistence
+            .find("async transition_required_User_by_id_disable")
+            .unwrap();
+        let transition_end = persistence[transition_method..]
+            .find("\n  },")
+            .map(|offset| transition_method + offset)
+            .expect("transition method should close");
+        let transition_source = &persistence[transition_method..transition_end];
+        assert!(transition_source.contains("status"), "{transition_source}");
+        assert!(
+            transition_source.contains("disabled_at"),
+            "{transition_source}"
+        );
+        assert!(
+            transition_source.contains("updated_at"),
+            "{transition_source}"
+        );
+        assert!(transition_source.contains("$4"), "{transition_source}");
+        assert!(transition_source.contains("?4"), "{transition_source}");
+        assert!(
+            transition_source.contains("'active'"),
+            "{transition_source}"
+        );
+        assert!(!persistence.contains("async delete_required_User_by_"));
+        assert!(!persistence.contains("async update_required_User_by_id_set_status"));
+        assert!(persistence.contains("async update_required_User_by_id_set_name"));
+        assert!(persistence.contains("caller cannot set lifecycle-owned initial state"));
+        assert!(persistence.contains("WHERE \\\"id\\\" = $2 AND (\\\"status\\\" = 'active')"));
+        assert!(transition_source.contains("operationTime"));
+        assert!(persistence.contains("async retention_purge_Todo"));
+        assert!(persistence.contains("export function configureLifecycleRetention"));
+        assert!(!persistence.contains("Bun.env[\"JADPO_LIFECYCLE_RETENTION\"]"));
+        assert!(persistence.contains("lifecycleRetentionMilliseconds"));
+        assert!(persistence.contains("Math.min(attemptMilliseconds, Date.now())"));
+        assert!(persistence.contains("configuredPersistenceDuration"));
+        assert!(persistence
+            .contains("ORDER BY \\\"deleted_at\\\" ASC, \\\"id\\\" ASC LIMIT 500 FOR UPDATE"));
+        assert!(persistence.contains("async update_required_Todo_by_id_set_status"));
+        assert!(persistence.contains("\\\"deleted_at\\\" IS NULL"));
+        assert!(persistence.contains("\\\"deleted_at\\\" IS NOT NULL"));
+        assert!(!persistence.contains("\\\"status\\\" = 'deleted'"));
+        let entities = &targets
+            .iter()
+            .find(|target| target.relative_path == "persistence/entities.json")
+            .expect("persistence contract should exist")
+            .contents;
+        assert!(entities.contains("\\\"status\\\" = 'active'"), "{entities}");
+        let maintenance = &targets
+            .iter()
+            .find(|target| target.relative_path == "audit/lifecycle-maintenance.json")
+            .expect("maintenance authority artifact should exist")
+            .contents;
+        assert!(maintenance.contains("retention_purge(Todo)"));
+        assert!(!maintenance.contains("retention_purge(User)"));
+        assert!(maintenance.contains("\"source_callable\": false"));
+        assert!(maintenance.contains("\"batch_limit\": 500"));
+    }
+
+    #[test]
+    fn lifecycle_audit_separates_policy_lifecycle_generated_fields_and_sql_effect() {
+        let fixture = repository_root()
+            .join("tests/compile/pass/lifecycle/174_lifecycle_delete_effect.jadpo");
+        let analyzed = analyze_project(&fixture).expect("lifecycle effect fixture should analyze");
+        assert!(
+            analyzed.typing.diagnostics.is_empty(),
+            "{:?}",
+            analyzed.typing.diagnostics
+        );
+        let targets =
+            derive_target(&fixture, &analyzed).expect("lifecycle effect target should generate");
+        let manifest = &targets
+            .iter()
+            .find(|target| target.relative_path == "audit/lifecycles.json")
+            .expect("lifecycle audit artifact should exist")
+            .contents;
+        let manifest: serde_json::Value =
+            serde_json::from_str(manifest).expect("lifecycle audit artifact should be JSON");
+        let entity = &manifest["entities"][0];
+        let transition = &entity["transitions"][0];
+        assert_eq!(transition["name"], "delete");
+        assert_eq!(transition["logical_policy_effect"], "delete");
+        assert_eq!(transition["sql_verb"], "UPDATE");
+        assert_eq!(transition["guarded_sql"][0], "identity");
+        assert_eq!(transition["guarded_sql"][1], "lifecycle_visibility");
+        assert_eq!(transition["guarded_sql"][2], "transition_from");
+        assert!(entity["lifecycle_nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| {
+                node["kind"] == "lifecycle_transition"
+                    && node["name"] == "Todo.lifecycle.transition.delete"
+                    && node["start"].as_u64().unwrap_or_default()
+                        < node["end"].as_u64().unwrap_or_default()
+            }));
+        assert!(entity["policy_nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| { node["kind"] == "policy" && node["name"] == "Todo.policy" }));
+        assert!(entity["generated_fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|field| { field["name"] == "updated_at" && field["node_id"].is_number() }));
+        let persistence = targets
+            .iter()
+            .find(|target| target.relative_path == "target/persistence.ts")
+            .expect("persistence target should exist")
+            .contents
+            .as_str();
+        assert!(persistence.contains("policyPostgresMutationRows(tx, \"Todo\", \"delete\""));
+        assert!(persistence.contains("UPDATE \\\"todo\\\" SET"));
     }
 
     #[test]
@@ -9475,6 +13391,7 @@ mod tests {
             .contents
             .contains("invite_code: error.internalContext"));
         assert!(targets[0].contents.contains("RUNTIME_UNHANDLED_FAULT"));
+        assert!(targets[0].contents.contains("RUNTIME_OUTCOME_UNKNOWN"));
         assert!(targets[0].contents.contains("RUNTIME_STARTUP_FAILED"));
         assert!(targets[0].contents.contains("JADPO_DEBUG_TARGET_STACKS"));
         assert!(!targets[0]
@@ -9484,6 +13401,52 @@ mod tests {
             targets,
             derive_target(&seed, &analyzed).expect("second target should generate")
         );
+    }
+
+    #[test]
+    fn nullable_input_default_materializes_none_when_request_omits_field() {
+        let source_path = Path::new("input-default.jadpo");
+        let source = r#"input CreateTodo { due_at: Instant? default none }
+output TodoView { due_at: Instant? }
+route POST /todos {
+    auth: none
+    input: CreateTodo
+    output: TodoView
+    action: { return TodoView { due_at: input.due_at } }
+}
+"#;
+        let project = crate::analyze_sources(vec![jadpo_syntax::SourceFile::new(
+            source_path.to_path_buf(),
+            source.to_owned(),
+        )])
+        .expect("input default project should analyze");
+        assert!(
+            project.typing.diagnostics.is_empty(),
+            "{:?}",
+            project.typing.diagnostics
+        );
+        let outputs = derive_target(source_path, &project).expect("target should generate");
+        let app = &outputs
+            .iter()
+            .find(|output| output.relative_path == "target/app.ts")
+            .expect("application target")
+            .contents;
+
+        assert!(app.contains("due_at: hasOwn(object, \"due_at\") ?"));
+        assert!(app.contains(": null,"));
+        assert!(app.contains("type CreateTodo = {\n  due_at: Instant | null;"));
+
+        let invalid = source.replace("Instant? default none", "Instant default none");
+        let invalid_project = crate::analyze_sources(vec![jadpo_syntax::SourceFile::new(
+            source_path.to_path_buf(),
+            invalid,
+        )])
+        .expect("invalid default source should still be analyzed");
+        assert!(invalid_project
+            .typing
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "TYPE_MISMATCH"));
     }
 
     #[test]
@@ -9501,6 +13464,12 @@ mod tests {
         assert!(targets[0]
             .contents
             .contains("matchRoutePath(\"/health\", url.pathname)"));
+        assert!(targets[0]
+            .contents
+            .contains("url.pathname === \"/health/live\""));
+        assert!(targets[0]
+            .contents
+            .contains("url.pathname === \"/health/ready\""));
         assert_eq!(
             targets[0]
                 .contents
@@ -9803,7 +13772,7 @@ function configured_timeout() -> Timeout { return config.timeout }
 
         assert!(application.contains("export async function runTests()"));
         assert!(application.contains("assertion failed at source bytes"));
-        assert!(application.contains("captureOperation(__testClockNow)"));
+        assert!(application.contains("captureOperation(__testClockNow, null, () => __testClockNow, true, null, __testServiceFakes)"));
         assert!(application.contains("surface: \"pure\" as const"));
         assert!(application.contains("schema_version: 2, kind: \"test_report\""));
         assert!(application.contains("authored_business_cases: results.length"));
@@ -9934,7 +13903,7 @@ function configured_timeout() -> Timeout { return config.timeout }
             .contains("DELETE FROM \\\"customer\\\" WHERE \\\"id\\\" = ?1 RETURNING"));
         assert!(runtime
             .contents
-            .contains("${persistenceValue(value[\"id\"], \"Uuid\", true)}"));
+            .contains("${persistenceValue(createValue[\"id\"], \"Uuid\", true)}"));
         assert!(runtime
             .contents
             .contains("query_optional_Customer_by_id(value: unknown)"));
@@ -9944,6 +13913,15 @@ function configured_timeout() -> Timeout { return config.timeout }
         assert!(runtime
             .contents
             .contains("class PersistenceFault extends Error"));
+        assert!(runtime
+            .contents
+            .contains("class OutcomeUnknownFault extends Error"));
+        let application = targets
+            .iter()
+            .find(|target| target.relative_path == "target/app.ts")
+            .expect("HTTP application target should exist");
+        assert!(application.contents.contains("error.kind === \"unknown\""));
+        assert!(application.contents.contains("outcome_unknown"));
         assert!(runtime.contents.contains(
             "new SQL({ url: Bun.env.DATABASE_URL!, prepare: false, connectionTimeout: 2 })"
         ));
@@ -10077,7 +14055,10 @@ function configured_timeout() -> Timeout { return config.timeout }
             .contains("async function create_atomic_pair(input: CreateAtomicPair, __operation: OperationContext = captureOperation(), __persistence"));
         assert!(targets[0]
             .contents
-            .contains("return __persistence.withOperationTime(__operation.now).transaction(async persistence =>"));
+            .contains("return __persistence.withDeadline(__operation.deadlineAt).withSignal(__operation.signal).withOperationTime(__operation.now).transaction(async persistence =>"));
+        assert!(targets[0].contents.contains(
+            "error instanceof PersistenceFault && error.deadlineExceeded && error.kind !== \"unknown\""
+        ));
         assert!(targets[0]
             .contents
             .contains("async function find_customer(input: FindCustomer, __operation: OperationContext = captureOperation(), __persistence"));
@@ -10103,6 +14084,64 @@ function configured_timeout() -> Timeout { return config.timeout }
         let diagnostic = validate_runtime_dependency_contract(&manifest, false)
             .expect_err("dependency manifests must be rejected");
         assert_eq!(diagnostic.code, "JADPO_TARGET_DEPENDENCY_MANIFEST");
+
+        let builtin = vec![GeneratedArtifact {
+            relative_path: "target/service-adapter.ts",
+            contents: "import { isIP } from \"node:net\";".to_owned(),
+        }];
+        validate_runtime_dependency_contract(&builtin, false)
+            .expect("the pinned adapter may use the approved built-in network module");
+        let unapproved_builtin = vec![GeneratedArtifact {
+            relative_path: "target/service-adapter.ts",
+            contents: "import { spawn } from \"node:child_process\";".to_owned(),
+        }];
+        assert_eq!(
+            validate_runtime_dependency_contract(&unapproved_builtin, false)
+                .unwrap_err()
+                .code,
+            "JADPO_TARGET_EXTERNAL_MODULE"
+        );
+    }
+
+    #[test]
+    fn checked_service_operation_uses_generated_adapter_and_propagates_suspension() {
+        let fixture =
+            repository_root().join("tests/compile/pass/170_checked_service_operation.jadpo");
+        let analyzed = analyze_project(&fixture).expect("checked service fixture should analyze");
+        let outputs = derive_target(&fixture, &analyzed).expect("service target should generate");
+        let application = &outputs
+            .iter()
+            .find(|output| output.relative_path == "target/app.ts")
+            .expect("generated application")
+            .contents;
+        let adapter = &outputs
+            .iter()
+            .find(|output| output.relative_path == "target/service-adapter.ts")
+            .expect("compiler-owned service adapter")
+            .contents;
+
+        assert!(application.contains(
+            "import { invokeReferenceMail, ServiceAdapterFault } from \"./service-adapter.ts\";"
+        ));
+        assert!(application.contains("async function deliver(mail: ReminderMessage"));
+        assert!(application.contains(
+            "return await __service_ReminderMail__send_overdue_reminder(mail, __operation);"
+        ));
+        assert!(application.contains("errorEnvelope(\"outcome_unknown\""));
+        assert!(application.contains("error instanceof ServiceAdapterFault ? ({ unavailable: \"Unavailable\", misconfigured: \"Misconfigured\", outcome_unknown: \"OutcomeUnknown\" } as const)[error.kind] : null"));
+        let checked_input = application
+            .find("const checkedInput = validate_ReminderMessage(input, \"service.ReminderMail.send_overdue_reminder.input\")")
+            .expect("service request must be validated before adapter dispatch");
+        let adapter_dispatch = application
+            .find("const result = await invokeReferenceMail(checkedInput as unknown as Readonly<Record<string, unknown>>")
+            .expect("service operation should call the reviewed adapter");
+        assert!(checked_input < adapter_dispatch);
+        assert!(adapter.contains("Bun.connect({"));
+        assert!(adapter.contains("serverName: SERVICE_HOST"));
+        assert!(adapter.contains("Idempotency-Key: ${key}"));
+        assert!(adapter.contains("eventName: \"service.attempt\""));
+        assert!(!adapter.contains("node:https"));
+        assert!(!adapter.contains("process.env.HTTP_PROXY"));
     }
 
     #[test]
@@ -10244,5 +14283,14 @@ function configured_timeout() -> Timeout { return config.timeout }
         }
         assert!(!authentication.contents.contains("provider response"));
         assert!(!authentication.contents.contains("rawClaims"));
+    }
+}
+
+/// Explicit Bun boundary policy; shared semantics have no OutcomeUnknown HTTP default.
+pub(crate) fn bun_failure_http_status(kind: &str, default: Option<u16>) -> u16 {
+    match (kind, default) {
+        ("OutcomeUnknown", None) => 500,
+        (_, Some(status)) => status,
+        _ => panic!("checked failure kind has no Bun HTTP mapping: {kind}"),
     }
 }

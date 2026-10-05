@@ -2,10 +2,16 @@ use crate::{NodeKind, SemanticGraph};
 use jadpo_diagnostics::{Diagnostic, DiagnosticFact, SourceSpan};
 use jadpo_syntax::{
     Block, CallableDeclaration, ConfigDefaultKind, Constraint, ConstraintKind, Declaration,
-    Expression, FieldInitialiser, InvocationExpression, Literal, LiteralKind, Name, ParsedSyntax,
-    PersistenceModifier, Statement, TextRange, TypeReference,
+    Expression, FieldInitialiser, InvocationExpression, JobDeclaration, Literal, LiteralKind, Name,
+    ParsedSyntax, PersistenceModifier, RouteDeclaration, RouteSuccess, Statement, TextRange,
+    TypeReference,
 };
 use std::collections::{BTreeMap, BTreeSet};
+
+mod delivery_seal;
+mod delivery_selector;
+mod delivery_types;
+pub use delivery_types::DeliveryTypeCandidate;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InferredExpression {
@@ -20,11 +26,23 @@ pub struct ClockRead {
     pub range: TextRange,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CheckedJobBinding {
+    pub job: String,
+    pub callee: String,
+    pub snapshot_type: String,
+    pub interval_ms: u64,
+    pub constructor_proof: String,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TypeCheckResult {
     pub diagnostics: Vec<Diagnostic>,
     pub expressions: Vec<InferredExpression>,
     pub clock_reads: Vec<ClockRead>,
+    pub jobs: Vec<CheckedJobBinding>,
+    /// Necessary resolved facts only; never delivery authority or a checked job.
+    pub delivery_candidates: Vec<DeliveryTypeCandidate>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -81,6 +99,8 @@ struct RecordField {
     optional: bool,
     generated: Option<jadpo_syntax::GeneratedFieldRole>,
     update_forbidden: bool,
+    lifecycle_owned: bool,
+    lifecycle_initial: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -109,10 +129,15 @@ struct Catalogue {
     field_reference_targets: BTreeMap<(String, String), String>,
     record_kinds: BTreeMap<String, jadpo_syntax::RecordKind>,
     enums: BTreeMap<String, BTreeMap<String, BTreeMap<String, RecordField>>>,
+    simple_enums: BTreeSet<String>,
     configuration: BTreeMap<String, RecordField>,
     principal: Option<String>,
     failures: BTreeMap<String, String>,
     persistent_entities: BTreeSet<String>,
+    identity_fields: BTreeSet<(String, String)>,
+    reference_fields: BTreeMap<(String, String), Vec<String>>,
+    authority_stores: BTreeMap<String, Option<String>>,
+    lifecycles: BTreeMap<String, jadpo_syntax::EntityLifecycle>,
     locales: BTreeSet<String>,
     locale_default: Option<String>,
 }
@@ -123,8 +148,10 @@ pub fn check_types(files: &[ParsedSyntax], graph: &SemanticGraph) -> TypeCheckRe
         graph,
         catalogue,
         result: TypeCheckResult::default(),
+        delivery_seals: delivery_seal::seals_from_files(files),
     };
     checker.check_files(files);
+    checker.check_delivery_sealed_declarations(files);
     checker.result
 }
 
@@ -225,6 +252,8 @@ impl Catalogue {
                         optional: false,
                         generated: None,
                         update_forbidden: false,
+                        lifecycle_owned: false,
+                        lifecycle_initial: false,
                     },
                 ),
                 (
@@ -234,6 +263,8 @@ impl Catalogue {
                         optional: false,
                         generated: None,
                         update_forbidden: false,
+                        lifecycle_owned: false,
+                        lifecycle_initial: false,
                     },
                 ),
             ]
@@ -250,6 +281,8 @@ impl Catalogue {
                         optional: false,
                         generated: None,
                         update_forbidden: false,
+                        lifecycle_owned: false,
+                        lifecycle_initial: false,
                     },
                 ),
                 (
@@ -259,6 +292,8 @@ impl Catalogue {
                         optional: false,
                         generated: None,
                         update_forbidden: false,
+                        lifecycle_owned: false,
+                        lifecycle_initial: false,
                     },
                 ),
             ]
@@ -274,6 +309,8 @@ impl Catalogue {
                     optional: false,
                     generated: None,
                     update_forbidden: false,
+                    lifecycle_owned: false,
+                    lifecycle_initial: false,
                 },
             )]
             .into_iter()
@@ -302,6 +339,8 @@ impl Catalogue {
                                         optional: field.default.is_some(),
                                         generated: None,
                                         update_forbidden: false,
+                                        lifecycle_owned: false,
+                                        lifecycle_initial: false,
                                     },
                                 )
                             }));
@@ -324,6 +363,8 @@ impl Catalogue {
                                             optional: field.optional,
                                             generated: None,
                                             update_forbidden: false,
+                                            lifecycle_owned: false,
+                                            lifecycle_initial: false,
                                         },
                                     )
                                 })
@@ -345,6 +386,13 @@ impl Catalogue {
                         );
                     }
                     Declaration::Enum(declaration) => {
+                        if declaration
+                            .variants
+                            .iter()
+                            .all(|variant| variant.fields.is_empty())
+                        {
+                            catalogue.simple_enums.insert(declaration.name.text.clone());
+                        }
                         let mut variants = BTreeMap::new();
                         for variant in &declaration.variants {
                             let mut fields = BTreeMap::new();
@@ -366,6 +414,8 @@ impl Catalogue {
                                         optional: field.optional,
                                         generated: None,
                                         update_forbidden: false,
+                                        lifecycle_owned: false,
+                                        lifecycle_initial: false,
                                     },
                                 );
                             }
@@ -376,8 +426,33 @@ impl Catalogue {
                             .insert(declaration.name.text.clone(), variants);
                     }
                     Declaration::Record(declaration) => {
+                        if declaration.is_persistent_entity() {
+                            catalogue.authority_stores.insert(
+                                declaration.name.text.clone(),
+                                declaration
+                                    .dossier
+                                    .as_ref()
+                                    .and_then(|d| d.persistence.as_ref())
+                                    .map(|p| p.store.text.clone()),
+                            );
+                        }
                         for field in &declaration.fields {
+                            if field.persistence.contains(&PersistenceModifier::Identity) {
+                                catalogue.identity_fields.insert((
+                                    declaration.name.text.clone(),
+                                    field.name.text.clone(),
+                                ));
+                            }
                             if let Some(reference) = &field.reference {
+                                catalogue.reference_fields.insert(
+                                    (declaration.name.text.clone(), field.name.text.clone()),
+                                    reference
+                                        .target
+                                        .path
+                                        .iter()
+                                        .map(|p| p.text.clone())
+                                        .collect(),
+                                );
                                 catalogue.field_reference_targets.insert(
                                     (declaration.name.text.clone(), field.name.text.clone()),
                                     reference.target.path[0].text.clone(),
@@ -388,6 +463,15 @@ impl Catalogue {
                             .record_kinds
                             .insert(declaration.name.text.clone(), declaration.kind);
                         if declaration.kind == jadpo_syntax::RecordKind::Entity {
+                            if let Some(lifecycle) = declaration
+                                .dossier
+                                .as_ref()
+                                .and_then(|dossier| dossier.lifecycle.as_ref())
+                            {
+                                catalogue
+                                    .lifecycles
+                                    .insert(declaration.name.text.clone(), lifecycle.clone());
+                            }
                             catalogue.entities.insert(declaration.name.text.clone());
                             if declaration.is_persistent_entity() {
                                 catalogue
@@ -434,6 +518,27 @@ impl Catalogue {
                                     }),
                             );
                         }
+                        let lifecycle = declaration
+                            .dossier
+                            .as_ref()
+                            .and_then(|dossier| dossier.lifecycle.as_ref());
+                        let lifecycle_initial = lifecycle
+                            .and_then(|contract| contract.initial.as_ref())
+                            .into_iter()
+                            .flatten()
+                            .map(|field| field.name.text.clone())
+                            .collect::<BTreeSet<_>>();
+                        let mut lifecycle_owned = lifecycle_initial.clone();
+                        if let Some(contract) = lifecycle {
+                            lifecycle_owned.extend(contract.transitions.iter().flat_map(
+                                |transition| {
+                                    transition.set.iter().map(|field| field.name.text.clone())
+                                },
+                            ));
+                            if let Some(purge) = &contract.purge {
+                                lifecycle_owned.insert(purge.from.text.clone());
+                            }
+                        }
                         let fields = declaration
                             .fields
                             .iter()
@@ -463,7 +568,11 @@ impl Catalogue {
                                                         || membership.member.text == field.name.text
                                                         || membership.role.text == field.name.text
                                                 },
-                                            ),
+                                            )
+                                            || lifecycle_owned.contains(&field.name.text),
+                                        lifecycle_owned: lifecycle_owned.contains(&field.name.text),
+                                        lifecycle_initial: lifecycle_initial
+                                            .contains(&field.name.text),
                                     },
                                 )
                             })
@@ -531,6 +640,8 @@ impl Catalogue {
                                                 optional: field.optional,
                                                 generated: None,
                                                 update_forbidden: false,
+                                                lifecycle_owned: false,
+                                                lifecycle_initial: false,
                                             },
                                         )
                                     })
@@ -566,9 +677,25 @@ impl Catalogue {
                     | Declaration::AuthenticationStrategy(_)
                     | Declaration::Fixture(_)
                     | Declaration::Test(_)
-                    | Declaration::Route(_) => {}
+                    | Declaration::Route(_)
+                    | Declaration::Job(_) => {}
                 }
             }
+        }
+        for effect in &graph.external_effects {
+            catalogue.callables.insert(
+                format!("{}.{}", effect.service, effect.operation),
+                CallableSignature {
+                    parameters: vec![resolved_type_value(
+                        &super::service_type_reference(&effect.input, effect.range),
+                        graph,
+                    )],
+                    result: resolved_type_value(
+                        &super::service_type_reference(&effect.output, effect.range),
+                        graph,
+                    ),
+                },
+            );
         }
         if !catalogue.configuration.is_empty() {
             catalogue
@@ -605,6 +732,7 @@ struct TypeChecker<'graph> {
     graph: &'graph SemanticGraph,
     catalogue: Catalogue,
     result: TypeCheckResult,
+    delivery_seals: Vec<delivery_seal::DeliverySeal>,
 }
 
 impl TypeChecker<'_> {
@@ -616,7 +744,88 @@ impl TypeChecker<'_> {
         environment
     }
 
+    fn check_route_success(
+        &mut self,
+        route: &RouteDeclaration,
+        result: Option<TypeValue>,
+        source: &str,
+    ) {
+        match route.success {
+            RouteSuccess::Ok => {}
+            RouteSuccess::Created => {
+                let Some(output) = &route.output else {
+                    self.push_diagnostic_with_facts(
+                        "TYPE_MISMATCH",
+                        source,
+                        route.range,
+                        [
+                            DiagnosticFact::Expected(
+                                "a declared response type for `success: created`".to_owned(),
+                            ),
+                            DiagnosticFact::Received(
+                                result
+                                    .map_or_else(|| "no response type".to_owned(), |t| t.display()),
+                            ),
+                        ],
+                    );
+                    return;
+                };
+                if let Some(result) = result {
+                    let expected = resolved_type_value(output, self.graph);
+                    self.require_compatible(&result, &expected, source, route.range);
+                }
+            }
+            RouteSuccess::NoContent => {
+                if let Some(output) = &route.output {
+                    let received = resolved_type_value(output, self.graph);
+                    self.push_diagnostic_with_facts(
+                        "TYPE_MISMATCH",
+                        source,
+                        route.range,
+                        [
+                            DiagnosticFact::Expected(
+                                "Unit with no declared response body".to_owned(),
+                            ),
+                            DiagnosticFact::Received(received.display()),
+                        ],
+                    );
+                } else if let Some(result) = result {
+                    self.require_compatible(&result, &simple_type("Unit"), source, route.range);
+                }
+            }
+        }
+    }
+
     fn check_files(&mut self, files: &[ParsedSyntax]) {
+        let post_paths = files
+            .iter()
+            .flat_map(|file| file.file.declarations.iter())
+            .filter_map(|declaration| match declaration {
+                Declaration::Route(route) if route_method_name(route.method) == "POST" => {
+                    Some(route.path.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for file in files {
+            for declaration in &file.file.declarations {
+                if let Declaration::AuthenticationStrategy(strategy) = declaration {
+                    if let Some(exchange) = &strategy.exchange {
+                        let path = exchange.path.text.trim_matches('"');
+                        if post_paths
+                            .iter()
+                            .any(|route| route_could_match_literal(route, path))
+                        {
+                            self.push_diagnostic(
+                                "TYPE_AUTH_EXCHANGE_ROUTE_COLLISION",
+                                &file.source_name,
+                                exchange.path.range,
+                            );
+                        }
+                    }
+                }
+            }
+        }
         self.check_authentication_contract(files);
         let fixtures = files
             .iter()
@@ -629,6 +838,11 @@ impl TypeChecker<'_> {
         for file in files {
             for declaration in &file.file.declarations {
                 match declaration {
+                    Declaration::Record(record) => {
+                        self.check_record_defaults(record, &file.source_name);
+                        self.check_generated_fields(record, &file.source_name);
+                        self.check_entity_lifecycle(record, &file.source_name);
+                    }
                     Declaration::Locales(locales) => self.check_locales(locales, &file.source_name),
                     Declaration::Config(configuration) => {
                         self.check_configuration(configuration, &file.source_name)
@@ -639,7 +853,45 @@ impl TypeChecker<'_> {
                     Declaration::Callable(callable) => {
                         self.check_callable(callable, &file.source_name)
                     }
+                    Declaration::Job(job) => {
+                        let schedule = self.check_job_schedule(job, &file.source_name);
+                        // Necessary facts only: Core's all-gates atomic finish
+                        // owns completed bindings and unsupported diagnostics.
+                        // Never publish delivery through ordinary checked jobs.
+                        if let Some(delivery) = &job.delivery {
+                            let before = self.result.diagnostics.len();
+                            self.check_delivery_selector_types(delivery, files, &file.source_name);
+                            let service =
+                                self.check_delivery_service_types(delivery, &file.source_name);
+                            if before == self.result.diagnostics.len() {
+                                if let (Some(schedule), Some(service)) = (schedule, service) {
+                                    self.result.delivery_candidates.push(
+                                        DeliveryTypeCandidate::new(
+                                            schedule,
+                                            &file.source_name,
+                                            delivery,
+                                            service,
+                                        ),
+                                    );
+                                }
+                            }
+                            continue;
+                        }
+                        if let Some(schedule) = schedule {
+                            self.result.jobs.push(schedule);
+                        }
+                    }
                     Declaration::Route(route) => {
+                        if let Some(deadline) = &route.deadline {
+                            if deadline.milliseconds().is_none() {
+                                self.push_diagnostic(
+                                    "ROUTE_DEADLINE_INVALID",
+                                    &file.source_name,
+                                    deadline.range,
+                                );
+                            }
+                        }
+                        self.check_route_transport_bindings(route, &file.source_name);
                         let mut environment = self.base_environment();
                         if route.inline_action.is_some() {
                             environment.insert("clock".to_owned(), simple_type("__jadpo_clock"));
@@ -647,11 +899,46 @@ impl TypeChecker<'_> {
                         if !route.public {
                             if let Some(principal) = &self.catalogue.principal {
                                 environment.insert("principal".to_owned(), simple_type(principal));
+                                environment
+                                    .insert("current_principal".to_owned(), simple_type(principal));
                             }
+                        } else {
+                            environment.insert("__route_public".to_owned(), simple_type("Unit"));
                         }
                         if let Some(input) = &route.input {
                             environment
                                 .insert("input".to_owned(), resolved_type_value(input, self.graph));
+                        }
+                        if let Some(query) = &route.query {
+                            environment
+                                .insert("query".to_owned(), resolved_type_value(query, self.graph));
+                        }
+                        if !route.headers.is_empty() {
+                            let headers_type = format!("__route_headers_{}", route.range.start);
+                            self.catalogue.records.insert(
+                                headers_type.clone(),
+                                route
+                                    .headers
+                                    .iter()
+                                    .map(|header| {
+                                        (
+                                            header.name.text.clone(),
+                                            RecordField {
+                                                declared_type: resolved_type_value(
+                                                    &header.field_type,
+                                                    self.graph,
+                                                ),
+                                                optional: header.optional,
+                                                generated: None,
+                                                update_forbidden: false,
+                                                lifecycle_owned: false,
+                                                lifecycle_initial: false,
+                                            },
+                                        )
+                                    })
+                                    .collect(),
+                            );
+                            environment.insert("headers".to_owned(), simple_type(&headers_type));
                         }
                         if !route.path_fields.is_empty() {
                             let path_type = format!("__route_path_{}", route.range.start);
@@ -671,6 +958,8 @@ impl TypeChecker<'_> {
                                                 optional: false,
                                                 generated: None,
                                                 update_forbidden: false,
+                                                lifecycle_owned: false,
+                                                lifecycle_initial: false,
                                             },
                                         )
                                     })
@@ -678,9 +967,9 @@ impl TypeChecker<'_> {
                             );
                             environment.insert("path".to_owned(), simple_type(&path_type));
                         }
-                        if let Some(run) = &route.run {
-                            self.infer_invocation(run, &environment, &file.source_name);
-                        }
+                        let run_result = route.run.as_ref().and_then(|run| {
+                            self.infer_invocation(run, &environment, &file.source_name)
+                        });
                         if let Some(action) = &route.inline_action {
                             let mut mutable_bindings = BTreeSet::new();
                             let output = route
@@ -696,6 +985,7 @@ impl TypeChecker<'_> {
                                 &file.source_name,
                             );
                         }
+                        self.check_route_success(route, run_result, &file.source_name);
                     }
                     Declaration::Test(test) => {
                         let mut environment = self.base_environment();
@@ -742,9 +1032,60 @@ impl TypeChecker<'_> {
                                 fixture.range,
                             );
                         }
-                    }
-                    Declaration::Record(record) => {
-                        self.check_generated_fields(record, &file.source_name)
+                        let response_environment = BTreeMap::new();
+                        for fake in &fixture.service_fakes {
+                            for outcome in &fake.outcomes {
+                                let jadpo_syntax::FixtureServiceFakeValue::Accepted(response) =
+                                    &outcome.value
+                                else {
+                                    continue;
+                                };
+                                let effect = self.graph.external_effects.iter().find(|effect| {
+                                    effect.service == fake.service.text
+                                        && effect.operation == outcome.operation.text
+                                });
+                                let Some(effect) = effect else {
+                                    continue;
+                                };
+                                let expected_name = effect.output.as_str();
+                                let construction_name = match response {
+                                    Expression::Construction(construction) => {
+                                        Some(joined_name(&construction.target.path))
+                                    }
+                                    _ => None,
+                                };
+                                if construction_name.as_deref() != Some(expected_name) {
+                                    self.push_diagnostic_with_facts(
+                                        "TYPE_MISMATCH",
+                                        &file.source_name,
+                                        response.range(),
+                                        [
+                                            DiagnosticFact::Expected(format!(
+                                                "a direct `{expected_name}` construction"
+                                            )),
+                                            DiagnosticFact::Received(
+                                                construction_name.unwrap_or_else(|| {
+                                                    "an arbitrary expression".to_owned()
+                                                }),
+                                            ),
+                                        ],
+                                    );
+                                    continue;
+                                }
+                                if let Some(received) = self.infer_expression(
+                                    response,
+                                    &response_environment,
+                                    &file.source_name,
+                                ) {
+                                    self.require_compatible(
+                                        &received,
+                                        &simple_type(expected_name),
+                                        &file.source_name,
+                                        response.range(),
+                                    );
+                                }
+                            }
+                        }
                     }
                     Declaration::Application(_)
                     | Declaration::Principal(_)
@@ -754,6 +1095,75 @@ impl TypeChecker<'_> {
                 }
             }
         }
+    }
+
+    /// Common nominal schedule proof, not a delivery or authority proof. Its
+    /// caller decides whether the result is publishable; delivery callers must
+    /// still pass the separate complete binding boundary before export.
+    fn check_job_schedule(
+        &mut self,
+        job: &JobDeclaration,
+        source: &str,
+    ) -> Option<CheckedJobBinding> {
+        let before = self.result.diagnostics.len();
+        if job.every.milliseconds().is_none() {
+            self.push_diagnostic("TYPE_JOB_INTERVAL_INVALID", source, job.every.range);
+        }
+        let run = job.run.as_ref()?;
+        let callee = joined_name(&run.callee.path);
+        let signature = self.catalogue.callables.get(&callee).cloned();
+        let parameter = signature.as_ref().and_then(|signature| {
+            (signature.parameters.len() == 1).then(|| signature.parameters[0].clone())
+        });
+        // Direct unconstrained nominal Instant only: no primitive-signature
+        // exemption, inherited refinement constraint or implicit cast.
+        let exact_signature = signature
+            .as_ref()
+            .is_some_and(|signature| signature.result == simple_type("Unit"))
+            && parameter.as_ref().is_some_and(|parameter| {
+                !parameter.nullable
+                    && !parameter.secret
+                    && parameter.arguments.is_empty()
+                    && self
+                        .graph
+                        .node(&parameter.name)
+                        .is_some_and(|node| node.kind == NodeKind::Type)
+                    && self.ancestors(&parameter.name)
+                        == vec![parameter.name.clone(), "Instant".to_owned()]
+                    && self
+                        .catalogue
+                        .constraints
+                        .get(&parameter.name)
+                        .map_or(true, Vec::is_empty)
+            });
+        let action = self.graph.node(&callee).map(|node| node.kind) == Some(NodeKind::Action);
+        if !action || !exact_signature {
+            self.push_diagnostic("TYPE_JOB_RUN_SIGNATURE_INVALID", source, run.callee.range);
+        }
+        let clock_argument = run.arguments.len() == 1
+            && run.named_arguments.is_empty()
+            && matches!(&run.arguments[0], Expression::Invocation(constructor)
+                if parameter.as_ref().is_some_and(|parameter| joined_name(&constructor.callee.path) == parameter.name)
+                && constructor.arguments.len() == 1 && constructor.named_arguments.is_empty()
+                && matches!(&constructor.arguments[0], Expression::Name(name) if joined_name(&name.path) == "clock.now"));
+        if !clock_argument {
+            self.push_diagnostic("TYPE_JOB_RUN_ARGUMENT_INVALID", source, run.range);
+        } else {
+            let mut environment = self.base_environment();
+            environment.insert("clock".to_owned(), simple_type("__jadpo_clock"));
+            self.infer_invocation(run, &environment, source);
+        }
+        if !action || !exact_signature || before != self.result.diagnostics.len() {
+            return None;
+        }
+        Some(CheckedJobBinding {
+            job: job.name.text.clone(),
+            callee,
+            snapshot_type: parameter?.name,
+            interval_ms: job.every.milliseconds()?,
+            constructor_proof: "trusted_intrinsic_instant_to_unconstrained_direct_nominal_instant"
+                .to_owned(),
+        })
     }
 
     fn check_locales(&mut self, locales: &jadpo_syntax::LocalesDeclaration, source: &str) {
@@ -795,11 +1205,568 @@ impl TypeChecker<'_> {
             if record.kind != jadpo_syntax::RecordKind::Entity || !record.is_persistent_entity() {
                 self.push_diagnostic("TYPE_GENERATED_FIELD_CONTEXT", source, field.range);
             }
-            if declared.nullable
+            if field.generated == Some(jadpo_syntax::GeneratedFieldRole::Identity) {
+                let identity_field = field
+                    .persistence
+                    .contains(&jadpo_syntax::PersistenceModifier::Identity);
+                if !identity_field
+                    || declared.nullable
+                    || field.optional
+                    || self.representation_root(&declared.name).as_deref() != Some("Uuid")
+                {
+                    self.push_diagnostic("TYPE_GENERATED_IDENTITY_INVALID", source, field.range);
+                }
+            } else if declared.nullable
                 || field.optional
                 || self.representation_root(&declared.name).as_deref() != Some("Instant")
             {
                 self.push_diagnostic("TYPE_GENERATED_FIELD_TYPE", source, field.range);
+            }
+        }
+    }
+
+    fn check_entity_lifecycle(&mut self, record: &jadpo_syntax::RecordDeclaration, source: &str) {
+        let Some(lifecycle) = record
+            .dossier
+            .as_ref()
+            .and_then(|dossier| dossier.lifecycle.as_ref())
+        else {
+            return;
+        };
+        let entity = record.name.text.as_str();
+        if record.kind != jadpo_syntax::RecordKind::Entity || !record.is_persistent_entity() {
+            self.push_diagnostic(
+                "TYPE_LIFECYCLE_REQUIRES_PERSISTENT_ENTITY",
+                source,
+                lifecycle.range,
+            );
+            return;
+        }
+        let Some(initial) = &lifecycle.initial else {
+            self.push_diagnostic("TYPE_LIFECYCLE_INITIAL_REQUIRED", source, lifecycle.range);
+            return;
+        };
+        if lifecycle.visible.is_none() {
+            self.push_diagnostic("TYPE_LIFECYCLE_VISIBLE_REQUIRED", source, lifecycle.range);
+        }
+
+        let mut environment = self.base_environment();
+        environment.insert("clock".to_owned(), simple_type("__jadpo_clock"));
+        let fields = self
+            .catalogue
+            .records
+            .get(entity)
+            .cloned()
+            .unwrap_or_default();
+        for (name, field) in &fields {
+            environment.insert(name.clone(), field.declared_type.clone());
+        }
+        let source_fields = record
+            .fields
+            .iter()
+            .map(|field| (field.name.text.as_str(), field))
+            .collect::<BTreeMap<_, _>>();
+        let mut initial_fields = BTreeSet::new();
+        for field in initial {
+            if !initial_fields.insert(field.name.text.as_str()) {
+                self.push_diagnostic("TYPE_LIFECYCLE_INITIAL_DUPLICATE", source, field.range);
+                continue;
+            }
+            let Some(declared) = fields.get(&field.name.text) else {
+                self.push_diagnostic("TYPE_LIFECYCLE_FIELD_UNKNOWN", source, field.name.range);
+                continue;
+            };
+            let Some(source_field) = source_fields.get(field.name.text.as_str()) else {
+                continue;
+            };
+            if source_field.generated.is_some()
+                || source_field.immutable
+                || source_field
+                    .persistence
+                    .contains(&PersistenceModifier::Identity)
+                || source_field.role.is_some()
+            {
+                self.push_diagnostic("TYPE_LIFECYCLE_FIELD_INELIGIBLE", source, field.name.range);
+            }
+            if !self.lifecycle_value_is_allowed(entity, &field.value) {
+                self.push_diagnostic(
+                    "TYPE_LIFECYCLE_VALUE_UNSUPPORTED",
+                    source,
+                    field.value.range(),
+                );
+            }
+            if let Some(received) = self.infer_expression(&field.value, &environment, source) {
+                self.require_lifecycle_compatible(
+                    &received,
+                    &declared.declared_type,
+                    source,
+                    field.value.range(),
+                );
+            }
+        }
+
+        if let Some(visible) = &lifecycle.visible {
+            self.check_lifecycle_predicate(entity, visible, &environment, source);
+        }
+        for transition in &lifecycle.transitions {
+            self.check_lifecycle_predicate(entity, &transition.from, &environment, source);
+            if let Some(visible) = &lifecycle.visible {
+                let visible_state = lifecycle_predicate_equalities(visible);
+                let source_state = lifecycle_predicate_equalities(&transition.from);
+                let assignment_state = transition
+                    .set
+                    .iter()
+                    .filter_map(|field| {
+                        lifecycle_constant_identity(&field.value)
+                            .map(|value| (field.name.text.as_str(), value))
+                    })
+                    .collect::<BTreeMap<_, _>>();
+                let source_is_visible = visible_state
+                    .as_ref()
+                    .zip(source_state.as_ref())
+                    .is_some_and(|(visible, source)| {
+                        visible
+                            .iter()
+                            .all(|(field, value)| source.get(field.as_str()) == Some(value))
+                    });
+                let transition_restores_visibility = visible_state
+                    .as_ref()
+                    .zip(source_state.as_ref())
+                    .is_some_and(|(visible, source)| {
+                        let source_is_hidden = visible.iter().any(|(field, value)| {
+                            source
+                                .get(field.as_str())
+                                .is_some_and(|source_value| source_value != value)
+                        });
+                        source_is_hidden
+                            && visible.iter().all(|(field, value)| {
+                                assignment_state
+                                    .get(field.as_str())
+                                    .or_else(|| source.get(field.as_str()))
+                                    .is_some_and(|after| after == value)
+                            })
+                    });
+                if transition_restores_visibility {
+                    self.push_diagnostic(
+                        "TYPE_LIFECYCLE_RESTORE_FORBIDDEN",
+                        source,
+                        transition.range,
+                    );
+                } else if !source_is_visible {
+                    self.push_diagnostic(
+                        "TYPE_LIFECYCLE_TRANSITION_SOURCE_INVALID",
+                        source,
+                        transition.from.range(),
+                    );
+                }
+            }
+            let mut set_fields = BTreeSet::new();
+            for field in &transition.set {
+                if !set_fields.insert(field.name.text.as_str()) {
+                    self.push_diagnostic(
+                        "TYPE_LIFECYCLE_TRANSITION_FIELD_DUPLICATE",
+                        source,
+                        field.range,
+                    );
+                    continue;
+                }
+                if !initial_fields.contains(field.name.text.as_str()) {
+                    self.push_diagnostic(
+                        "TYPE_LIFECYCLE_INITIAL_FIELD_REQUIRED",
+                        source,
+                        field.name.range,
+                    );
+                }
+                let Some(declared) = fields.get(&field.name.text) else {
+                    self.push_diagnostic("TYPE_LIFECYCLE_FIELD_UNKNOWN", source, field.name.range);
+                    continue;
+                };
+                if !self.lifecycle_value_is_allowed(entity, &field.value) {
+                    self.push_diagnostic(
+                        "TYPE_LIFECYCLE_VALUE_UNSUPPORTED",
+                        source,
+                        field.value.range(),
+                    );
+                }
+                if let Some(received) = self.infer_expression(&field.value, &environment, source) {
+                    self.require_lifecycle_compatible(
+                        &received,
+                        &declared.declared_type,
+                        source,
+                        field.value.range(),
+                    );
+                }
+            }
+        }
+
+        if let Some(purge) = &lifecycle.purge {
+            let purge_field = fields.get(&purge.from.text);
+            let valid_timestamp = purge_field.is_some_and(|field| {
+                field.declared_type.nullable
+                    && self
+                        .representation_root(&field.declared_type.name)
+                        .as_deref()
+                        == Some("Instant")
+            });
+            if !valid_timestamp {
+                self.push_diagnostic(
+                    "TYPE_LIFECYCLE_PURGE_FIELD_INVALID",
+                    source,
+                    purge.from.range,
+                );
+            }
+            if !initial_fields.contains(purge.from.text.as_str()) {
+                self.push_diagnostic(
+                    "TYPE_LIFECYCLE_INITIAL_FIELD_REQUIRED",
+                    source,
+                    purge.from.range,
+                );
+            }
+            if let Some(initial_value) = initial
+                .iter()
+                .find(|field| field.name.text == purge.from.text)
+            {
+                if !matches!(&initial_value.value, Expression::Literal(literal) if literal.kind == LiteralKind::None)
+                {
+                    self.push_diagnostic(
+                        "TYPE_LIFECYCLE_PURGE_INITIAL_INVALID",
+                        source,
+                        initial_value.value.range(),
+                    );
+                }
+            }
+            let valid_retention = matches!(
+                &purge.after,
+                Expression::Name(name)
+                    if name.path.len() == 2 && name.path[0].text == "config"
+            );
+            if !valid_retention {
+                self.push_diagnostic(
+                    "TYPE_LIFECYCLE_PURGE_RETENTION_INVALID",
+                    source,
+                    purge.after.range(),
+                );
+            }
+            if let Some(received) = self.infer_expression(&purge.after, &environment, source) {
+                self.require_compatible(
+                    &received,
+                    &simple_type("Duration"),
+                    source,
+                    purge.after.range(),
+                );
+            }
+            let transitions = lifecycle
+                .transitions
+                .iter()
+                .filter_map(|transition| {
+                    transition
+                        .set
+                        .iter()
+                        .find(|field| field.name.text == purge.from.text)
+                        .map(|field| (transition, field))
+                })
+                .collect::<Vec<_>>();
+            if transitions.is_empty()
+                || transitions.iter().any(|(_, field)| {
+                    !matches!(
+                        &field.value,
+                        Expression::Name(name)
+                            if name.path.len() == 2
+                                && name.path[0].text == "clock"
+                                && name.path[1].text == "now"
+                    )
+                })
+            {
+                self.push_diagnostic(
+                    "TYPE_LIFECYCLE_PURGE_TRANSITION_INVALID",
+                    source,
+                    purge.range,
+                );
+            }
+        }
+    }
+
+    fn check_lifecycle_predicate(
+        &mut self,
+        entity: &str,
+        expression: &Expression,
+        environment: &BTreeMap<String, TypeValue>,
+        source: &str,
+    ) {
+        if !self.lifecycle_predicate_is_allowed(entity, expression) {
+            self.push_diagnostic(
+                "TYPE_LIFECYCLE_PREDICATE_UNSUPPORTED",
+                source,
+                expression.range(),
+            );
+        }
+        if let Some(received) = self.infer_expression(expression, environment, source) {
+            self.require_compatible(&received, &simple_type("Bool"), source, expression.range());
+        }
+    }
+
+    fn require_lifecycle_compatible(
+        &mut self,
+        received: &TypeValue,
+        expected: &TypeValue,
+        source: &str,
+        range: TextRange,
+    ) {
+        let nullable_lift = expected.nullable
+            && !received.nullable
+            && self.representation_root(&received.name) == self.representation_root(&expected.name);
+        if !nullable_lift {
+            self.require_compatible(received, expected, source, range);
+        }
+    }
+
+    fn lifecycle_predicate_is_allowed(&self, entity: &str, expression: &Expression) -> bool {
+        match expression {
+            Expression::Grouped(grouped) => {
+                self.lifecycle_predicate_is_allowed(entity, &grouped.value)
+            }
+            Expression::Binary(binary) if binary.operator == jadpo_syntax::BinaryOperator::And => {
+                self.lifecycle_predicate_is_allowed(entity, &binary.left)
+                    && self.lifecycle_predicate_is_allowed(entity, &binary.right)
+            }
+            Expression::Binary(binary)
+                if binary.operator == jadpo_syntax::BinaryOperator::Equal =>
+            {
+                let operand =
+                    |value: &Expression| match value {
+                        Expression::Literal(_) => true,
+                        Expression::Name(name) if name.path.len() == 1 => self
+                            .catalogue
+                            .records
+                            .get(entity)
+                            .is_some_and(|fields| fields.contains_key(&name.path[0].text)),
+                        Expression::Name(name) if name.path.len() == 2 => {
+                            self.catalogue.simple_enums.contains(&name.path[0].text)
+                                && self.catalogue.enums.get(&name.path[0].text).is_some_and(
+                                    |variants| variants.contains_key(&name.path[1].text),
+                                )
+                        }
+                        _ => false,
+                    };
+                let field = |value: &Expression| match value {
+                    Expression::Name(name) if name.path.len() == 1 => self
+                        .catalogue
+                        .records
+                        .get(entity)
+                        .is_some_and(|fields| fields.contains_key(&name.path[0].text)),
+                    _ => false,
+                };
+                operand(&binary.left)
+                    && operand(&binary.right)
+                    && (field(&binary.left) || field(&binary.right))
+            }
+            _ => false,
+        }
+    }
+
+    fn lifecycle_value_is_allowed(&self, entity: &str, expression: &Expression) -> bool {
+        match expression {
+            Expression::Literal(_) => true,
+            Expression::Grouped(grouped) => self.lifecycle_value_is_allowed(entity, &grouped.value),
+            Expression::Name(name) if name.path.len() == 2 => {
+                (name.path[0].text == "clock" && name.path[1].text == "now")
+                    || (self.catalogue.simple_enums.contains(&name.path[0].text)
+                        && self
+                            .catalogue
+                            .enums
+                            .get(&name.path[0].text)
+                            .is_some_and(|variants| variants.contains_key(&name.path[1].text)))
+            }
+            Expression::Invocation(invocation)
+                if invocation.callee.path.len() == 2
+                    && invocation.callee.path[0].text == entity
+                    && invocation.arguments.len() == 1
+                    && invocation.named_arguments.is_empty()
+                    && self.catalogue.records.get(entity).is_some_and(|fields| {
+                        fields.contains_key(&invocation.callee.path[1].text)
+                    }) =>
+            {
+                self.lifecycle_value_is_allowed(entity, &invocation.arguments[0])
+            }
+            _ => false,
+        }
+    }
+
+    fn check_record_defaults(&mut self, record: &jadpo_syntax::RecordDeclaration, source: &str) {
+        for field in &record.fields {
+            let Some(default) = &field.default else {
+                continue;
+            };
+            let declared = resolved_type_value(&field.field_type, self.graph);
+            if default.kind == LiteralKind::None {
+                if declared.nullable || self.graph.nullable_types.contains(&declared.name) {
+                    continue;
+                }
+                self.push_diagnostic_with_facts(
+                    "TYPE_MISMATCH",
+                    source,
+                    default.range,
+                    [
+                        DiagnosticFact::Expected(format!("{}?", declared.display())),
+                        DiagnosticFact::Received("none".to_owned()),
+                    ],
+                );
+                continue;
+            }
+            let received = self.literal_type(default);
+            let received_root = received
+                .as_ref()
+                .and_then(|value| self.representation_root(&value.name));
+            let expected_root = self.representation_root(&declared.name);
+            if received_root != expected_root {
+                self.push_diagnostic_with_facts(
+                    "TYPE_MISMATCH",
+                    source,
+                    default.range,
+                    [
+                        DiagnosticFact::Expected(declared.display()),
+                        DiagnosticFact::Received(
+                            received_root.unwrap_or_else(|| "literal".to_owned()),
+                        ),
+                    ],
+                );
+            } else if self
+                .invalid_literal_reason(&declared.name, default)
+                .is_some()
+            {
+                self.push_diagnostic("TYPE_INVALID_LITERAL", source, default.range);
+            }
+        }
+    }
+
+    fn check_route_transport_bindings(
+        &mut self,
+        route: &jadpo_syntax::RouteDeclaration,
+        source: &str,
+    ) {
+        let query_fields = route.query.as_ref().and_then(|query| {
+            let resolved = resolved_type_value(query, self.graph);
+            if resolved.nullable || !self.catalogue.records.contains_key(&resolved.name) {
+                self.push_diagnostic("TYPE_ROUTE_QUERY_OBJECT_REQUIRED", source, query.range);
+                None
+            } else {
+                let fields = self.catalogue.records.get(&resolved.name).cloned();
+                if let Some(fields) = &fields {
+                    for field in fields.values() {
+                        let root = self.representation_root(&field.declared_type.name);
+                        let supported = !field.declared_type.nullable
+                            && field.declared_type.arguments.is_empty()
+                            && (matches!(
+                                root.as_deref(),
+                                Some(
+                                    "Text"
+                                        | "Bool"
+                                        | "Int"
+                                        | "Decimal"
+                                        | "Uuid"
+                                        | "Instant"
+                                        | "CalendarDate"
+                                        | "Time"
+                                        | "Duration"
+                                        | "Email"
+                                        | "Url"
+                                        | "IpAddress"
+                                )
+                            ) || self
+                                .catalogue
+                                .records
+                                .contains_key(&field.declared_type.name)
+                                || self.enum_shape_name(&field.declared_type.name).is_some());
+                        if !supported {
+                            self.push_diagnostic(
+                                "TYPE_ROUTE_QUERY_FIELD_UNSUPPORTED",
+                                source,
+                                query.range,
+                            );
+                        }
+                    }
+                }
+                fields
+            }
+        });
+
+        let mut bindings = Vec::new();
+        bindings.extend(
+            route
+                .path_fields
+                .iter()
+                .map(|field| (field.name.text.clone(), field.name.range)),
+        );
+        if let (Some(query), Some(fields)) = (&route.query, &query_fields) {
+            bindings.extend(fields.keys().map(|name| (name.clone(), query.range)));
+        }
+        if let Some(input) = &route.input {
+            let resolved = resolved_type_value(input, self.graph);
+            if let Some(fields) = self.catalogue.records.get(&resolved.name) {
+                bindings.extend(fields.keys().map(|name| (name.clone(), input.range)));
+            }
+        }
+
+        let mut wire_names = BTreeSet::new();
+        for header in &route.headers {
+            bindings.push((header.name.text.clone(), header.name.range));
+            let wire_name = unquote(&header.wire_name.text);
+            let folded = wire_name.to_ascii_lowercase();
+            if !valid_http_header_name(&wire_name) {
+                self.push_diagnostic(
+                    "TYPE_ROUTE_HEADER_NAME_INVALID",
+                    source,
+                    header.wire_name.range,
+                );
+            }
+            if !wire_names.insert(folded.clone()) {
+                self.push_diagnostic(
+                    "TYPE_ROUTE_HEADER_WIRE_DUPLICATE",
+                    source,
+                    header.wire_name.range,
+                );
+            }
+            if reserved_route_header(&folded) {
+                self.push_diagnostic(
+                    "TYPE_AUTH_RESERVED_ROUTE_INPUT",
+                    source,
+                    header.wire_name.range,
+                );
+            }
+            let resolved = resolved_type_value(&header.field_type, self.graph);
+            let root = self.representation_root(&resolved.name);
+            let supported = !resolved.nullable
+                && resolved.arguments.is_empty()
+                && (matches!(
+                    root.as_deref(),
+                    Some(
+                        "Text"
+                            | "Bool"
+                            | "Int"
+                            | "Decimal"
+                            | "Uuid"
+                            | "Instant"
+                            | "CalendarDate"
+                            | "Time"
+                            | "Duration"
+                            | "Email"
+                            | "Url"
+                            | "IpAddress"
+                    )
+                ) || self.enum_shape_name(&resolved.name).is_some());
+            if !supported {
+                self.push_diagnostic(
+                    "TYPE_ROUTE_HEADER_SCALAR_REQUIRED",
+                    source,
+                    header.field_type.range,
+                );
+            }
+        }
+
+        let mut seen = BTreeSet::new();
+        for (name, range) in bindings {
+            if !seen.insert(name) {
+                self.push_diagnostic("TYPE_ROUTE_BINDING_COLLISION", source, range);
             }
         }
     }
@@ -810,6 +1777,14 @@ impl TypeChecker<'_> {
         };
 
         let mut reserved_fields = BTreeSet::new();
+        reserved_fields.extend([
+            "authorization".to_owned(),
+            "proxy_authorization".to_owned(),
+            "cookie".to_owned(),
+            "origin".to_owned(),
+            "sec_fetch_site".to_owned(),
+            "x_jadpo_csrf".to_owned(),
+        ]);
         let mut principal_required = BTreeSet::new();
         for file in files {
             for declaration in &file.file.declarations {
@@ -917,6 +1892,25 @@ impl TypeChecker<'_> {
                         );
                     }
                 }
+                if let Some(query) = &route.query {
+                    let resolved = resolved_type_value(query, self.graph);
+                    if self
+                        .catalogue
+                        .records
+                        .get(&resolved.name)
+                        .is_some_and(|fields| {
+                            fields.keys().any(|field| {
+                                reserved_fields.contains(&normalize_transport_field(field))
+                            })
+                        })
+                    {
+                        self.push_diagnostic(
+                            "TYPE_AUTH_RESERVED_ROUTE_INPUT",
+                            &file.source_name,
+                            query.range,
+                        );
+                    }
+                }
                 if let Some(input) = &route.input {
                     if type_reference_contains_principal(
                         input,
@@ -948,10 +1942,18 @@ impl TypeChecker<'_> {
                 if route.public {
                     let route_name = format!("{} {}", route_method_name(route.method), route.path);
                     if principal_required.contains(&route_name)
-                        || route
-                            .inline_action
-                            .as_ref()
-                            .is_some_and(|action| block_uses_name(&action.body, "principal"))
+                        || route.run.as_ref().is_some_and(|run| {
+                            run.arguments
+                                .iter()
+                                .any(|argument| expression_uses_name(argument, "current_principal"))
+                                || run.named_arguments.iter().any(|argument| {
+                                    expression_uses_name(&argument.value, "current_principal")
+                                })
+                        })
+                        || route.inline_action.as_ref().is_some_and(|action| {
+                            block_uses_name(&action.body, "principal")
+                                || block_uses_name(&action.body, "current_principal")
+                        })
                     {
                         self.push_diagnostic(
                             "TYPE_AUTH_PUBLIC_PRINCIPAL",
@@ -1021,7 +2023,48 @@ impl TypeChecker<'_> {
         strategy: &jadpo_syntax::AuthenticationStrategyDeclaration,
         source: &str,
     ) {
+        if let Some(exchange) = &strategy.exchange {
+            let key = strategy
+                .validators
+                .iter()
+                .find(|validator| validator.name.text == exchange.key.text);
+            let signed = strategy
+                .validators
+                .iter()
+                .find(|validator| validator.name.text == exchange.signed.text);
+            if !matches!(strategy.transport.location, jadpo_syntax::CredentialLocation::Bearer(ref location) if location.text == "authorization_header")
+                || !key.is_some_and(|validator| {
+                    validator.mode.text == "api_key"
+                        && validator.principal.text == "service"
+                        && validator.credentials.is_some()
+                })
+                || !signed.is_some_and(|validator| {
+                    validator.mode.text == "signed" && validator.principal.text == "service"
+                })
+            {
+                self.push_diagnostic("TYPE_AUTH_EXCHANGE_BINDING", source, exchange.range);
+            }
+            let path = exchange
+                .path
+                .text
+                .strip_prefix('"')
+                .and_then(|text| text.strip_suffix('"'))
+                .unwrap_or_default();
+            if !path.starts_with('/')
+                || !path.split('/').skip(1).all(|part| {
+                    !part.is_empty()
+                        && part
+                            .bytes()
+                            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+                })
+            {
+                self.push_diagnostic("TYPE_AUTH_EXCHANGE_PATH", source, exchange.path.range);
+            }
+        }
         for validator in &strategy.validators {
+            if let Some(binding) = &validator.credentials {
+                self.check_authentication_credentials(strategy, validator, binding, source);
+            }
             if validator.mode.text == "jwt"
                 && !matches!(
                     strategy.transport.location,
@@ -1196,6 +2239,49 @@ impl TypeChecker<'_> {
                     resolution.active.range(),
                 );
             }
+            if self.catalogue.lifecycles.contains_key(&entity) {
+                let lifecycle_fields = self
+                    .catalogue
+                    .records
+                    .get(&entity)
+                    .into_iter()
+                    .flat_map(|fields| fields.iter())
+                    .filter(|(_, field)| field.lifecycle_owned)
+                    .map(|(name, _)| name.as_str())
+                    .collect::<BTreeSet<_>>();
+                let active_reads_unowned =
+                    self.catalogue.records.get(&entity).is_some_and(|fields| {
+                        fields.keys().any(|field| {
+                            !lifecycle_fields.contains(field.as_str())
+                                && expression_uses_name(&resolution.active, field)
+                        })
+                    });
+                if active_reads_unowned {
+                    self.push_diagnostic(
+                        "TYPE_AUTH_LIFECYCLE_ACTIVE_FIELD",
+                        source,
+                        resolution.active.range(),
+                    );
+                }
+                let authority_subject = resolution
+                    .authority
+                    .path
+                    .get(1)
+                    .map(|field| field.text.as_str());
+                if resolution.mappings.iter().any(|mapping| {
+                    Some(mapping.source.text.as_str()) != authority_subject
+                        && !self
+                            .catalogue
+                            .identity_fields
+                            .contains(&(entity.clone(), mapping.source.text.clone()))
+                }) {
+                    self.push_diagnostic(
+                        "TYPE_AUTH_LIFECYCLE_MAPPING_SCOPE",
+                        source,
+                        resolution.range,
+                    );
+                }
+            }
 
             let principal_name = self
                 .catalogue
@@ -1277,6 +2363,142 @@ impl TypeChecker<'_> {
                     break;
                 }
             }
+        }
+    }
+
+    fn check_authentication_credentials(
+        &mut self,
+        strategy: &jadpo_syntax::AuthenticationStrategyDeclaration,
+        validator: &jadpo_syntax::AuthenticationValidatorDeclaration,
+        binding: &jadpo_syntax::AuthenticationCredentialBinding,
+        source: &str,
+    ) {
+        let entity = binding
+            .identity
+            .path
+            .first()
+            .map(|n| n.text.as_str())
+            .unwrap_or_default();
+        let authority = strategy
+            .resolutions
+            .iter()
+            .find(|r| r.principal.text == "service")
+            .and_then(|r| r.authority.path.first())
+            .map(|n| n.text.as_str());
+        let mut valid = validator.mode.text == "api_key"
+            && validator.principal.text == "service"
+            && self.catalogue.persistent_entities.contains(entity)
+            && authority.is_some_and(|a| {
+                self.catalogue.persistent_entities.contains(a)
+                    && self.catalogue.authority_stores.get(entity)
+                        == self.catalogue.authority_stores.get(a)
+            });
+        let mut seen = BTreeSet::new();
+        for (role, reference) in [
+            ("identity", &binding.identity),
+            ("principal", &binding.principal),
+            ("verifier", &binding.verifier),
+            ("expires", &binding.expires),
+            ("revoked", &binding.revoked),
+        ] {
+            if reference.path.len() != 2 || reference.path[0].text != entity {
+                valid = false;
+                continue;
+            }
+            let name = &reference.path[1].text;
+            valid &= seen.insert(name.clone());
+            let Some(field) = self
+                .catalogue
+                .records
+                .get(entity)
+                .and_then(|fields| fields.get(name))
+            else {
+                valid = false;
+                continue;
+            };
+            let root = self.representation_root(&field.declared_type.name);
+            let key = (entity.to_owned(), name.clone());
+            valid &= !field.optional
+                && (role == "identity" || field.generated.is_none())
+                && !field.declared_type.secret
+                && field.declared_type.nullable == (role == "revoked");
+            valid &= match role {
+                "identity" => {
+                    root.as_deref() == Some("Uuid") && self.catalogue.identity_fields.contains(&key)
+                }
+                "principal" => self
+                    .catalogue
+                    .reference_fields
+                    .get(&key)
+                    .is_some_and(|target| {
+                        target.len() == 2
+                            && Some(target[0].as_str()) == authority
+                            && self
+                                .catalogue
+                                .identity_fields
+                                .contains(&(target[0].clone(), target[1].clone()))
+                    }),
+                "verifier" => {
+                    root.as_deref() == Some("Text")
+                        && self
+                            .catalogue
+                            .ordered_keys
+                            .get(entity)
+                            .is_some_and(|keys| keys.contains(name))
+                }
+                "expires" | "revoked" => root.as_deref() == Some("Instant"),
+                _ => false,
+            };
+        }
+        // Restrict issuance to a state the adapter can construct without executing
+        // arbitrary application code or inventing values for other fields.
+        let active_valid = if let Expression::Binary(binary) = &binding.active {
+            if binary.operator != jadpo_syntax::BinaryOperator::Equal {
+                false
+            } else if let Expression::Name(name) = binary.left.as_ref() {
+                if name.path.len() != 1 || !seen.insert(name.path[0].text.clone()) {
+                    false
+                } else if let Some(field) = self
+                    .catalogue
+                    .records
+                    .get(entity)
+                    .and_then(|fields| fields.get(&name.path[0].text))
+                {
+                    !field.optional
+                        && field.generated.is_none()
+                        && !field.declared_type.nullable
+                        && !field.declared_type.secret
+                        && match binary.right.as_ref() {
+                            Expression::Literal(literal) => {
+                                literal.kind == LiteralKind::Boolean
+                                    && self
+                                        .representation_root(&field.declared_type.name)
+                                        .as_deref()
+                                        == Some("Bool")
+                            }
+                            Expression::Name(variant) => {
+                                variant.path.len() == 2
+                                    && variant.path[0].text == field.declared_type.name
+                                    && self
+                                        .catalogue
+                                        .enums
+                                        .get(&variant.path[0].text)
+                                        .and_then(|variants| variants.get(&variant.path[1].text))
+                                        .is_some_and(|fields| fields.is_empty())
+                            }
+                            _ => false,
+                        }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        if !valid || !active_valid {
+            self.push_diagnostic("TYPE_AUTH_ADAPTER_SETTING", source, binding.range);
         }
     }
 
@@ -1902,6 +3124,10 @@ impl TypeChecker<'_> {
                 if !self.catalogue.entities.contains(&target) {
                     self.push_diagnostic("TYPE_QUERY_NOT_ENTITY", source, query.target.range);
                 }
+                if let Some(page) = &query.page {
+                    self.check_query_page(page, &target, environment, source);
+                    return Some(resolved_type_value(&page.result, self.graph));
+                }
                 let expected = self
                     .catalogue
                     .records
@@ -2162,9 +3388,22 @@ impl TypeChecker<'_> {
                                 first_include.range,
                             );
                         }
-                        if query.cardinality != jadpo_syntax::QueryCardinality::Required {
+                        let many_required_parent = query.cardinality
+                            == jadpo_syntax::QueryCardinality::Many
+                            && first_include.cardinality
+                                == jadpo_syntax::QueryIncludeCardinality::Required;
+                        if query.cardinality != jadpo_syntax::QueryCardinality::Required
+                            && !many_required_parent
+                        {
                             self.push_diagnostic(
                                 "TYPE_PARENT_INCLUDE_REQUIRED_QUERY",
+                                source,
+                                first_include.range,
+                            );
+                        }
+                        if many_required_parent && query.pagination.is_none() {
+                            self.push_diagnostic(
+                                "TYPE_INCLUDE_PARENT_PAGINATION_REQUIRED",
                                 source,
                                 first_include.range,
                             );
@@ -2220,7 +3459,16 @@ impl TypeChecker<'_> {
                                 first_include.result.range,
                             );
                         }
-                        Some(simple_type(&result_name))
+                        if many_required_parent {
+                            Some(TypeValue {
+                                name: "List".to_owned(),
+                                arguments: vec![simple_type(&result_name)],
+                                nullable: false,
+                                secret: false,
+                            })
+                        } else {
+                            Some(simple_type(&result_name))
+                        }
                     })
                 } else {
                     None
@@ -2404,10 +3652,50 @@ impl TypeChecker<'_> {
                     environment,
                     source,
                 );
-                if update.changes.is_empty() && update.patch.is_none() {
+                if update.changes.is_empty()
+                    && update.patch.is_none()
+                    && update.transition.is_none()
+                {
                     self.push_diagnostic("TYPE_UPDATE_FIELD_REQUIRED", source, update.range);
                 }
                 let expected_fields = self.catalogue.records.get(&target).cloned();
+                if let Some(transition) = &update.transition {
+                    let lifecycle = self.catalogue.lifecycles.get(&target);
+                    let declared = lifecycle.is_some_and(|lifecycle| {
+                        lifecycle
+                            .transitions
+                            .iter()
+                            .any(|candidate| candidate.name.text == transition.text)
+                    });
+                    if lifecycle.is_none() || !declared {
+                        self.push_diagnostic(
+                            "TYPE_LIFECYCLE_TRANSITION_UNKNOWN",
+                            source,
+                            transition.range,
+                        );
+                    }
+                    if !self
+                        .catalogue
+                        .identity_fields
+                        .contains(&(target.clone(), update.field.text.clone()))
+                    {
+                        self.push_diagnostic(
+                            "TYPE_LIFECYCLE_TRANSITION_IDENTITY_REQUIRED",
+                            source,
+                            update.field.range,
+                        );
+                    }
+                    if !update.changes.is_empty()
+                        || !update.conditional_changes.is_empty()
+                        || update.patch.is_some()
+                    {
+                        self.push_diagnostic(
+                            "TYPE_LIFECYCLE_TRANSITION_BODY_INVALID",
+                            source,
+                            update.range,
+                        );
+                    }
+                }
                 let mut changed_fields = BTreeSet::new();
                 for change in &update.changes {
                     if !changed_fields.insert(change.name.text.clone()) {
@@ -2427,6 +3715,14 @@ impl TypeChecker<'_> {
                     if expected.generated.is_some() {
                         self.push_diagnostic(
                             "TYPE_GENERATED_FIELD_ASSIGNMENT",
+                            source,
+                            change.name.range,
+                        );
+                        continue;
+                    }
+                    if expected.lifecycle_owned {
+                        self.push_diagnostic(
+                            "TYPE_LIFECYCLE_FIELD_UPDATE_FORBIDDEN",
                             source,
                             change.name.range,
                         );
@@ -2476,6 +3772,14 @@ impl TypeChecker<'_> {
                     if expected.generated.is_some() {
                         self.push_diagnostic(
                             "TYPE_GENERATED_FIELD_ASSIGNMENT",
+                            source,
+                            change.name.range,
+                        );
+                        continue;
+                    }
+                    if expected.lifecycle_owned {
+                        self.push_diagnostic(
+                            "TYPE_LIFECYCLE_FIELD_UPDATE_FORBIDDEN",
                             source,
                             change.name.range,
                         );
@@ -2553,7 +3857,13 @@ impl TypeChecker<'_> {
                                     );
                                     continue;
                                 }
-                                if entity_field.update_forbidden {
+                                if entity_field.lifecycle_owned {
+                                    self.push_diagnostic(
+                                        "TYPE_LIFECYCLE_FIELD_UPDATE_FORBIDDEN",
+                                        source,
+                                        patch.range,
+                                    );
+                                } else if entity_field.update_forbidden {
                                     self.push_diagnostic(
                                         "TYPE_FIELD_UPDATE_FORBIDDEN",
                                         source,
@@ -2618,6 +3928,13 @@ impl TypeChecker<'_> {
                 let target = joined_name(&delete.target.path);
                 if !self.catalogue.entities.contains(&target) {
                     self.push_diagnostic("TYPE_DELETE_NOT_ENTITY", source, delete.target.range);
+                }
+                if self.catalogue.lifecycles.contains_key(&target) {
+                    self.push_diagnostic(
+                        "TYPE_LIFECYCLE_HARD_DELETE_FORBIDDEN",
+                        source,
+                        delete.range,
+                    );
                 }
                 self.check_mutation_predicate(
                     "delete",
@@ -2707,6 +4024,9 @@ impl TypeChecker<'_> {
         };
 
         if let Some(inferred) = &inferred {
+            if self.delivery_type_is_sealed(inferred) {
+                self.push_diagnostic("TYPE_JOB_DELIVERY_SEALED_USE", source, expression.range());
+            }
             self.result.expressions.push(InferredExpression {
                 source: source.to_owned(),
                 range: expression.range(),
@@ -2732,11 +4052,13 @@ impl TypeChecker<'_> {
         let left_root = self.representation_root(&left.name);
         let right_root = self.representation_root(&right.name);
         let non_nullable = !left.nullable && !right.nullable;
+        let compares_nullable_with_none =
+            (left.name == "none" && right.nullable) || (right.name == "none" && left.nullable);
         let timeline_pair = matches!(left_root.as_deref(), Some("Instant" | "Time"))
             && matches!(right_root.as_deref(), Some("Instant" | "Time"));
         match binary.operator {
             BinaryOperator::Equal | BinaryOperator::NotEqual => {
-                if !comparable && !timeline_pair {
+                if !comparable && !timeline_pair && !compares_nullable_with_none {
                     self.push_diagnostic("TYPE_INCOMPARABLE", source, binary.range);
                 }
                 Some(simple_type("Bool"))
@@ -2939,6 +4261,13 @@ impl TypeChecker<'_> {
             }
         }
         if let Some(signature) = self.catalogue.callables.get(&callee).cloned() {
+            if self
+                .delivery_seals
+                .iter()
+                .any(|seal| seal.operation == callee)
+            {
+                self.push_diagnostic("TYPE_JOB_DELIVERY_SEALED_USE", source, invocation.range);
+            }
             for argument in &invocation.named_arguments {
                 self.push_diagnostic("TYPE_NAMED_ARGUMENT_UNSUPPORTED", source, argument.range);
                 self.infer_expression(&argument.value, environment, source);
@@ -3518,6 +4847,7 @@ impl TypeChecker<'_> {
 
         for (name, expected) in &expected_fields {
             if expected.generated.is_none()
+                && !expected.lifecycle_initial
                 && !expected.optional
                 && !supplied.contains(name.as_str())
             {
@@ -3551,6 +4881,14 @@ impl TypeChecker<'_> {
                 );
                 continue;
             };
+            if expected.lifecycle_initial {
+                self.push_diagnostic(
+                    "TYPE_LIFECYCLE_FIELD_CREATE_FORBIDDEN",
+                    source,
+                    field.name.range,
+                );
+                continue;
+            }
             if expected.generated.is_some() {
                 self.push_diagnostic("TYPE_GENERATED_FIELD_ASSIGNMENT", source, field.name.range);
                 continue;
@@ -3686,6 +5024,24 @@ impl TypeChecker<'_> {
         source: &str,
     ) -> Option<TypeValue> {
         let first = path.first()?;
+        if first.text == "current_principal" && environment.contains_key("__route_public") {
+            return None;
+        }
+        if path.len() == 2
+            && first.text == "current_principal"
+            && environment.contains_key("current_principal")
+        {
+            if let Some(principal) = &self.catalogue.principal {
+                if self
+                    .catalogue
+                    .enums
+                    .get(principal)
+                    .is_some_and(|variants| variants.contains_key(&path[1].text))
+                {
+                    return Some(simple_type(&format!("{principal}.{}", path[1].text)));
+                }
+            }
+        }
         if path.len() == 2 {
             if let Some(variants) = self.catalogue.enums.get(&first.text) {
                 let variant = &path[1];
@@ -3768,6 +5124,7 @@ impl TypeChecker<'_> {
                 return None;
             };
             current = if record_name.starts_with("__route_path_")
+                || record_name.starts_with("__route_headers_")
                 || matches!(
                     record_name.as_str(),
                     "__jadpo_config" | "__jadpo_clock" | "Time" | "InstantRange"
@@ -3855,6 +5212,16 @@ impl TypeChecker<'_> {
     }
 
     fn constructor_input_compatible(&self, argument: &TypeValue, target: &str) -> bool {
+        let declared_type = self.ancestors(target).get(1).cloned();
+        if !argument.nullable
+            && argument.arguments.is_empty()
+            && declared_type.as_ref().is_some_and(|declared| {
+                argument.name == *declared || self.has_refinement_path(&argument.name, declared)
+            })
+        {
+            return true;
+        }
+
         let argument_root = self.representation_root(&argument.name);
         let target_root = self.representation_root(target);
         if matches!(
@@ -4072,6 +5439,252 @@ impl TypeChecker<'_> {
             }
         }
     }
+
+    fn check_query_page(
+        &mut self,
+        page: &jadpo_syntax::QueryPage,
+        target: &str,
+        environment: &BTreeMap<String, TypeValue>,
+        source: &str,
+    ) {
+        let Some(entity_fields) = self.catalogue.records.get(target).cloned() else {
+            return;
+        };
+        let mut predicate_fields = BTreeSet::new();
+        for predicate in &page.predicates {
+            if !predicate_fields.insert(predicate.field.text.clone()) {
+                self.push_diagnostic("TYPE_MISMATCH", source, predicate.field.range);
+            }
+            let Some(expected) = entity_fields.get(&predicate.field.text) else {
+                self.push_diagnostic("TYPE_QUERY_UNKNOWN_FIELD", source, predicate.field.range);
+                self.infer_expression(&predicate.value, environment, source);
+                continue;
+            };
+            let received = self.infer_expression(&predicate.value, environment, source);
+            match predicate.operator {
+                jadpo_syntax::QueryPagePredicateOperator::Equal => {
+                    if received.as_ref().is_some_and(|value| value.name == "none") {
+                        if !expected.declared_type.nullable {
+                            self.push_diagnostic("TYPE_MISMATCH", source, predicate.value.range());
+                        }
+                    } else {
+                        let field_type = TypeValue {
+                            name: format!("{target}.{}", predicate.field.text),
+                            arguments: expected.declared_type.arguments.clone(),
+                            nullable: expected.declared_type.nullable,
+                            secret: expected.declared_type.secret,
+                        };
+                        if let Some(received) = received {
+                            self.require_compatible(
+                                &received,
+                                &field_type,
+                                source,
+                                predicate.value.range(),
+                            );
+                        }
+                    }
+                }
+                jadpo_syntax::QueryPagePredicateOperator::OptionalEqual
+                | jadpo_syntax::QueryPagePredicateOperator::OptionalLessEqual => {
+                    if !self.optional_input_field(&predicate.value, environment) {
+                        self.push_diagnostic("TYPE_MISMATCH", source, predicate.value.range());
+                    }
+                    let Some(received) = received else { continue };
+                    if predicate.operator
+                        == jadpo_syntax::QueryPagePredicateOperator::OptionalLessEqual
+                    {
+                        let left_root = self.representation_root(&expected.declared_type.name);
+                        let right_root = self.representation_root(&received.name);
+                        if expected.declared_type.name != received.name && left_root != right_root {
+                            self.push_diagnostic("TYPE_MISMATCH", source, predicate.value.range());
+                        }
+                        if !matches!(left_root.as_deref(), Some("Int" | "Decimal" | "Instant")) {
+                            self.push_diagnostic("TYPE_MISMATCH", source, predicate.field.range);
+                        }
+                    } else {
+                        let field_type = TypeValue {
+                            name: format!("{target}.{}", predicate.field.text),
+                            arguments: expected.declared_type.arguments.clone(),
+                            nullable: false,
+                            secret: expected.declared_type.secret,
+                        };
+                        self.require_compatible(
+                            &received,
+                            &field_type,
+                            source,
+                            predicate.value.range(),
+                        );
+                    }
+                }
+            }
+        }
+
+        let mut order_fields = BTreeSet::new();
+        for order in &page.order {
+            let Some(field) = entity_fields.get(&order.field.text) else {
+                self.push_diagnostic("TYPE_QUERY_UNKNOWN_ORDER_FIELD", source, order.field.range);
+                continue;
+            };
+            if !order_fields.insert(order.field.text.clone()) {
+                self.push_diagnostic("TYPE_QUERY_ORDER_NOT_DETERMINISTIC", source, order.range);
+            }
+            let root = self.representation_root(&field.declared_type.name);
+            if field.declared_type.nullable
+                || !matches!(
+                    root.as_deref(),
+                    Some("Uuid" | "Text" | "Int" | "Decimal" | "Instant")
+                )
+            {
+                self.push_diagnostic("TYPE_QUERY_ORDER_NOT_DETERMINISTIC", source, order.range);
+            }
+        }
+        if page.order.is_empty()
+            || page.order.first().is_some_and(|first| {
+                page.order
+                    .iter()
+                    .any(|order| order.direction != first.direction)
+            })
+            || page.order.last().is_some_and(|order| {
+                !self
+                    .catalogue
+                    .ordered_keys
+                    .get(target)
+                    .is_some_and(|fields| fields.contains(&order.field.text))
+            })
+        {
+            self.push_diagnostic("TYPE_QUERY_ORDER_NOT_DETERMINISTIC", source, page.range);
+        }
+
+        let cursor_type = resolved_type_value(&page.cursor, self.graph);
+        if !page.after_optional || !self.optional_input_field(&page.after, environment) {
+            self.push_diagnostic("TYPE_MISMATCH", source, page.after.range());
+        }
+        if let Some(received) = self.infer_expression(&page.after, environment, source) {
+            let mut expected_cursor = cursor_type.clone();
+            expected_cursor.nullable = false;
+            self.require_compatible(&received, &expected_cursor, source, page.after.range());
+        }
+        let sort_names = page
+            .order
+            .iter()
+            .map(|order| order.field.text.as_str())
+            .collect::<Vec<_>>();
+        let cursor_names = page
+            .cursor_fields
+            .iter()
+            .map(|field| field.text.as_str())
+            .collect::<Vec<_>>();
+        if sort_names != cursor_names {
+            self.push_diagnostic("TYPE_QUERY_ORDER_NOT_DETERMINISTIC", source, page.range);
+        }
+        if let Some(cursor_fields) = self.catalogue.records.get(&cursor_type.name).cloned() {
+            for field_name in &page.cursor_fields {
+                let Some(entity_field) = entity_fields.get(&field_name.text) else {
+                    self.push_diagnostic(
+                        "TYPE_QUERY_UNKNOWN_ORDER_FIELD",
+                        source,
+                        field_name.range,
+                    );
+                    continue;
+                };
+                let Some(cursor_field) = cursor_fields.get(&field_name.text) else {
+                    self.push_diagnostic("TYPE_QUERY_PAGE_SHAPE", source, field_name.range);
+                    continue;
+                };
+                if !self.page_field_types_match(
+                    &cursor_field.declared_type,
+                    &entity_field.declared_type,
+                ) {
+                    self.push_diagnostic("TYPE_QUERY_PAGE_SHAPE", source, field_name.range);
+                }
+            }
+        }
+
+        if let Some(received) = self.infer_expression(&page.limit, environment, source) {
+            self.require_compatible(&received, &simple_type("Int"), source, page.limit.range());
+        }
+
+        let projection_type = resolved_type_value(&page.projection, self.graph);
+        let projection_name = projection_type.name.clone();
+        if !self.catalogue.is_projection_object(&projection_name) {
+            self.push_diagnostic("TYPE_QUERY_PAGE_SHAPE", source, page.projection.range);
+        }
+        if let Some(projection_fields) = self.catalogue.records.get(&projection_name).cloned() {
+            for (name, projected) in projection_fields {
+                if let Some(entity_field) = entity_fields.get(&name) {
+                    if !self.page_field_types_match(
+                        &entity_field.declared_type,
+                        &projected.declared_type,
+                    ) {
+                        self.push_diagnostic(
+                            "TYPE_QUERY_PAGE_SHAPE",
+                            source,
+                            page.projection.range,
+                        );
+                    }
+                } else {
+                    self.push_diagnostic("TYPE_QUERY_UNKNOWN_FIELD", source, page.projection.range);
+                }
+            }
+        }
+
+        let result_type = resolved_type_value(&page.result, self.graph);
+        let Some(result_fields) = self.catalogue.records.get(&result_type.name).cloned() else {
+            self.push_diagnostic("TYPE_QUERY_PAGE_SHAPE", source, page.result.range);
+            return;
+        };
+        let items_ok = result_fields.get("items").is_some_and(|items| {
+            items.declared_type.name == "List"
+                && items.declared_type.arguments == vec![projection_type.clone()]
+                && !items.declared_type.nullable
+        });
+        let next_ok = result_fields.get("next").is_some_and(|next| {
+            next.declared_type.name == cursor_type.name
+                && next.declared_type.nullable
+                && next.declared_type.arguments.is_empty()
+        });
+        if result_fields.len() != 2 || !items_ok || !next_ok {
+            self.push_diagnostic("TYPE_QUERY_PAGE_SHAPE", source, page.result.range);
+        }
+    }
+
+    fn page_field_types_match(&self, left: &TypeValue, right: &TypeValue) -> bool {
+        left.nullable == right.nullable
+            && left.arguments == right.arguments
+            && (left.name == right.name
+                || self.representation_root(&left.name) == self.representation_root(&right.name))
+    }
+
+    fn optional_input_field(
+        &self,
+        expression: &Expression,
+        environment: &BTreeMap<String, TypeValue>,
+    ) -> bool {
+        let Expression::Name(name) = expression else {
+            return false;
+        };
+        if name.path.len() != 2 {
+            return false;
+        }
+        environment
+            .get(&name.path[0].text)
+            .and_then(|record| self.record_shape_name(&record.name))
+            .and_then(|record| self.catalogue.records.get(&record))
+            .and_then(|fields| fields.get(&name.path[1].text))
+            .is_some_and(|field| field.optional)
+    }
+}
+
+fn route_could_match_literal(route: &str, literal: &str) -> bool {
+    let route_parts = route.split('/').collect::<Vec<_>>();
+    let literal_parts = literal.split('/').collect::<Vec<_>>();
+    route_parts.len() == literal_parts.len()
+        && route_parts
+            .iter()
+            .zip(literal_parts)
+            .all(|(part, literal_part)| {
+                part == &literal_part || part.starts_with('{') && part.ends_with('}')
+            })
 }
 
 fn resolved_type_value(reference: &TypeReference, graph: &SemanticGraph) -> TypeValue {
@@ -4153,6 +5766,47 @@ fn normalize_transport_field(value: &str) -> String {
         .collect()
 }
 
+fn valid_http_header_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.is_ascii()
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(
+                    byte,
+                    b'!' | b'#'
+                        | b'$'
+                        | b'%'
+                        | b'&'
+                        | b'\''
+                        | b'*'
+                        | b'+'
+                        | b'-'
+                        | b'.'
+                        | b'^'
+                        | b'_'
+                        | b'`'
+                        | b'|'
+                        | b'~'
+                )
+        })
+}
+
+fn reserved_route_header(name: &str) -> bool {
+    name.starts_with("x-jadpo-")
+        || matches!(
+            name,
+            "authorization"
+                | "proxy-authorization"
+                | "cookie"
+                | "origin"
+                | "sec-fetch-site"
+                | "x-forwarded-user"
+                | "x-auth-request-user"
+                | "x-client-cert"
+                | "x-forwarded-client-cert"
+        )
+}
+
 fn route_method_name(method: jadpo_syntax::HttpMethod) -> &'static str {
     match method {
         jadpo_syntax::HttpMethod::Get => "GET",
@@ -4191,6 +5845,68 @@ fn block_uses_name(block: &Block, requested: &str) -> bool {
         Statement::AdvanceClock(statement) => expression_uses_name(&statement.duration, requested),
         Statement::Unsupported(_) => false,
     })
+}
+
+fn lifecycle_constant_identity(expression: &Expression) -> Option<String> {
+    match expression {
+        Expression::Literal(literal) => {
+            Some(format!("literal:{:?}:{}", literal.kind, literal.text))
+        }
+        Expression::Name(name) => Some(format!(
+            "name:{}",
+            name.path
+                .iter()
+                .map(|part| part.text.as_str())
+                .collect::<Vec<_>>()
+                .join(".")
+        )),
+        Expression::Invocation(invocation)
+            if invocation.arguments.len() == 1 && invocation.named_arguments.is_empty() =>
+        {
+            lifecycle_constant_identity(&invocation.arguments[0])
+        }
+        Expression::Grouped(grouped) => lifecycle_constant_identity(&grouped.value),
+        _ => None,
+    }
+}
+
+fn lifecycle_predicate_equalities(expression: &Expression) -> Option<BTreeMap<String, String>> {
+    fn collect(expression: &Expression, values: &mut BTreeMap<String, String>) -> Option<()> {
+        match expression {
+            Expression::Grouped(grouped) => collect(&grouped.value, values),
+            Expression::Binary(binary) if binary.operator == jadpo_syntax::BinaryOperator::And => {
+                collect(&binary.left, values)?;
+                collect(&binary.right, values)
+            }
+            Expression::Binary(binary)
+                if binary.operator == jadpo_syntax::BinaryOperator::Equal =>
+            {
+                let pair = match (&*binary.left, &*binary.right) {
+                    (Expression::Name(field), value) if field.path.len() == 1 => Some((
+                        field.path[0].text.clone(),
+                        lifecycle_constant_identity(value)?,
+                    )),
+                    (value, Expression::Name(field)) if field.path.len() == 1 => Some((
+                        field.path[0].text.clone(),
+                        lifecycle_constant_identity(value)?,
+                    )),
+                    _ => None,
+                }?;
+                if values
+                    .insert(pair.0, pair.1.clone())
+                    .is_some_and(|previous| previous != pair.1)
+                {
+                    return None;
+                }
+                Some(())
+            }
+            _ => None,
+        }
+    }
+
+    let mut values = BTreeMap::new();
+    collect(expression, &mut values)?;
+    Some(values)
 }
 
 fn expression_uses_name(expression: &Expression, requested: &str) -> bool {
@@ -4658,6 +6374,224 @@ mod tests {
     }
 
     #[test]
+    fn reports_keyset_page_projection_and_result_shape_mismatch() {
+        let result = check(
+            r#"
+entity Todo { id: Uuid identity }
+input ListTodos { id: Uuid optional after: TodoCursor optional }
+value TodoCursor { id: Todo.id }
+output TodoView { id: Todo.id }
+output TodoPage { items: List<Text> next: TodoCursor? }
+action list(input: ListTodos) -> TodoPage {
+    return attempt query page Todo -> TodoPage {
+        where: id == input.id
+        order_by: id desc
+        after: optional input.after
+        limit: 10
+        project: TodoView
+        cursor: TodoCursor(id)
+    }
+}
+
+"#,
+        );
+
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "TYPE_QUERY_PAGE_SHAPE"),
+            "{:#?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn typechecks_closed_entity_lifecycle_state_and_guards() {
+        let result = check(
+            r#"
+enum UserStatus { active disabled }
+entity User {
+    id: Uuid identity
+    status: UserStatus
+    disabled_at: Instant?
+    identity: id
+    persistence { store: primary role: authority }
+    lifecycle {
+        initial: { status: User.status(UserStatus.active) disabled_at: none }
+        visible when status == UserStatus.active
+        transition disable {
+            from: status == UserStatus.active
+            set: { status: User.status(UserStatus.disabled) disabled_at: clock.now }
+        }
+    }
+}
+"#,
+        );
+        assert!(result.diagnostics.is_empty(), "{:#?}", result.diagnostics);
+    }
+
+    #[test]
+    fn lifecycle_fields_cannot_be_written_by_an_ordinary_update() {
+        let result = check(
+            r#"
+enum UserStatus { active disabled }
+failure UserMissing { kind: NotFound code: "user_missing" message: "Missing" }
+failure MutationConflict { kind: Conflict code: "mutation_conflict" message: "Conflict" }
+input DisableUser { id: Uuid }
+entity User {
+    id: Uuid identity
+    status: UserStatus
+    disabled_at: Instant?
+    identity: id
+    persistence { store: primary role: authority }
+    lifecycle {
+        initial: { status: User.status(UserStatus.active) disabled_at: none }
+        visible when status == UserStatus.active
+        transition disable {
+            from: status == UserStatus.active
+            set: { status: User.status(UserStatus.disabled) disabled_at: clock.now }
+        }
+    }
+}
+action disable(input: DisableUser) -> Bool {
+    var changed = attempt update required User {
+        where: id == input.id
+        set: { status: UserStatus.disabled disabled_at: clock.now }
+        missing: UserMissing
+        conflict: MutationConflict
+    }
+    return true
+}
+"#,
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "TYPE_LIFECYCLE_FIELD_UPDATE_FORBIDDEN"),
+            "{:#?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn lifecycle_contract_rejections_have_specific_diagnostics() {
+        fn entity(name: &str, body: &str, persisted: bool) -> String {
+            let persistence = if persisted {
+                "persistence { store: primary role: authority }"
+            } else {
+                ""
+            };
+            format!(
+                "entity {name} {{ id: Uuid deleted_at: Instant? status: Text identity: id {persistence} lifecycle {{ {body} }} }}"
+            )
+        }
+
+        let cases = [
+            (
+                "TYPE_LIFECYCLE_REQUIRES_PERSISTENT_ENTITY",
+                entity("NoStore", "initial: { deleted_at: none } visible when deleted_at == none", false),
+            ),
+            (
+                "TYPE_LIFECYCLE_INITIAL_REQUIRED",
+                entity("NoInitial", "visible when deleted_at == none", true),
+            ),
+            (
+                "TYPE_LIFECYCLE_VISIBLE_REQUIRED",
+                entity("NoVisibility", "initial: { deleted_at: none }", true),
+            ),
+            (
+                "TYPE_LIFECYCLE_INITIAL_DUPLICATE",
+                entity("DuplicateInitial", "initial: { deleted_at: none deleted_at: none } visible when deleted_at == none", true),
+            ),
+            (
+                "TYPE_LIFECYCLE_FIELD_UNKNOWN",
+                entity("UnknownInitial", "initial: { ghost: none } visible when deleted_at == none", true),
+            ),
+            (
+                "TYPE_LIFECYCLE_FIELD_INELIGIBLE",
+                entity("IdentityOwned", "initial: { id: id deleted_at: none } visible when deleted_at == none", true),
+            ),
+            (
+                "TYPE_LIFECYCLE_VALUE_UNSUPPORTED",
+                entity("OpenValue", "initial: { deleted_at: supplied } visible when deleted_at == none", true),
+            ),
+            (
+                "TYPE_LIFECYCLE_TRANSITION_FIELD_DUPLICATE",
+                entity("DuplicateTransitionField", "initial: { deleted_at: none } visible when deleted_at == none transition delete { from: deleted_at == none set: { deleted_at: clock.now deleted_at: clock.now } }", true),
+            ),
+            (
+                "TYPE_LIFECYCLE_INITIAL_FIELD_REQUIRED",
+                entity("MissingInitialField", "initial: { deleted_at: none } visible when deleted_at == none transition delete { from: deleted_at == none set: { status: \"deleted\" } }", true),
+            ),
+            (
+                "TYPE_LIFECYCLE_PURGE_FIELD_INVALID",
+                entity("InvalidPurgeField", "initial: { deleted_at: none status: \"active\" } visible when deleted_at == none transition delete { from: deleted_at == none set: { status: \"deleted\" } } purge after config.retention from status", true),
+            ),
+            (
+                "TYPE_LIFECYCLE_PURGE_INITIAL_INVALID",
+                entity("InvalidPurgeInitial", "initial: { deleted_at: clock.now } visible when deleted_at == none transition delete { from: deleted_at == none set: { deleted_at: clock.now } } purge after config.retention from deleted_at", true),
+            ),
+            (
+                "TYPE_LIFECYCLE_PURGE_RETENTION_INVALID",
+                entity("InvalidRetention", "initial: { deleted_at: none } visible when deleted_at == none transition delete { from: deleted_at == none set: { deleted_at: clock.now } } purge after 30 from deleted_at", true),
+            ),
+            (
+                "TYPE_LIFECYCLE_PURGE_TRANSITION_INVALID",
+                entity("InvalidPurgeTransition", "initial: { deleted_at: none } visible when deleted_at == none transition delete { from: deleted_at == none set: { deleted_at: none } } purge after config.retention from deleted_at", true),
+            ),
+            (
+                "TYPE_LIFECYCLE_PREDICATE_UNSUPPORTED",
+                entity("UnsupportedVisibility", "initial: { deleted_at: none } visible when principal.id == id", true),
+            ),
+        ];
+
+        for (expected, source) in cases {
+            let result = check(&source);
+            assert!(
+                result
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == expected),
+                "expected {expected} for source {source:?}, got {:#?}",
+                result.diagnostics
+            );
+        }
+
+        let unknown_transition = format!(
+            "{}\n{}",
+            entity(
+                "UnknownTransition",
+                "initial: { deleted_at: none } visible when deleted_at == none transition delete { from: deleted_at == none set: { deleted_at: clock.now } }",
+                true,
+            ),
+            r#"
+failure TodoMissing { kind: NotFound code: "todo_missing" message: "Missing" }
+failure TodoConflict { kind: Conflict code: "todo_conflict" message: "Conflict" }
+action update_todo(key: UnknownTransition.id) -> Bool {
+    var changed = attempt update required UnknownTransition {
+        where: id == key
+        transition: absent
+        missing: TodoMissing
+        conflict: TodoConflict
+    }
+    return true
+}
+"#,
+        );
+        let result = check(&unknown_transition);
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "TYPE_LIFECYCLE_TRANSITION_UNKNOWN"),
+            "{:#?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
     fn widens_fields_but_rejects_siblings() {
         let result = check(
             r#"
@@ -4669,6 +6603,48 @@ function misuse(supplier: Supplier) -> Customer.email { return receipt(supplier.
         );
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].code, "TYPE_SIBLING_MISMATCH");
+    }
+
+    #[test]
+    fn checks_route_query_and_header_transport_contracts() {
+        let result = check(
+            r#"
+type Nested = Object { id: Uuid }
+type QueryInput = Object { id: Uuid nested: Nested optional values: List<Text> optional }
+type BodyInput = Object { id: Text }
+route GET /items/{id} {
+    auth: none
+    path: { id: Uuid }
+    query: QueryInput
+    headers: {
+        first: Text from "X-Trace" optional
+        second: Text from "x-trace" optional
+        auth: Text from "Authorization" optional
+        nested_header: Nested from "X-Nested" optional
+        invalid_name: Text from "Bad Header" optional
+    }
+    input: BodyInput
+    action: { return true }
+}
+route GET /scalar { auth: none query: Text action: { return true } }
+"#,
+        );
+        let codes = result
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>();
+        for expected in [
+            "TYPE_ROUTE_BINDING_COLLISION",
+            "TYPE_ROUTE_HEADER_WIRE_DUPLICATE",
+            "TYPE_AUTH_RESERVED_ROUTE_INPUT",
+            "TYPE_ROUTE_HEADER_SCALAR_REQUIRED",
+            "TYPE_ROUTE_HEADER_NAME_INVALID",
+            "TYPE_ROUTE_QUERY_FIELD_UNSUPPORTED",
+            "TYPE_ROUTE_QUERY_OBJECT_REQUIRED",
+        ] {
+            assert!(codes.contains(&expected), "{expected}: {codes:#?}");
+        }
     }
 
     #[test]

@@ -17,6 +17,14 @@ requires fixture-first design; the security semantics do not.
 
 ## 1. Already accepted invariants
 
+**Owner-selected syntax successor, 2026-10-04:** remove the authored name from
+the sole `principal { ... }` block and its redundant application selector;
+provide `Principal` and `current_principal` automatically. This is scheduled
+under RM-222/RM-223, not a change to the currently implemented named grammar or
+the frozen section-2 contract. Authentication provenance, closed variants and
+policy boundaries remain mandatory. See the
+[naming/principal decision](decision-register.md#naming-and-principal-direction--2026-10-04).
+
 The following rules are not reopened by AUTH-001 implementation:
 
 - every route requires authentication unless it contains the exact, conspicuous

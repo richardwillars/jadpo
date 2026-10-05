@@ -24,7 +24,8 @@ and then decide whether its own findings matter.
 3. Humans must be able to read and write it, even if agents are the primary
    authors.
 4. It optimises for minimum ambiguity per token, not minimum characters.
-5. Common tasks have one canonical representation.
+5. Common tasks have one canonical representation; compiler/runtime defaults
+   minimise routine architectural decisions for application-writing LLMs.
 6. Semantics are strict; formatting is forgiving and canonicalised.
 7. Bindings use `var`; they are immutable unless declared with `var mut`.
 8. There is no language `undefined` and no ambient `null`.
@@ -42,11 +43,14 @@ and then decide whether its own findings matter.
 17. The compiler distinguishes atomic transactions, durable projections, and
     compensating workflows and never silently weakens one into another.
 18. Database access and mutation are compiler-understood language operations.
-19. Postgres is the initial opinionated database assumption.
+19. Database and durable-job semantics are backend-neutral; SQLite/Postgres
+    adapters must satisfy the same contract without requiring a hosted provider.
 20. Raw SQL and arbitrary network calls are outside ordinary application code.
 21. Expected domain failures are typed and declared.
 22. Infrastructure failures are handled by declared operational policy rather
-    than retry/timeout plumbing in business logic.
+    than retry/timeout plumbing in business logic. Safe transient retries default
+    on with bounded exponential backoff and jitter; uncertain commits and
+    non-repeatable effects are not automatically replayed.
 23. Authentication, validation, rate limits, safe output, and other protections
     default on or to safe behaviour.
 24. Removing protection is explicit and conspicuous.

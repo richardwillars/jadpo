@@ -19,7 +19,7 @@ if (postgresUrl) {
 } else { delete Bun.env.DATABASE_URL; }
 Bun.env.SQLITE_PATH = path;
 const app = await import("../../examples/first-party-authentication/build/target/app.ts");
-const { AuthenticationFault } = await import("../../examples/first-party-authentication/build/target/authentication.ts");
+const { AuthenticationFault, firstPartyAuthenticationStrength } = await import("../../examples/first-party-authentication/build/target/authentication.ts");
 function testDatabase(sqlitePath: string, url?: string) {
   const sqlite = url ? null : new Database(sqlitePath, { strict: true });
   const postgres = url ? new SQL({ url, prepare: false }) : null;
@@ -55,6 +55,12 @@ afterAll(async () => { await db.close(); rmSync(root, { recursive: true, force: 
 const issue = (strategy = "browser_session", subject = "alice") => app.authenticationHost().issue(strategy, subject, now + 3_600_000, now);
 const cookie = (credential: string) => ({ cookie: `__Host-jadpo_session=${credential}` });
 const bearer = (credential: string) => ({ authorization: `Bearer ${credential}` });
+test("built-in strength mapping preserves legacy text and rejects unconfigured principal kinds", () => {
+  expect(firstPartyAuthenticationStrength("user", "signed")).toBe("signed");
+  expect(firstPartyAuthenticationStrength("user", "opaque")).toBe("opaque");
+  expect(() => firstPartyAuthenticationStrength("service", "api_key")).toThrow(AuthenticationFault);
+  expect(() => firstPartyAuthenticationStrength("user", "multi_factor")).toThrow(AuthenticationFault);
+});
 function request(route = "/identity", headers: Record<string, string> = {}, body?: unknown) {
   return new Request(`https://example.test${route}`, { method: body === undefined ? "GET" : "POST", headers, ...(body === undefined ? {} : { body: typeof body === "string" ? body : JSON.stringify(body) }) });
 }
@@ -72,6 +78,16 @@ describe("generated first-party authentication", () => {
     }
     expect(browser.setCookie).toContain("; Path=/; Secure; HttpOnly; SameSite=Strict;");
     expect(api.setCookie).toBeNull();
+  });
+  test("protected routes narrow the current principal to the declared variant", async () => {
+    const credential = bearer((await issue("api_bearer")).credential);
+    const userResponse = await app.handleRequest(request("/user-identity", credential));
+    expect(userResponse.status).toBe(200);
+    expect(await userResponse.json()).toEqual({ id: alice });
+
+    const wrongVariant = await app.handleRequest(request("/service-identity", credential));
+    expect(wrongVariant.status).toBe(403);
+    expect((await wrongVariant.json()).error.code).toBe("not_permitted");
   });
   test("authentication precedes input decoding and public health ignores credentials", async () => {
     const response = await app.handleRequest(request("/identity", {}, "{broken"));
@@ -93,7 +109,10 @@ describe("generated first-party authentication", () => {
     const valid = await issue(); const other = await issue();
     const headers = { ...cookie(valid.credential), origin: env.BROWSER_ORIGIN, "x-jadpo-csrf": valid.csrfToken };
     for (const bad of [
-      cookie(valid.credential), { ...headers, origin: "https://example.test.attacker.test" },
+      cookie(valid.credential), { ...cookie(valid.credential), origin: env.BROWSER_ORIGIN },
+      { ...cookie(valid.credential), "x-jadpo-csrf": valid.csrfToken },
+      { ...headers, "x-jadpo-csrf": "wrong" },
+      { ...headers, origin: "https://example.test.attacker.test" },
       { ...headers, origin: "null" }, { ...headers, "x-jadpo-csrf": other.csrfToken },
       { ...headers, "sec-fetch-site": "cross-site" },
     ]) expect((await app.handleRequest(request("/identity", bad, { label: "ok" }))).status).toBe(403);
@@ -160,7 +179,7 @@ describe("generated first-party authentication", () => {
     expect((await app.handleRequest(request("/identity", cookie(refreshed.credential)))).status).toBe(200);
   });
   test("malformed configuration fails before authentication becomes available", async () => {
-    for (const update of [{ AUTH_SIGNING_KEY: "short" }, { BROWSER_ORIGIN: "http://example.test" }, { BROWSER_ORIGIN: "https://example.test/path" }, { AUTH_PREVIOUS_SIGNING_KEY: key }]) {
+    for (const update of [{ BROWSER_ORIGIN: undefined }, { AUTH_SIGNING_KEY: "short" }, { BROWSER_ORIGIN: "http://example.test" }, { BROWSER_ORIGIN: "https://example.test/path" }, { AUTH_PREVIOUS_SIGNING_KEY: key }]) {
       await expect(app.initializeApplication({ ...env, ...update })).rejects.toThrow();
       expect((await app.handleRequest(request())).status).toBe(503);
     }

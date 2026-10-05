@@ -135,6 +135,12 @@ fn derive_index_recommendations(analyzed: &AnalyzedProject) -> Vec<IndexRecommen
             let mut queries = Vec::new();
             collect_queries(&callable.body, &mut queries);
             for query in queries {
+                // Page queries compile an index from their mandatory equality
+                // scope and stable keyset order; recommending single-field
+                // indexes would duplicate that generated access path.
+                if query.page.is_some() {
+                    continue;
+                }
                 let Some(entity) = query.target.path.last().map(|name| name.text.as_str()) else {
                     continue;
                 };
