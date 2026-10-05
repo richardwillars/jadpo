@@ -26,7 +26,13 @@ checks explicitly retain the open golden gates.
 ## Branches and worktrees
 
 `main` is the shared integration baseline. New work uses a `codex/` branch and
-a pull request. Give each editing agent its own worktree and a bounded task,
+a pull request. GitHub requires an up-to-date passing `supported-language`
+check and resolved review conversations before merging, including for
+administrators. Force pushes and deletion of `main` are disabled. There is no
+mandatory human approval count; required independent project reviews remain
+separate acceptance evidence.
+
+Give each editing agent its own worktree and a bounded task,
 with explicit ownership of the files it may change. For example:
 
 ```sh

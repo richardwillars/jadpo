@@ -39,12 +39,18 @@ The manifest must classify every example and register every runtime test file.
 New suites cannot quietly sit outside the command. The separate-process policy
 avoids shared environment and generated-module caches contaminating runtime tests.
 
-The GitHub Actions workflow uses the same full command on pushes and PRs and
-retains reports even on failure. A manually requested golden-gate run defaults
-to requiring the currently blocked golden contract. This workflow has been
-prepared locally; no remote is configured and no hosted CI run or protected-branch
-requirement has been established. CI integration does not satisfy P10R approval
-attestation. Action configuration follows the official
+The [GitHub Actions workflow](https://github.com/richardwillars/jadpo/actions/workflows/validation.yml)
+uses the same full command on pushes and PRs and retains reports even on failure.
+A manually requested golden-gate run defaults to requiring the currently blocked
+golden contract. The public repository is connected as `origin`; the initial
+[hosted validation run](https://github.com/richardwillars/jadpo/actions/runs/37386118262)
+tests the committed development baseline. Branch protection requires pull
+requests with an up-to-date passing `supported-language` check and resolved
+review conversations, including for administrators. It blocks force pushes and
+branch deletion without imposing a mandatory human approval count. Required
+independent implementation reviews still follow the
+[project workflow](../../docs/roadmap-workflow.md). CI integration does not
+satisfy P10R approval attestation. Action configuration follows the official
 [checkout](https://github.com/actions/checkout),
 [setup-bun](https://github.com/oven-sh/setup-bun),
 [setup-node](https://github.com/actions/setup-node) and
