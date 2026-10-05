@@ -1,0 +1,29 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/delivery-hook-components.test.ts:
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"de8da778-ffc2-490e-9ce5-ce88a67e294f","credentialId":"94a3efff-8790-41e2-94f6-7b4123db1380","occurredAt":1791242576833}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"662eddf9-de61-4b4b-aefb-e1be37ae94c3","attempt":1,"elapsedMs":7,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (postgres) > generated scheduler commits selection/page and admission before provider dispatch, then finishes one singleton tick [121.50ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"106ad2e9-e305-415d-9064-b1028126d073","credentialId":"ff7b1de4-6c39-4176-8759-69453c39d07d","occurredAt":1791242576940}
+(pass) closed scheduler assembly components (postgres) > forged credential, unknown binding and missing/invalid profiles refuse before durable enrollment or HTTP [11.34ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"12737b3d-2713-4db0-a755-9832fc8a83d8","credentialId":"ff48bb12-2379-4461-9e3f-232cf697533b","occurredAt":1791242576951}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"2b47c01a-4fcb-49a8-9882-fdc0d41d960e","attempt":1,"elapsedMs":1,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (postgres) > owning page COMMIT failure leaves no intent/activation and cannot dispatch [89.79ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"c87daeda-e94e-4dd7-9bbf-3f795b439e1f","credentialId":"dd2ab09d-fb6f-460e-80ef-735c1e3ee088","occurredAt":1791242577041}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"f02fe054-1d6f-4eb2-a501-5fc0e1eea023","attempt":1,"elapsedMs":6,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (postgres) > overlapping activation stays idle while the committed singleton page owns the provider call [38.28ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"5ad7f4ed-e41c-4406-b077-2f28fe244a31","credentialId":"ccfedd1a-1b9e-4021-8d33-9c94fff8a4a0","occurredAt":1791242577079}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"47528fef-193a-404d-85e5-a128fe93c69e","credentialId":"bd877499-6d9d-42c7-a96b-c2ee04a6935a","occurredAt":1791242577101}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"d1cb009c-0506-4e7b-9c2f-591d85a84d71","credentialId":"9b9edb08-c703-40e4-bd6d-60bc8481fe55","occurredAt":1791242577127}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"b96d63d3-d9e9-4528-bb84-662a1e4426c5","credentialId":"88258a51-0c8b-411d-85b1-1877e5bf5505","occurredAt":1791242577147}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"c515932c-83a7-48c6-a820-9bdc9ca026d5","credentialId":"5a98e23d-d591-4518-a21e-e9600b193963","occurredAt":1791242577172}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"5c6a1979-ee4c-4730-af78-00a3379da179","credentialId":"dabd759f-22fd-4e9c-9636-7bad0d426710","occurredAt":1791242577190}
+(pass) closed scheduler assembly components (postgres) > malformed/cross-binding retained page and cursor refuse before commit or provider effect, preserving every durable byte [129.30ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"3f739ac8-f2ff-4ccf-9fb4-cbfcf0fd9663","credentialId":"8aeca145-b587-4c02-b859-080c89d3d031","occurredAt":1791242577207}
+(pass) closed scheduler assembly components (postgres) > fresh generated process resumes the immutable staged page with a new operation snapshot and original intent identity [203.94ms]
+
+ 6 pass
+ 50 filtered out
+ 0 fail
+ 70 expect() calls
+Ran 6 tests across 1 file. [2.42s]

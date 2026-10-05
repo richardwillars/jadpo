@@ -1,0 +1,14 @@
+postgres (PostgreSQL) 16.3 (Postgres.app)
+1.2.20
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/golden-todo-postgres.test.ts:
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"4916a43f-676b-4ed4-b3a8-315530982696","operation":"Todo.create_todo","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":2,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"d71b3522-de47-4221-a145-ac542c640ced","operation":"Todo.delete_todo","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":3,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"26ddae56-1343-4d10-a299-446ded685294","operation":"User.disable_user","attempt":1,"database":"postgres","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+(pass) PostgreSQL keyset pages preserve scope and use the composite index [118.28ms]
+
+ 1 pass
+ 0 fail
+ 56 expect() calls
+Ran 1 test across 1 file. [3.73s]
