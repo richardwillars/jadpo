@@ -1,0 +1,42 @@
+..................EEE...............................
+======================================================================
+ERROR: test_adapter_failure_keeps_case_failed_and_later_cases_present (test_golden_checkpoint.CheckpointIntegrityTests.test_adapter_failure_keeps_case_failed_and_later_cases_present)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/runner/work/jadpo/jadpo/tests/validation/test_golden_checkpoint.py", line 102, in test_adapter_failure_keeps_case_failed_and_later_cases_present
+    checkpoint.apply_checkpoint(report, outputs, ROOT)
+  File "/home/runner/work/jadpo/jadpo/tools/golden_checkpoint.py", line 137, in apply_checkpoint
+    harness.validate_report(report, root)
+  File "/home/runner/work/jadpo/jadpo/tools/golden_cases.py", line 209, in validate_report
+    raise ValueError('Passing label lacks complete matching observations')
+ValueError: Passing label lacks complete matching observations
+
+======================================================================
+ERROR: test_all_inventory_entries_retained_and_selected_observations_do_not_infer_pass (test_golden_checkpoint.CheckpointIntegrityTests.test_all_inventory_entries_retained_and_selected_observations_do_not_infer_pass)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/runner/work/jadpo/jadpo/tests/validation/test_golden_checkpoint.py", line 38, in test_all_inventory_entries_retained_and_selected_observations_do_not_infer_pass
+    checkpoint.apply_checkpoint(report, self.outputs(), ROOT)
+  File "/home/runner/work/jadpo/jadpo/tools/golden_checkpoint.py", line 137, in apply_checkpoint
+    harness.validate_report(report, root)
+  File "/home/runner/work/jadpo/jadpo/tools/golden_cases.py", line 209, in validate_report
+    raise ValueError('Passing label lacks complete matching observations')
+ValueError: Passing label lacks complete matching observations
+
+======================================================================
+ERROR: test_artifact_raw_dependency_and_rederived_observation_integrity (test_golden_checkpoint.CheckpointIntegrityTests.test_artifact_raw_dependency_and_rederived_observation_integrity)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/runner/work/jadpo/jadpo/tests/validation/test_golden_checkpoint.py", line 119, in test_artifact_raw_dependency_and_rederived_observation_integrity
+    report = harness.run_cases(ROOT); checkpoint.apply_checkpoint(report, outputs, ROOT)
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/jadpo/jadpo/tools/golden_checkpoint.py", line 137, in apply_checkpoint
+    harness.validate_report(report, root)
+  File "/home/runner/work/jadpo/jadpo/tools/golden_cases.py", line 209, in validate_report
+    raise ValueError('Passing label lacks complete matching observations')
+ValueError: Passing label lacks complete matching observations
+
+----------------------------------------------------------------------
+Ran 52 tests in 0.518s
+
+FAILED (errors=3)
