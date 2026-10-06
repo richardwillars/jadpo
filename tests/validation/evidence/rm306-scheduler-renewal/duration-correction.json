@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-306",
+  "corrects": "023eaa4",
+  "finding": "P2 durable duration decoder integrity: SQLite positive CHECK accepts TEXT0x10; Number coercion accepted16 while native SQL interpreted0. Not a fence bypass.",
+  "findingEvidence": "tests/validation/evidence/parallel-renewal-independent/native-sqlite.log (root-owned independent review evidence)",
+  "scope": "Shared locked canonical duration decoding for lease_ms and interval_ms, and actual SQLite TEXT/REAL corruption refusal regression.",
+  "sourceSha256": {
+    "jadpo/crates/core/src/runtime/delivery_scheduler.ts": "13fa7a582503ef5668af39747d055026f7af8395a776e5edc8a323b57103a3e4",
+    "tests/runtime/delivery-hook-components.test.ts": "e8e1b269089322e621c63ede5d868607f21a95ed2412dcbdd033b7070ee02c00"
+  },
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "originalEstimateHours": [
+    2,
+    8
+  ],
+  "timingRun": "RM-306-ca81b382a441",
+  "taskComplete": false,
+  "independentReview": "pending correction recheck",
+  "checks": [
+    {
+      "backend": "SQLite",
+      "log": "sqlite-duration-correction.log",
+      "passed": 65,
+      "skipped": 1,
+      "failed": 0,
+      "assertions": 722,
+      "skipReason": "PostgreSQL row-lock wait"
+    },
+    {
+      "backend": "disposable PostgreSQL",
+      "log": "postgres-duration-correction.log",
+      "passed": 64,
+      "skipped": 1,
+      "failed": 0,
+      "assertions": 643,
+      "skipReason": "SQLite-specific storage affinity corruption"
+    }
+  ],
+  "corruptionRegression": {
+    "columns": [
+      "lease_ms",
+      "interval_ms"
+    ],
+    "values": [
+      "TEXT0x10",
+      "TEXT0b10",
+      "TEXTNaN",
+      "TEXTduration",
+      "REAL1.5"
+    ],
+    "operations": [
+      "claim",
+      "stage",
+      "finish",
+      "renew"
+    ],
+    "refusals": 40,
+    "fullDurableRowUnchanged": true,
+    "sqliteStorageTypeObserved": true
+  },
+  "decoding": {
+    "sqlite": "INTEGER storage and safe positive integer driver number",
+    "postgres": "safe positive integer number or canonical positive decimal BIGINT string within Number.MAX_SAFE_INTEGER"
+  },
+  "logsSha256": {
+    "tests/validation/evidence/rm306-scheduler-renewal/sqlite-duration-correction.log": "4de5cda2725cf56a3626959300c9547b621c81e4c8ccb0d702721630b0406618",
+    "tests/validation/evidence/rm306-scheduler-renewal/postgres-duration-correction.log": "373d2fd52341aea9df503a438488fa7a9e3e4500655ae6b9f5b8d09b2ea5459d"
+  },
+  "preserved": "Original candidate manifest/logs and root independent failure evidence remain unchanged. No public activation/profile/heartbeat or task closure."
+}
