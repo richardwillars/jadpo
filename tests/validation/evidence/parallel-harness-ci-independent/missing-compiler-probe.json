@@ -1,0 +1,10 @@
+{
+  "source_capture": "6fdae45 plus exact8245ecd corrected test file",
+  "target_directory_absent_after_tests": true,
+  "compiler_sha256": null,
+  "drivers_called": 0,
+  "pending_entries": 88,
+  "forged_matching_pass_rejected": true,
+  "reason": "Passing label lacks complete matching observations",
+  "production_source_unchanged": true
+}

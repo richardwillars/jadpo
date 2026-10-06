@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "workflow_run": "https://github.com/richardwillars/jadpo/actions/runs/37408802038",
+  "candidate": "6fdae452c6e0db61e8cd5aaa508bcc843f9c4c01",
+  "reason": "Synthetic checkpoint tests attempted passing labels without compiler provenance; hosted clean checkout runs verification-contract before compiler-build. Production validator correctly refused.",
+  "files_sha256": {
+    "report.json": "776c3f1a115c924c41b97da846941c25500f35181704f3065dd493ee82d6dead",
+    "00-verification-contract.log": "83b91e8ec8a8c4f15e71e945f3e1aa8d9b7c517d02111fd44e16fdf8e053c484"
+  }
+}

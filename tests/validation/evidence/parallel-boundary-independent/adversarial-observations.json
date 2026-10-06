@@ -1,0 +1,296 @@
+{
+  "observations": [
+    {
+      "name": "valid-body",
+      "status": 200,
+      "body": {
+        "value": "valid"
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "malformed-json",
+      "status": 400,
+      "body": {
+        "error": {
+          "code": "invalid_request",
+          "message": "Request JSON syntax is invalid.",
+          "request_id": "req_54e36201-7d35-4642-bbd9-9a527759aa56"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "declared-body-{\"value\":\"x\"}",
+      "status": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "message": "Request body value is invalid.",
+          "request_id": "req_c0ba2ca0-1388-4878-be11-d77e2b41916f"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "declared-body-{\"value\":7}",
+      "status": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "message": "Request body value is invalid.",
+          "request_id": "req_4ff751b8-71d5-4817-886a-52a96bec68b7"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "declared-body-{}",
+      "status": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "message": "Request body value is invalid.",
+          "request_id": "req_e7cb3fb1-1ec9-40c9-9ca7-1f045d32187e"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "declared-body-{\"value\":\"valid\",\"extra\":\"independent-boundary-canary-do-not-disclose\"}",
+      "status": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "message": "Request body value is invalid.",
+          "request_id": "req_2128eec6-2e17-4d3c-91a6-4d3ef01b57f0"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "declared-body-null",
+      "status": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "message": "Request body value is invalid.",
+          "request_id": "req_a7e7b3b0-6f80-4073-ab96-6c1d1abade58"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "declared-body-[]",
+      "status": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "message": "Request body value is invalid.",
+          "request_id": "req_5d7db3a0-d8bd-4bf9-af40-b47a80e044e2"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "unexpected-parser-Error",
+      "status": 500,
+      "body": {
+        "error": {
+          "code": "internal_fault",
+          "message": "An internal error occurred.",
+          "request_id": "req_da58cf24-fcad-49ee-bb99-74b9a3de9ac7"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "unexpected-parser-TypeError",
+      "status": 500,
+      "body": {
+        "error": {
+          "code": "internal_fault",
+          "message": "An internal error occurred.",
+          "request_id": "req_73e97768-d105-483f-86d9-df6d86e46e4b"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "unexpected-validator-Error",
+      "status": 500,
+      "body": {
+        "error": {
+          "code": "internal_fault",
+          "message": "An internal error occurred.",
+          "request_id": "req_90d7c84f-278c-4611-85d2-af58c99ec8bf"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "unexpected-validator-SyntaxError",
+      "status": 500,
+      "body": {
+        "error": {
+          "code": "internal_fault",
+          "message": "An internal error occurred.",
+          "request_id": "req_45e1ce55-a02d-4399-bfe3-e9ffe5a3c083"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "declared-path",
+      "status": 422,
+      "body": {
+        "error": {
+          "code": "invalid_value",
+          "message": "Request path value is invalid.",
+          "request_id": "req_416f622d-e64a-49a1-aea9-4304648901f0"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "query-syntax",
+      "status": 400,
+      "body": {
+        "error": {
+          "code": "invalid_request",
+          "message": "Request query syntax is invalid.",
+          "request_id": "req_86e7b15d-c0a1-43ae-ae20-8650e6264db2"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "query-value",
+      "status": 422,
+      "body": {
+        "error": {
+          "code": "invalid_value",
+          "message": "Request query value is invalid.",
+          "request_id": "req_83547134-3694-4a23-af91-c3960f728fa0"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "header-syntax",
+      "status": 400,
+      "body": {
+        "error": {
+          "code": "invalid_request",
+          "message": "Request header syntax is invalid.",
+          "request_id": "req_c2fdb85d-c16d-4708-8e08-fa69bde8dee9"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "header-value",
+      "status": 422,
+      "body": {
+        "error": {
+          "code": "invalid_value",
+          "message": "Request header value is invalid.",
+          "request_id": "req_15b52bf3-9871-4836-95e1-a07b54f364c2"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "unexpected-path-validator",
+      "status": 500,
+      "body": {
+        "error": {
+          "code": "internal_fault",
+          "message": "An internal error occurred.",
+          "request_id": "req_5ca24116-532b-46c9-a99e-7ca87f1308bf"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "unexpected-output-validator",
+      "status": 500,
+      "body": {
+        "error": {
+          "code": "internal_fault",
+          "message": "An internal error occurred.",
+          "request_id": "req_34681bb1-5104-4ac6-9e39-6830a80b05c2"
+        }
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "active-auth-invalid-credentials-liveness",
+      "status": 200,
+      "body": {
+        "status": "healthy"
+      },
+      "requestIdHeaderMatches": true,
+      "databaseQueries": 0,
+      "authenticationAttempts": 0
+    },
+    {
+      "name": "protected-invalid-credentials-control",
+      "status": 401,
+      "body": {
+        "error": {
+          "code": "invalid_credentials",
+          "message": "Authentication failed.",
+          "request_id": "req_56fac39a-e3e2-40a0-a89b-6ac089ce71a8"
+        }
+      },
+      "requestIdHeaderMatches": true,
+      "authenticationAttempts": 1
+    },
+    {
+      "name": "outage-readiness-control",
+      "status": 503,
+      "body": {
+        "status": "not_ready",
+        "checks": {
+          "database": "unavailable"
+        },
+        "advisories": {}
+      },
+      "requestIdHeaderMatches": true
+    },
+    {
+      "name": "active-auth-outage-liveness",
+      "status": 200,
+      "body": {
+        "status": "healthy"
+      },
+      "requestIdHeaderMatches": true,
+      "databaseQueries": 0,
+      "authenticationAttempts": 0
+    },
+    {
+      "name": "liveness-output-fault",
+      "status": 500,
+      "body": {
+        "error": {
+          "code": "internal_fault",
+          "message": "An internal error occurred.",
+          "request_id": "req_aa42d0e8-c7e6-4c77-bde6-7a21506758cb"
+        }
+      },
+      "requestIdHeaderMatches": true
+    }
+  ],
+  "operationalLogs": [
+    "{\"schemaVersion\":1,\"kind\":\"operational_log_event\",\"eventName\":\"operation.failed\",\"classification\":\"RUNTIME_UNHANDLED_FAULT\",\"requestId\":\"req_da58cf24-fcad-49ee-bb99-74b9a3de9ac7\",\"traceId\":null,\"semanticOperationId\":\"route:POST:/body\",\"sourceRevision\":\"src_67b799554a14232d\",\"attributes\":{}}",
+    "{\"schemaVersion\":1,\"kind\":\"operational_log_event\",\"eventName\":\"operation.failed\",\"classification\":\"RUNTIME_UNHANDLED_FAULT\",\"requestId\":\"req_73e97768-d105-483f-86d9-df6d86e46e4b\",\"traceId\":null,\"semanticOperationId\":\"route:POST:/body\",\"sourceRevision\":\"src_67b799554a14232d\",\"attributes\":{}}",
+    "{\"schemaVersion\":1,\"kind\":\"operational_log_event\",\"eventName\":\"operation.failed\",\"classification\":\"RUNTIME_UNHANDLED_FAULT\",\"requestId\":\"req_90d7c84f-278c-4611-85d2-af58c99ec8bf\",\"traceId\":null,\"semanticOperationId\":\"route:POST:/body\",\"sourceRevision\":\"src_67b799554a14232d\",\"attributes\":{}}",
+    "{\"schemaVersion\":1,\"kind\":\"operational_log_event\",\"eventName\":\"operation.failed\",\"classification\":\"RUNTIME_UNHANDLED_FAULT\",\"requestId\":\"req_45e1ce55-a02d-4399-bfe3-e9ffe5a3c083\",\"traceId\":null,\"semanticOperationId\":\"route:POST:/body\",\"sourceRevision\":\"src_67b799554a14232d\",\"attributes\":{}}",
+    "{\"schemaVersion\":1,\"kind\":\"operational_log_event\",\"eventName\":\"operation.failed\",\"classification\":\"RUNTIME_UNHANDLED_FAULT\",\"requestId\":\"req_5ca24116-532b-46c9-a99e-7ca87f1308bf\",\"traceId\":null,\"semanticOperationId\":\"route:GET:/path/{value}\",\"sourceRevision\":\"src_67b799554a14232d\",\"attributes\":{}}",
+    "{\"schemaVersion\":1,\"kind\":\"operational_log_event\",\"eventName\":\"operation.failed\",\"classification\":\"RUNTIME_UNHANDLED_FAULT\",\"requestId\":\"req_34681bb1-5104-4ac6-9e39-6830a80b05c2\",\"traceId\":null,\"semanticOperationId\":\"route:POST:/body\",\"sourceRevision\":\"src_67b799554a14232d\",\"attributes\":{}}",
+    "{\"schemaVersion\":1,\"kind\":\"operational_log_event\",\"eventName\":\"dependency.unavailable\",\"classification\":\"RUNTIME_DEPENDENCY_UNAVAILABLE\",\"requestId\":\"readiness\",\"traceId\":null,\"semanticOperationId\":\"health:ready\",\"sourceRevision\":\"src_2c78570a2841d2f7\",\"attributes\":{}}",
+    "{\"schemaVersion\":1,\"kind\":\"operational_log_event\",\"eventName\":\"operation.failed\",\"classification\":\"RUNTIME_UNHANDLED_FAULT\",\"requestId\":\"req_aa42d0e8-c7e6-4c77-bde6-7a21506758cb\",\"traceId\":null,\"semanticOperationId\":\"http:unmatched\",\"sourceRevision\":\"src_2c78570a2841d2f7\",\"attributes\":{}}"
+  ],
+  "canaryContainment": true
+}

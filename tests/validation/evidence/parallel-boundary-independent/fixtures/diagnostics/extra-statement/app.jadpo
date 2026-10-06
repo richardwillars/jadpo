@@ -1,0 +1,4 @@
+enum HealthStatus { healthy }
+output PublicHealth { status: HealthStatus }
+route GET /health/live { auth: none output: PublicHealth action: { var ignored = HealthStatus.healthy
+return PublicHealth { status: HealthStatus.healthy } } }

@@ -1,0 +1,50 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/delivery-hook-components.test.ts:
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"1f648c2b-614a-4c06-92eb-81072289196a","credentialId":"a5b874cd-bbd5-4431-9e2a-6ffc14474306","occurredAt":1791255579740}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"977eed00-fed8-4982-a0e3-1e909b7e8e40","attempt":1,"elapsedMs":7,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (sqlite) > generated scheduler commits selection/page and admission before provider dispatch, then finishes one singleton tick [32.97ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"416613ca-c1cb-4725-a012-5f965d29c17c","credentialId":"97e771af-c050-49cb-b45e-9fd305acf96a","occurredAt":1791255579768}
+(pass) closed scheduler assembly components (sqlite) > forged credential, unknown binding and missing/invalid profiles refuse before durable enrollment or HTTP [6.10ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"fedeeb85-2b60-4952-9300-22c3ffaaab93","credentialId":"31658e90-0e54-4f4c-b7ff-4ac1ce5a8b85","occurredAt":1791255579775}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"0831119d-2bd7-42c0-ab60-88d230971ae4","attempt":1,"elapsedMs":1,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (sqlite) > owning page COMMIT failure leaves no intent/activation and cannot dispatch [19.48ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"d629918b-d7ec-4e71-9c8e-cf4cce8039ce","credentialId":"70fbe65e-a13d-48d0-9302-da4130dc1cb4","occurredAt":1791255579794}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"5a7e1182-8689-43c1-a396-5dc8afaded24","attempt":1,"elapsedMs":3,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (sqlite) > overlapping activation stays idle while the committed singleton page owns the provider call [14.83ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"ba964a97-8582-4c95-a042-3afa2450dfd3","credentialId":"618af96b-0fbc-4b73-b305-8d26c7fb4751","occurredAt":1791255579809}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"10494edf-9c0e-467d-b9f0-e93ebf9bd7ee","attempt":1,"elapsedMs":505,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"a195fbb2-82db-415b-a1ff-b72e3fcd1e0a","attempt":1,"elapsedMs":507,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"6046763e-718c-43c8-be7d-cf3e71c2ee42","attempt":1,"elapsedMs":505,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"84f04306-c621-4d33-965c-497599194033","attempt":1,"elapsedMs":504,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (sqlite) > generated between-intent renewal outlives the initial lease without changing the immutable activation page or execution cap [2084.10ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"b16dd096-618a-4200-b757-cefa9f3cf911","credentialId":"db2a88fa-50fb-4eb7-bd63-4ab802d3739d","occurredAt":1791255581894}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"a49b2be8-e61e-4014-9d2a-c21b5d3e74d7","attempt":1,"elapsedMs":2,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"acc917f9-e69e-4511-a481-08904e5d3686","attempt":1,"elapsedMs":1,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (sqlite) > expired activation refuses renewal before another admission and restart retains the original page [34.89ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"24527b57-724c-4214-8ad1-3d37a3721fee","credentialId":"0cad03ff-ef91-4222-b2ce-8df0e977f8b3","occurredAt":1791255581929}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"df5d584c-617e-41ff-a9f5-5999202585e7","credentialId":"6ab7bfa5-e598-4cd1-b986-6455838d1659","occurredAt":1791255581938}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"9d6136ad-f077-46de-b599-36885331128e","credentialId":"96f8c1b4-ab64-4ef4-b9a3-215c09b1ff69","occurredAt":1791255581947}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"2e13f18b-b7b8-4662-a2d0-df6ff08892fa","credentialId":"68fbac4b-a6ff-42c3-b74c-6ee89a879ff5","occurredAt":1791255581962}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"268316e9-d1b0-43c7-8d32-8bcd82565d9e","credentialId":"8d5c3bdc-f1ba-4651-8745-3546bbe4ed1e","occurredAt":1791255581969}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"a5996382-eed3-47e9-8e4c-504593bc26f0","credentialId":"b0055817-cccc-48b1-827c-af64cee4bff0","occurredAt":1791255581984}
+(pass) closed scheduler assembly components (sqlite) > malformed/cross-binding retained page and cursor refuse before commit or provider effect, preserving every durable byte [84.71ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"05d3cdae-b4e5-41d2-8b98-68703961f3d0","credentialId":"945036a1-ec30-4ba3-9fcd-dec9b17dd710","occurredAt":1791255582013}
+(pass) closed scheduler assembly components (sqlite) > fresh generated process resumes the immutable staged page with a new operation snapshot and original intent identity [128.23ms]
+(pass) native durable singleton activation storage (sqlite) > UTC interval floor coalesces downtime into one occurrence and activation time remains distinct [4.93ms]
+(pass) native durable singleton activation storage (sqlite) > concurrent claim has one winner; overlapping ticks retain one latest follow-up [6.97ms]
+(pass) native durable singleton activation storage (sqlite) > page commits atomically, is bounded and immutable; continuation gets a fresh activation snapshot [6.99ms]
+(pass) native durable singleton activation storage (sqlite) > fresh process recovers a staged page after lease expiry; stale activation cannot checkpoint or finish [103.87ms]
+(pass) native durable singleton activation storage (sqlite) > renewal preserves exact page/cursor/fence/profile/deadline, ignores forged handle deadlines and rolls back with its transaction [4.13ms]
+(pass) native durable singleton activation storage (sqlite) > expired/stale/wrong-generation renewal never changes the replacement activation or its immutable work [3.89ms]
+(pass) native durable singleton activation storage (sqlite) > unmodified native renewal SQL refuses delayed statement/ack authority and preserves an ahead-of-clock old lease [318.02ms]
+(pass) native durable singleton activation storage (sqlite) > tick/claim/page rollback retain durable state and configuration mismatch refuses [8.33ms]
+(pass) native durable singleton activation storage (sqlite) > corrupt persisted Instant authority and incoherent active state refuse atomically instead of granting a stale lease [64.81ms]
+(pass) native durable singleton activation storage (sqlite) > durable Instant decoding preserves the portable years0001 and9999 boundaries [5.57ms]
+(pass) native durable singleton activation storage (sqlite) > legacy schema migration preserves live authority without inventing a renewal duration; expired reclaim installs the explicit profile [11.06ms]
+
+ 19 pass
+ 44 filtered out
+ 0 fail
+ 315 expect() calls
+Ran 19 tests across 1 file. [3.32s]

@@ -1,0 +1,51 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/delivery-hook-components.test.ts:
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"3babfdd7-3d3e-4240-a9f9-0442aafec386","credentialId":"de215bfe-aeb5-4722-bbba-78c9ec36b3e9","occurredAt":1791255677353}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"fd82b932-ab3c-4122-b4c0-2c02ab73435a","attempt":1,"elapsedMs":5,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (postgres) > generated scheduler commits selection/page and admission before provider dispatch, then finishes one singleton tick [413.62ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"e758ab88-0492-4f25-8f1a-a40dc744f7c3","credentialId":"d0e33f6a-d4f7-4efb-9c45-7409400f4a39","occurredAt":1791255677748}
+(pass) closed scheduler assembly components (postgres) > forged credential, unknown binding and missing/invalid profiles refuse before durable enrollment or HTTP [31.60ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"7b24629f-09e9-4833-8abe-580046ed2533","credentialId":"37da4548-52b5-4556-8d4c-831514d01087","occurredAt":1791255677780}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"55835fb9-78ec-469b-ad1d-32b96b3b4951","attempt":1,"elapsedMs":7,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (postgres) > owning page COMMIT failure leaves no intent/activation and cannot dispatch [321.44ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"57882e8f-5a27-45ac-bbbe-6da5d55745c0","credentialId":"10a5af7f-5eb2-4d33-9fe1-9eda1c34d90a","occurredAt":1791255678129}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"e73eb69c-00b0-4f50-b195-aab77d86bf7a","attempt":1,"elapsedMs":20,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (postgres) > overlapping activation stays idle while the committed singleton page owns the provider call [303.36ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"aaba3cd4-9fc5-4668-b150-0bcec60e802f","credentialId":"2a260894-cc96-4272-8926-c9ed87b409bb","occurredAt":1791255678413}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"0e54f82d-b0fc-4a47-ad8b-16ae86c40372","attempt":1,"elapsedMs":505,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"82c1c1c0-625f-488a-b65d-f3081dafc3e9","attempt":1,"elapsedMs":504,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"f3991f5b-3bc6-4268-9d0e-94ef5f2145a4","attempt":1,"elapsedMs":501,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"04a035cf-eb2b-415a-969e-3d72c895c604","attempt":1,"elapsedMs":504,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (postgres) > generated between-intent renewal outlives the initial lease without changing the immutable activation page or execution cap [2297.43ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"f629ce91-d912-4e6a-8b46-868a84dc9d31","credentialId":"6e4440a0-8811-4bb9-a684-886dd4b5c7ac","occurredAt":1791255680696}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"97be0b44-99f6-494c-94d7-9c562e998395","attempt":1,"elapsedMs":1,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"b87d1ce3-849c-42d6-a18f-6ff4156ca17b","attempt":1,"elapsedMs":1,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (postgres) > expired activation refuses renewal before another admission and restart retains the original page [71.10ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"c930a146-2d54-46c6-ae3d-55363d7ebaed","credentialId":"655e8bd3-95b1-4992-8cd3-131889415b46","occurredAt":1791255680767}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"6b4d187c-17cb-4cf9-8228-5a6385f297cc","credentialId":"19ac2bdc-b4d9-4306-8fe8-6fae58f7a9d3","occurredAt":1791255680789}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"8784712e-80db-45a1-b309-3f0ba0ec435e","credentialId":"78030070-aef8-430f-b943-1630cd42a38a","occurredAt":1791255680809}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"c0e920ce-3115-4a2f-8b70-d1e37b86b2cd","credentialId":"690a87ca-7b40-4996-a9e4-09c2d492ce1d","occurredAt":1791255680830}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"75024b4d-f518-4daa-800e-f86f63c0df64","credentialId":"88ee3d49-ac52-400e-8050-161de535edda","occurredAt":1791255680849}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"5ae6969e-6094-4b71-b892-e8e87e00c882","credentialId":"e1cb2b8a-edab-4e21-999c-b7da075c8ee3","occurredAt":1791255680871}
+(pass) closed scheduler assembly components (postgres) > malformed/cross-binding retained page and cursor refuse before commit or provider effect, preserving every durable byte [124.56ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"62d5fe7e-646c-47a5-a975-f2fd319856b7","credentialId":"e4374c3d-410d-461a-b8e8-9f03aa51623b","occurredAt":1791255680891}
+(pass) closed scheduler assembly components (postgres) > fresh generated process resumes the immutable staged page with a new operation snapshot and original intent identity [201.19ms]
+(pass) native durable singleton activation storage (postgres) > UTC interval floor coalesces downtime into one occurrence and activation time remains distinct [12.81ms]
+(pass) native durable singleton activation storage (postgres) > concurrent claim has one winner; overlapping ticks retain one latest follow-up [16.24ms]
+(pass) native durable singleton activation storage (postgres) > page commits atomically, is bounded and immutable; continuation gets a fresh activation snapshot [16.90ms]
+(pass) native durable singleton activation storage (postgres) > fresh process recovers a staged page after lease expiry; stale activation cannot checkpoint or finish [139.34ms]
+(pass) native durable singleton activation storage (postgres) > renewal preserves exact page/cursor/fence/profile/deadline, ignores forged handle deadlines and rolls back with its transaction [12.80ms]
+(pass) native durable singleton activation storage (postgres) > expired/stale/wrong-generation renewal never changes the replacement activation or its immutable work [23.06ms]
+(pass) native durable singleton activation storage (postgres) > unmodified native renewal SQL refuses delayed statement/ack authority and preserves an ahead-of-clock old lease [344.09ms]
+(pass) native durable singleton activation storage (postgres) > PostgreSQL renewal row-lock wait past the old lease returns no authority and cannot change the durable work [362.83ms]
+(pass) native durable singleton activation storage (postgres) > tick/claim/page rollback retain durable state and configuration mismatch refuses [7.14ms]
+(pass) native durable singleton activation storage (postgres) > corrupt persisted Instant authority and incoherent active state refuse atomically instead of granting a stale lease [81.84ms]
+(pass) native durable singleton activation storage (postgres) > durable Instant decoding preserves the portable years0001 and9999 boundaries [5.51ms]
+(pass) native durable singleton activation storage (postgres) > legacy schema migration preserves live authority without inventing a renewal duration; expired reclaim installs the explicit profile [8.50ms]
+
+ 20 pass
+ 43 filtered out
+ 0 fail
+ 328 expect() calls
+Ran 20 tests across 1 file. [5.32s]

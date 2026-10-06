@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "profile": "full",
+  "status": "failed",
+  "steps": [
+    {
+      "name": "verification-contract",
+      "command": [
+        "/usr/bin/python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/validation",
+        "-p",
+        "test_*.py"
+      ],
+      "status": "failed",
+      "log": "00-verification-contract.log",
+      "exit_code": 1,
+      "seconds": 0.665
+    }
+  ],
+  "release_equivalent": false,
+  "golden": {
+    "status": "not_run"
+  },
+  "toolchain": {
+    "cargo": "cargo 1.78.0 (54d8815d0 2024-03-26)",
+    "rustc": "rustc 1.78.0 (9b00956e5 2024-04-29)",
+    "bun": "1.4.2",
+    "node": "v24.18.1",
+    "ruby": "ruby 3.2.3 (2024-01-18 revision 52bb2ac0a6) [x86_64-linux-gnu]",
+    "bash": "GNU bash, version 5.2.21(1)-release (x86_64-pc-linux-gnu)",
+    "postgres": "postgres (PostgreSQL) 16.15 (Ubuntu 16.15-1.pgdg24.04+2)"
+  },
+  "examples": {
+    "examples/authentication-selector": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/configuration-seed": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/first-party-authentication": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/golden-todo": {
+      "status": "design_contract",
+      "reason": "Unimplemented full application contract; tracked by every acceptance ID, never counted as passing runtime evidence"
+    },
+    "examples/golden-todo-migration": {
+      "status": "design_contract",
+      "reason": "Exploratory compiler-checked P11 source migration; it is incomplete and supplies no integrated runtime or acceptance evidence"
+    },
+    "examples/jadpo-seed": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/module-seed": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/outcome-sequencing": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/persistence-seed": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/policy-runtime": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/temporal": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/test-fixtures": {
+      "status": "runnable",
+      "reason": "Supported executable compiler/runtime example"
+    },
+    "examples/test1": {
+      "status": "legacy",
+      "reason": "Historical scratch example with superseded constraint/failure syntax; not current teaching material or runtime evidence"
+    }
+  },
+  "remaining_gates": [
+    "Golden todo syntax migration and all 44 integrated behavioural cases",
+    "Remaining golden source/behavior reconciliation and unsupported route/lifecycle/service/job contracts",
+    "Source compatibility/deprecation and public documentation alignment",
+    "Coverage-guided/deep-resource fuzzing and targeted compiler mutation evidence",
+    "Broader PostgreSQL transaction/policy coverage beyond bounded P10.7 savepoint and concurrency cases, SQLite cross-process contention handling, deadlock/retry behavior, plus database migration drills",
+    "Fresh-agent trial and comprehension evidence",
+    "Independent P10R review and protected approval attestation",
+    "Production deployment qualification",
+    "Bun versus future WASM differential conformance",
+    "Set/Map HTTP wire contract: schemas advertise JSON shapes rejected by handlers; key encoding and duplicate semantics unresolved"
+  ],
+  "failure": "verification-contract failed (exit 1)"
+}

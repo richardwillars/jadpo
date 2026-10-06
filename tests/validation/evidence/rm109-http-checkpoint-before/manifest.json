@@ -1,0 +1,10 @@
+{
+  "scope": "Historical pre-correction migrated HTTP checkpoint",
+  "source_commit": "e6c6cb721169d331e5e3c594f2dce7faa9334528",
+  "counts": {
+    "passed": 8,
+    "failed": 8,
+    "not_run": 72
+  },
+  "note": "Retained unchanged observations and generated instrumented/original digests in ledger; no full frozen-source claim. Runtime corrections require new evidence; original failures preserved."
+}

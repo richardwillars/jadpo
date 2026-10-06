@@ -1,0 +1,6 @@
+bun install v1.2.20 (6ad208bc)
+
++ jose@6.2.12
+
+1 package installed [10.00ms]
+Verified explicit JWT installation: jose@6.2.12; 80 exact files; zero transitive packages

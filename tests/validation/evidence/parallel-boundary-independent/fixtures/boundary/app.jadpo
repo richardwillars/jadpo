@@ -1,0 +1,9 @@
+
+type Bounded = Text { min_length: 3 }
+input Body { value: Bounded }
+output Echo { value: Bounded }
+input Query { size: Int { min: 1 } }
+route POST /body { auth: none input: Body output: Echo action: { return Echo { value: input.value } } }
+route GET /path/{value} { auth: none path: { value: Uuid } output: Uuid action: { return path.value } }
+route GET /query { auth: none query: Query output: Query action: { return query } }
+route GET /header { auth: none headers: { id: Uuid from "X-Identifier" } output: Uuid action: { return headers.id } }

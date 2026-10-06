@@ -1,0 +1,18 @@
+{
+  "adapter": "sqlite",
+  "states": [
+    {
+      "probe": "stale forged handle",
+      "passed": true
+    },
+    {
+      "probe": "nonnumeric durable lease_ms",
+      "stored": "0x10",
+      "storageType": "text",
+      "refused": true,
+      "result": {
+        "fault": "delivery.activation_state"
+      }
+    }
+  ]
+}

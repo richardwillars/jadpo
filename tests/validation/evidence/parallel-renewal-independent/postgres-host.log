@@ -1,0 +1,70 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/delivery-hook-components.test.ts:
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"a6f77ac3-c9cc-44fb-9465-492e43e5d8e3","credentialId":"a679f759-b4f0-42b9-824c-10131e63c43f","occurredAt":1791256033486}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"cc4fd630-9f39-4eab-9c51-150d0729c05b","attempt":1,"elapsedMs":2,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (postgres) > generated scheduler commits selection/page and admission before provider dispatch, then finishes one singleton tick [92.64ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"3a2b0f52-123b-4ffb-a90a-72cf8c13558f","credentialId":"069980f0-2400-4468-bdde-fc34a0a06fa1","occurredAt":1791256033572}
+(pass) closed scheduler assembly components (postgres) > forged credential, unknown binding and missing/invalid profiles refuse before durable enrollment or HTTP [8.75ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"b850c726-559d-44c3-91f1-2e3a4f763edc","credentialId":"2445d8bc-4394-4335-a9d7-686951478687","occurredAt":1791256033580}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"d11c7b87-6b1f-4225-a8bc-a20a729117ca","attempt":1,"elapsedMs":1,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (postgres) > owning page COMMIT failure leaves no intent/activation and cannot dispatch [63.60ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"750ff438-b5a6-42fa-927b-831838ffd4dc","credentialId":"21def146-d4fe-48c0-aad3-05aff2c15ceb","occurredAt":1791256033644}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"b6586d8e-5982-4bf6-8e75-a8e4cd329e0f","attempt":1,"elapsedMs":6,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (postgres) > overlapping activation stays idle while the committed singleton page owns the provider call [32.96ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"1c3f7584-b5e1-4b19-b430-b30d1007a59d","credentialId":"be467841-3c07-4e6d-a369-a685dcc707e5","occurredAt":1791256033677}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"7bc6ab79-b291-4a5d-8cb1-57d4478833e5","attempt":1,"elapsedMs":506,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"571747bc-6f8e-41cc-a1ab-097c547fc8bd","attempt":1,"elapsedMs":506,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"d22c4e51-061a-4ddd-8be6-09bc02a27a84","attempt":1,"elapsedMs":508,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"889232cb-5b9b-46d4-aad4-005d9974200d","attempt":1,"elapsedMs":503,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (postgres) > generated between-intent renewal outlives the initial lease without changing the immutable activation page or execution cap [2152.32ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"e0e3ba71-4fb7-4c37-b988-27de577243f4","credentialId":"3d1fb378-cdf9-47c9-bb1d-634c6c8d2108","occurredAt":1791256035830}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"769cc28a-540c-4b07-ba81-5cca2e98afbe","attempt":1,"elapsedMs":402,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"18870338-0050-4f8e-80f3-82f302cbbc3e","attempt":1,"elapsedMs":402,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"3bf72db5-16a8-4d53-a58f-54a7ffe33b36","attempt":1,"elapsedMs":406,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"84f9b8e2-c9dc-453f-b7d3-f5f5395ddd1f","attempt":1,"elapsedMs":149,"outcome":"outcome_unknown","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (postgres) > generated renewals cannot reset the activation execution deadline or discard its unfinished work [1509.93ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"28e34d6f-bb1f-411f-ab6f-c99e45f47a51","credentialId":"87e8c7e2-2dc0-4825-801c-bbfa5bb8c08b","occurredAt":1791256037340}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"6c549898-a3cc-4b6f-83cb-f0c626046cba","attempt":1,"elapsedMs":1,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"service.attempt","operationId":"13159aab-4738-4daf-afd3-65f5ecec417d","attempt":1,"elapsedMs":1,"outcome":"accepted","retryScheduled":false,"retryDelayMs":null}
+(pass) closed scheduler assembly components (postgres) > expired activation refuses renewal before another admission and restart retains the original page [59.98ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"0513fa70-a6f8-46b7-ad67-88f847691de2","credentialId":"074159f8-655f-4bea-8a9a-f32460761683","occurredAt":1791256037400}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"1f4718e9-4766-47f8-ac32-3800d61cec01","credentialId":"83011411-5e33-4679-93f5-88dc549f4596","occurredAt":1791256037419}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"df2e024d-8f94-4e9d-804c-d0f13a427151","credentialId":"a9aeefc7-f99d-4f68-a7c3-2951d3d51ae3","occurredAt":1791256037437}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"7cbc853b-9312-4ec9-a545-39f29a15ba6c","credentialId":"26e594f0-bc68-4dc8-b1aa-3c7ab5d00030","occurredAt":1791256037455}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"d8698ddc-cfe5-438b-b485-5424f1a8cd68","credentialId":"68247c54-0686-4144-a34d-ad6d63122fd2","occurredAt":1791256037474}
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"e17ad8c9-8939-4758-8e4a-1047e7eac841","credentialId":"9da54931-5b48-45dd-8ff9-10ef912e279a","occurredAt":1791256037492}
+(pass) closed scheduler assembly components (postgres) > malformed/cross-binding retained page and cursor refuse before commit or provider effect, preserving every durable byte [113.27ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"9f0f981b-9c20-49d4-a146-6dbe0bc08d7a","credentialId":"de045673-b2a7-49fb-abce-621ae5d0023d","occurredAt":1791256037513}
+(pass) closed scheduler assembly components (postgres) > fresh generated process resumes the immutable staged page with a new operation snapshot and original intent identity [184.42ms]
+(pass) native durable singleton activation storage (postgres) > UTC interval floor coalesces downtime into one occurrence and activation time remains distinct [12.68ms]
+(pass) native durable singleton activation storage (postgres) > concurrent claim has one winner; overlapping ticks retain one latest follow-up [13.20ms]
+(pass) native durable singleton activation storage (postgres) > page commits atomically, is bounded and immutable; continuation gets a fresh activation snapshot [14.39ms]
+(pass) native durable singleton activation storage (postgres) > fresh process recovers a staged page after lease expiry; stale activation cannot checkpoint or finish [122.94ms]
+(pass) native durable singleton activation storage (postgres) > renewal preserves exact page/cursor/fence/profile/deadline, ignores forged handle deadlines and rolls back with its transaction [10.34ms]
+(pass) native durable singleton activation storage (postgres) > expired/stale/wrong-generation renewal never changes the replacement activation or its immutable work [12.37ms]
+(pass) native durable singleton activation storage (postgres) > unmodified native renewal SQL refuses delayed statement/ack authority and preserves an ahead-of-clock old lease [354.00ms]
+(pass) native durable singleton activation storage (postgres) > PostgreSQL renewal row-lock wait past the old lease returns no authority and cannot change the durable work [371.43ms]
+(pass) native durable singleton activation storage (postgres) > tick/claim/page rollback retain durable state and configuration mismatch refuses [15.01ms]
+(pass) native durable singleton activation storage (postgres) > corrupt persisted Instant authority and incoherent active state refuse atomically instead of granting a stale lease [89.47ms]
+(pass) native durable singleton activation storage (postgres) > durable Instant decoding preserves the portable years0001 and9999 boundaries [5.92ms]
+(pass) native durable singleton activation storage (postgres) > legacy schema migration preserves live authority without inventing a renewal duration; expired reclaim installs the explicit profile [8.30ms]
+
+ 21 pass
+ 43 filtered out
+ 0 fail
+ 340 expect() calls
+Ran 21 tests across 1 file. [5.65s]
+{
+  "adapter": "postgres",
+  "states": [
+    {
+      "probe": "stale forged handle",
+      "passed": true
+    },
+    {
+      "probe": "current handle forged metadata ignored",
+      "passed": true
+    }
+  ]
+}

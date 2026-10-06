@@ -1,0 +1,3 @@
+enum HealthStatus { healthy }
+output PublicHealth { status: HealthStatus }
+route GET /health/live { auth: none headers: { label: Text from "X-Health" optional } output: PublicHealth action: { return PublicHealth { status: HealthStatus.healthy } } }

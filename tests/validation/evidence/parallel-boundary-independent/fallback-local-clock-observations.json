@@ -1,0 +1,16 @@
+{
+  "genericFallback": {
+    "status": 200,
+    "body": {
+      "status": "live"
+    }
+  },
+  "ordinaryAuthoredRoute": {
+    "status": 200,
+    "body": {
+      "status": "healthy"
+    }
+  },
+  "ambientClockDisposition": "promise_rejection_before_handler_try",
+  "classification": "Retained common local-host limitation; CONFIG-D10 does not require clock-fault immunity, and correction prohibits authored clock reads."
+}

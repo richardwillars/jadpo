@@ -1,0 +1,4 @@
+input Q { label: Text }
+enum HealthStatus { healthy }
+output PublicHealth { status: HealthStatus }
+route GET /health/live { auth: none query: Q output: PublicHealth action: { return PublicHealth { status: HealthStatus.healthy } } }

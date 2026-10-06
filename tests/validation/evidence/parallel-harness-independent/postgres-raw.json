@@ -1,0 +1,231 @@
+{
+  "backend": "postgres",
+  "supported": [
+    "AUTH-001",
+    "AUTH-005",
+    "AUTH-012",
+    "PUBLIC-001",
+    "CREATE-002",
+    "CREATE-004",
+    "READ-002",
+    "READ-003"
+  ],
+  "results": [
+    {
+      "id": "AUTH-001",
+      "raw": [
+        {
+          "method": "GET",
+          "path": "/todos",
+          "auth": null,
+          "requestJson": null,
+          "status": 401,
+          "body": {
+            "error": {
+              "code": "authentication_required",
+              "message": "Authentication failed.",
+              "request_id": "req_1cace184-63fe-4d6f-b050-2cb094a44ae2"
+            }
+          },
+          "statements": [],
+          "authenticationAttempts": 1
+        }
+      ]
+    },
+    {
+      "id": "AUTH-005",
+      "raw": [
+        {
+          "method": "GET",
+          "path": "/todos",
+          "auth": [
+            "alice-session",
+            "invalid-jwt"
+          ],
+          "requestJson": null,
+          "status": 401,
+          "body": {
+            "error": {
+              "code": "ambiguous_credentials",
+              "message": "Authentication failed.",
+              "request_id": "req_06d295ba-e899-4521-8b18-c6af017309ff"
+            }
+          },
+          "statements": [],
+          "authenticationAttempts": 1
+        }
+      ]
+    },
+    {
+      "id": "AUTH-012",
+      "raw": [
+        {
+          "method": "GET",
+          "path": "/health/live",
+          "auth": "invalid-bearer",
+          "requestJson": null,
+          "status": 200,
+          "body": {
+            "status": "healthy"
+          },
+          "statements": [],
+          "authenticationAttempts": 0
+        }
+      ]
+    },
+    {
+      "id": "PUBLIC-001",
+      "raw": [
+        {
+          "method": "GET",
+          "path": "/health/live",
+          "auth": null,
+          "requestJson": null,
+          "status": 200,
+          "body": {
+            "status": "healthy"
+          },
+          "statements": [],
+          "authenticationAttempts": 0
+        }
+      ]
+    },
+    {
+      "id": "CREATE-002",
+      "raw": [
+        {
+          "method": "POST",
+          "path": "/todos",
+          "auth": "alice-session",
+          "requestJson": {
+            "title": "Injected",
+            "due_at": null,
+            "owner_id": "bob",
+            "deleted_at": null
+          },
+          "status": 422,
+          "body": {
+            "error": {
+              "code": "invalid_input",
+              "message": "Request body value is invalid.",
+              "request_id": "req_bf0051c4-e1f5-4e79-b1f5-e29fdc8e0f1a"
+            }
+          },
+          "statements": [],
+          "authenticationAttempts": 1
+        }
+      ]
+    },
+    {
+      "id": "CREATE-004",
+      "raw": [
+        {
+          "method": "POST",
+          "path": "/todos",
+          "auth": "alice-session",
+          "requestJson": {
+            "title": "No deadline"
+          },
+          "status": 201,
+          "body": {
+            "id": "ebf4cb8c-d869-490e-ae35-53fdd3881fcd",
+            "title": "No deadline",
+            "status": "open",
+            "due_at": null,
+            "created_at": "2026-10-06T03:13:31.366Z",
+            "updated_at": "2026-10-06T03:13:31.366Z"
+          },
+          "statements": [
+            {
+              "sql": "BEGIN",
+              "operation": "BEGIN"
+            },
+            {
+              "sql": "INSERT INTO \"todo\" (\"id\", \"owner_id\", \"title\", \"status\", \"due_at\", \"reminder_sent_at\", \"created_at\", \"updated_at\", \"deleted_at\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING \"id\", \"owner_id\", \"title\", \"status\", \"due_at\", \"reminder_sent_at\", \"created_at\", \"updated_at\", \"deleted_at\"",
+              "operation": "INSERT"
+            },
+            {
+              "sql": "COMMIT",
+              "operation": "COMMIT"
+            }
+          ],
+          "authenticationAttempts": 1
+        },
+        {
+          "persistence": {
+            "id": "ebf4cb8c-d869-490e-ae35-53fdd3881fcd",
+            "storedDueAt": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "READ-002",
+      "raw": [
+        {
+          "method": "GET",
+          "path": "/todos/00000000-0000-4000-8000-000000000022",
+          "auth": "alice-session",
+          "requestJson": null,
+          "status": 404,
+          "body": {
+            "error": {
+              "code": "todo_not_found",
+              "message": "Todo not found.",
+              "request_id": "req_b9e10f7f-4c38-48d0-a113-9afa79fd8cd0"
+            }
+          },
+          "statements": [
+            {
+              "sql": "SELECT \"id\", \"owner_id\", \"title\", \"status\", \"due_at\", \"reminder_sent_at\", \"created_at\", \"updated_at\", \"deleted_at\" FROM \"todo\" WHERE \"id\" = $1 AND (\"deleted_at\" IS NULL) AND ((\"todo\".\"owner_id\" = $2)) LIMIT 2",
+              "operation": "SELECT"
+            }
+          ],
+          "authenticationAttempts": 1
+        },
+        {
+          "method": "GET",
+          "path": "/todos/00000000-0000-4000-8000-000000000099",
+          "auth": "alice-session",
+          "requestJson": null,
+          "status": 404,
+          "body": {
+            "error": {
+              "code": "todo_not_found",
+              "message": "Todo not found.",
+              "request_id": "req_9d5dc8d7-3fbd-415a-bbd4-fc6146f4e99c"
+            }
+          },
+          "statements": [
+            {
+              "sql": "SELECT \"id\", \"owner_id\", \"title\", \"status\", \"due_at\", \"reminder_sent_at\", \"created_at\", \"updated_at\", \"deleted_at\" FROM \"todo\" WHERE \"id\" = $1 AND (\"deleted_at\" IS NULL) AND ((\"todo\".\"owner_id\" = $2)) LIMIT 2",
+              "operation": "SELECT"
+            }
+          ],
+          "authenticationAttempts": 1
+        }
+      ]
+    },
+    {
+      "id": "READ-003",
+      "raw": [
+        {
+          "method": "GET",
+          "path": "/todos/not-a-uuid",
+          "auth": "alice-session",
+          "requestJson": null,
+          "status": 422,
+          "body": {
+            "error": {
+              "code": "invalid_value",
+              "message": "Request path value is invalid.",
+              "request_id": "req_afb6a5a1-6480-46d9-b2f3-eefdea6cda19"
+            }
+          },
+          "statements": [],
+          "authenticationAttempts": 1
+        }
+      ]
+    }
+  ]
+}
