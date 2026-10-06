@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-306",
+  "scope": "Private singleton activation renewal and generated between-intent renewal only; no public activation or in-flight heartbeat.",
+  "baseline": "c068060",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "originalEstimateHours": [
+    2,
+    8
+  ],
+  "timingRun": "RM-306-b14092ad34ce",
+  "taskComplete": false,
+  "independentReview": "pending fixed-commit review",
+  "sourceSha256": {
+    "jadpo/crates/core/src/runtime/delivery_scheduler.ts": "0f6c97d691c9addfd981936dda9180b9435db814351efe7d1e3721e0931e4fb5",
+    "jadpo/crates/core/src/target/delivery_scheduler.rs": "12d16aab4a7c1e756e89636c8e97208694a3149bc1442465484ad0537275ccbe",
+    "tests/runtime/delivery-hook-components.test.ts": "73c3c1444cc34dc9d734e46fa1e23abdace544c6dd64277ddf4aa0f20e13ac2a"
+  },
+  "logsSha256": {
+    "tests/validation/evidence/rm306-scheduler-renewal/postgres-final.log": "e6e7e7908a5fd6f8c95883840458d2772cb9461f244b87ce5934b5d135c8333a",
+    "tests/validation/evidence/rm306-scheduler-renewal/postgres-first-assertion.log": "7ffd5f0638ed58fde9fc295a5291cb52195753d35f5a6921670df6aff657051d",
+    "tests/validation/evidence/rm306-scheduler-renewal/postgres-focused-final.log": "66d351c82c6d251c1dce78e623190105c296e9022966b6585fa23bd7447238dc",
+    "tests/validation/evidence/rm306-scheduler-renewal/postgres-focused.log": "7ffd5f0638ed58fde9fc295a5291cb52195753d35f5a6921670df6aff657051d",
+    "tests/validation/evidence/rm306-scheduler-renewal/postgres-focused.sh": "de70f9d7009879849e9c3836a06efd1668b863a41fe0f8ca48045bba271576f4",
+    "tests/validation/evidence/rm306-scheduler-renewal/postgres-full.log": "8235addcb7200b87785ceb6f4adc3097d19fc167bee7b10d286d2303d5a24c63",
+    "tests/validation/evidence/rm306-scheduler-renewal/sqlite-final.log": "dee6c60b797981896076fa188c431949111656cac8a5f2a4320d849a8a20d4d3",
+    "tests/validation/evidence/rm306-scheduler-renewal/sqlite-focused-final.log": "c6324043ce7bb2e60ed47d688dd32d46449ed4f876a1b4a8037def7b06a97ac3",
+    "tests/validation/evidence/rm306-scheduler-renewal/sqlite-focused.log": "17e288b6b765e532843536796b27c2466f566145860254b817493a18d49c1351",
+    "tests/validation/evidence/rm306-scheduler-renewal/sqlite-full.log": "53a026cae3d496f7c91b0b8aaf443b0361f23104405229e1be4595bee4236758",
+    "tests/validation/evidence/rm306-scheduler-renewal/sqlite-sandbox-first.log": "dbb5c41a3441c61ce7c4e885567ad32d15054b0859205a76717b3fa06da456f0"
+  },
+  "checks": [
+    {
+      "scope": "final focused generated scheduler/native activation, SQLite",
+      "log": "sqlite-final.log",
+      "passed": 20,
+      "skipped": 1,
+      "failed": 0,
+      "assertions": 335,
+      "skipReason": "PostgreSQL-specific asynchronous row lock"
+    },
+    {
+      "scope": "final focused generated scheduler/native activation, disposable PostgreSQL",
+      "log": "postgres-final.log",
+      "passed": 21,
+      "failed": 0,
+      "assertions": 340
+    },
+    {
+      "scope": "whole generated delivery component suite, SQLite",
+      "log": "sqlite-full.log",
+      "passed": 64,
+      "skipped": 1,
+      "failed": 0,
+      "assertions": 632
+    },
+    {
+      "scope": "whole generated delivery component suite, disposable PostgreSQL",
+      "log": "postgres-full.log",
+      "passed": 64,
+      "failed": 0,
+      "assertions": 643
+    },
+    {
+      "scope": "original restricted-host attempt",
+      "log": "sqlite-sandbox-first.log",
+      "passed": 10,
+      "failed": 8,
+      "failureKind": "environment socket EADDRINUSE; superseded by authorised host execution"
+    },
+    {
+      "scope": "original PostgreSQL attempt",
+      "log": "postgres-first-assertion.log",
+      "passed": 18,
+      "failed": 1,
+      "failureKind": "fixture assertion expected numeric BIGINT but adapter returned string; production unchanged for correction"
+    }
+  ],
+  "observedInvariants": [
+    "same durable ID/generation and persisted immutable lease duration",
+    "renewal single DB-time statement, expiry/stale refusal and post-statement expiry refusal",
+    "capped lease with no clock-regression shortening",
+    "transaction rollback restores exact durable row",
+    "legacy schema adds nullable duration without inventing active renewal authority",
+    "retained page/cursor/schedule/operation snapshot/execution deadline unchanged",
+    "generated acknowledged renewal COMMIT precedes new admission/provider",
+    "original monotonic execution cap retained through lease refresh",
+    "fresh process saved-page recovery and genuine PostgreSQL row-lock expiry"
+  ],
+  "limitations": [
+    "No 18 frozen trace catalog closure",
+    "No public authored worker activation",
+    "No choice of separate singleton activation profile; approved golden60s/40s applies only to per-delivery execution/claim",
+    "No renewal during provider I/O",
+    "Full supported verifier/combined integration and independent review remain root-owned pending gates"
+  ],
+  "resume": "Review fixed commit; integrate with root changes and run full supported gate. Continue private generated crash/reclaim trace catalog or in-flight per-delivery renewal using approved per-delivery profile; select separate public activation profile before public lowering."
+}
