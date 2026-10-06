@@ -1,0 +1,22 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/delivery-hook-components.test.ts:
+(pass) native durable singleton activation storage (sqlite) > UTC interval floor coalesces downtime into one occurrence and activation time remains distinct [9.58ms]
+(pass) native durable singleton activation storage (sqlite) > concurrent claim has one winner; overlapping ticks retain one latest follow-up [9.21ms]
+(pass) native durable singleton activation storage (sqlite) > page commits atomically, is bounded and immutable; continuation gets a fresh activation snapshot [13.75ms]
+(pass) native durable singleton activation storage (sqlite) > fresh process recovers a staged page after lease expiry; stale activation cannot checkpoint or finish [106.70ms]
+(pass) native durable singleton activation storage (sqlite) > renewal preserves exact page/cursor/fence/profile/deadline, ignores forged handle deadlines and rolls back with its transaction [5.19ms]
+(pass) native durable singleton activation storage (sqlite) > expired/stale/wrong-generation renewal never changes the replacement activation or its immutable work [4.23ms]
+(pass) native durable singleton activation storage (sqlite) > unmodified native renewal SQL refuses delayed statement/ack authority and preserves an ahead-of-clock old lease [308.99ms]
+(skip) native durable singleton activation storage (sqlite) > PostgreSQL renewal row-lock wait past the old lease returns no authority and cannot change the durable work
+(pass) native durable singleton activation storage (sqlite) > tick/claim/page rollback retain durable state and configuration mismatch refuses [4.30ms]
+(pass) native durable singleton activation storage (sqlite) > corrupt persisted Instant authority and incoherent active state refuse atomically instead of granting a stale lease [60.00ms]
+(pass) native durable singleton activation storage (sqlite) > SQLite TEXT/REAL duration corruption refuses claim, page, finish and renewal before native SQL interprets it [31.69ms]
+(pass) native durable singleton activation storage (sqlite) > durable Instant decoding preserves the portable years0001 and9999 boundaries [4.48ms]
+(pass) native durable singleton activation storage (sqlite) > legacy schema migration preserves live authority without inventing a renewal duration; expired reclaim installs the explicit profile [7.19ms]
+
+ 12 pass
+ 1 skip
+ 0 fail
+ 315 expect() calls
+Ran 13 tests across 1 file. [954.00ms]

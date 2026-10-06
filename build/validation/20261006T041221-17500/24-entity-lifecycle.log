@@ -1,0 +1,36 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/entity-lifecycle.test.ts:
+(pass) entity lifecycle transition lowering > fails closed when direct purge runs before retention is initialized [1.94ms]
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"b3f3386c-7de1-4e47-97ca-5c0f9289f067","operation":"User.create_user","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+{"schemaVersion":1,"kind":"operational_log_event","eventName":"transaction.attempt","operationId":"fa22fd5b-f541-4501-8fed-61a7081bffc8","operation":"Todo.create_todo","attempt":1,"database":"sqlite","phase":"commit","outcome":"committed","retryableCause":null,"rollbackProven":false,"commitAcknowledged":true,"elapsedMs":1,"selectedDelayMs":null,"retryScheduled":false,"cancelled":false}
+256 |       user_id: user.id,
+257 |       title: "Forged Todo",
+258 |       status: "open",
+259 |       deleted_at: new Date().toISOString(),
+260 |     });
+261 |     expect(forgedUser.status).toBe(400);
+                                    ^
+error: expect(received).toBe(expected)
+
+Expected: 400
+Received: 422
+
+      at <anonymous> (/private/tmp/jadpo-parallel-integration/tests/runtime/entity-lifecycle.test.ts:261:31)
+(fail) entity lifecycle transition lowering > creates lifecycle-owned initial values through generated routes [17.04ms]
+(pass) entity lifecycle transition lowering > rejects host persistence attempts to override lifecycle initial state [1.03ms]
+(pass) entity lifecycle transition lowering > binds direct host purge eligibility to configured retention [2.67ms]
+(pass) entity lifecycle transition lowering > uses initialized retention instead of a different process environment value [6.43ms]
+(pass) entity lifecycle transition lowering > atomically disables one visible identity and conceals it afterward [2.32ms]
+(pass) entity lifecycle transition lowering > serializes a transition against an ordinary update [1.57ms]
+(pass) entity lifecycle transition lowering > keeps the logical delete effect while racing an ordinary Todo update [5.82ms]
+(pass) entity lifecycle transition lowering > retains visible child Todos when their User is disabled [3.61ms]
+(pass) entity lifecycle transition lowering > filters disabled owners before the bounded joined page and required child read [5.36ms]
+(pass) entity lifecycle transition lowering > filters deleted Todos before the bounded visible page [4.62ms]
+(pass) entity lifecycle transition lowering > purges only expired post-transition rows in audited batches of 500 [37.10ms]
+(pass) entity lifecycle transition lowering > serializes competing retention-eligibility changes with purge [2.88ms]
+
+ 12 pass
+ 1 fail
+ 96 expect() calls
+Ran 13 tests across 1 file. [243.00ms]

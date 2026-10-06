@@ -1,0 +1,174 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/delivery-hook-components.test.ts:
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"3deac2f0-939e-4d6a-a296-2bd5d6d49640","credentialId":"9ab89757-09d4-4649-acc0-fda2ddf4ef23","occurredAt":1791255957448}
+541 |     const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
+542 |     return { ...f, value };
+543 |   }
+544 |   async function provider(work: (calls: any[], endpoint: string) => Promise<void>, onCall?: () => Promise<void>) {
+545 |     const calls: any[] = [], previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
+546 |     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+                             ^
+error: Failed to start server. Is port 0 in use?
+ syscall: "listen",
+   errno: 0,
+    code: "EADDRINUSE"
+
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:546:24)
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:544:27)
+      at <anonymous> (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:562:11)
+(fail) closed scheduler assembly components (sqlite) > generated scheduler commits selection/page and admission before provider dispatch, then finishes one singleton tick [11.91ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"95ef6825-7d3b-4beb-9556-9c21cb686579","credentialId":"9ad4f4f7-a609-4b39-b38a-25cfaf862b03","occurredAt":1791255957456}
+541 |     const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
+542 |     return { ...f, value };
+543 |   }
+544 |   async function provider(work: (calls: any[], endpoint: string) => Promise<void>, onCall?: () => Promise<void>) {
+545 |     const calls: any[] = [], previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
+546 |     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+                             ^
+error: Failed to start server. Is port 0 in use?
+ syscall: "listen",
+   errno: 0,
+    code: "EADDRINUSE"
+
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:546:24)
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:544:27)
+      at <anonymous> (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:575:11)
+(fail) closed scheduler assembly components (sqlite) > forged credential, unknown binding and missing/invalid profiles refuse before durable enrollment or HTTP [4.65ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"5b804325-dab6-49c2-9290-c0d0c4e54660","credentialId":"c3e06b42-9f1b-464f-ad5d-e1c1a2c5503f","occurredAt":1791255957461}
+541 |     const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
+542 |     return { ...f, value };
+543 |   }
+544 |   async function provider(work: (calls: any[], endpoint: string) => Promise<void>, onCall?: () => Promise<void>) {
+545 |     const calls: any[] = [], previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
+546 |     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+                             ^
+error: Failed to start server. Is port 0 in use?
+ syscall: "listen",
+   errno: 0,
+    code: "EADDRINUSE"
+
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:546:24)
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:544:27)
+      at <anonymous> (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:594:13)
+(fail) closed scheduler assembly components (sqlite) > owning page COMMIT failure leaves no intent/activation and cannot dispatch [6.43ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"da989665-04f5-4de7-8f9a-6a69e79460b6","credentialId":"77c865a6-930e-44e1-b6f7-f14288852fef","occurredAt":1791255957467}
+541 |     const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
+542 |     return { ...f, value };
+543 |   }
+544 |   async function provider(work: (calls: any[], endpoint: string) => Promise<void>, onCall?: () => Promise<void>) {
+545 |     const calls: any[] = [], previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
+546 |     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+                             ^
+error: Failed to start server. Is port 0 in use?
+ syscall: "listen",
+   errno: 0,
+    code: "EADDRINUSE"
+
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:546:24)
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:544:27)
+      at <anonymous> (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:610:11)
+(fail) closed scheduler assembly components (sqlite) > overlapping activation stays idle while the committed singleton page owns the provider call [4.00ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"52677092-58d9-413d-a011-9b82ed827fd0","credentialId":"112d0994-d4d6-4918-9643-1aa79f13b232","occurredAt":1791255957471}
+541 |     const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
+542 |     return { ...f, value };
+543 |   }
+544 |   async function provider(work: (calls: any[], endpoint: string) => Promise<void>, onCall?: () => Promise<void>) {
+545 |     const calls: any[] = [], previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
+546 |     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+                             ^
+error: Failed to start server. Is port 0 in use?
+ syscall: "listen",
+   errno: 0,
+    code: "EADDRINUSE"
+
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:546:24)
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:544:27)
+      at <anonymous> (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:624:11)
+(fail) closed scheduler assembly components (sqlite) > generated between-intent renewal outlives the initial lease without changing the immutable activation page or execution cap [5.80ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"918b2e58-1095-4498-95b3-170a28a277f2","credentialId":"c1d8037c-69e4-40fc-be0d-68465467f042","occurredAt":1791255957477}
+541 |     const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
+542 |     return { ...f, value };
+543 |   }
+544 |   async function provider(work: (calls: any[], endpoint: string) => Promise<void>, onCall?: () => Promise<void>) {
+545 |     const calls: any[] = [], previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
+546 |     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+                             ^
+error: Failed to start server. Is port 0 in use?
+ syscall: "listen",
+   errno: 0,
+    code: "EADDRINUSE"
+
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:546:24)
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:544:27)
+      at <anonymous> (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:645:11)
+(fail) closed scheduler assembly components (sqlite) > generated renewals cannot reset the activation execution deadline or discard its unfinished work [7.83ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"c41e4657-b1d4-4219-8dcd-ae5b4975c663","credentialId":"fa4f2a45-6879-4b4a-8e54-1dbfcb7afd88","occurredAt":1791255957485}
+541 |     const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
+542 |     return { ...f, value };
+543 |   }
+544 |   async function provider(work: (calls: any[], endpoint: string) => Promise<void>, onCall?: () => Promise<void>) {
+545 |     const calls: any[] = [], previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
+546 |     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+                             ^
+error: Failed to start server. Is port 0 in use?
+ syscall: "listen",
+   errno: 0,
+    code: "EADDRINUSE"
+
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:546:24)
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:544:27)
+      at <anonymous> (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:663:11)
+(fail) closed scheduler assembly components (sqlite) > expired activation refuses renewal before another admission and restart retains the original page [4.47ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"31bee980-00c6-4c33-83ec-952d780521aa","credentialId":"7d38b6b8-2375-4858-84cc-ac5c7ff94d4b","occurredAt":1791255957490}
+541 |     const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
+542 |     return { ...f, value };
+543 |   }
+544 |   async function provider(work: (calls: any[], endpoint: string) => Promise<void>, onCall?: () => Promise<void>) {
+545 |     const calls: any[] = [], previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
+546 |     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+                             ^
+error: Failed to start server. Is port 0 in use?
+ syscall: "listen",
+   errno: 0,
+    code: "EADDRINUSE"
+
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:546:24)
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:544:27)
+      at <anonymous> (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:694:13)
+(fail) closed scheduler assembly components (sqlite) > malformed/cross-binding retained page and cursor refuse before commit or provider effect, preserving every durable byte [7.96ms]
+{"schemaVersion":1,"kind":"authentication_audit","eventName":"service_credential.issued","strategy":"api_bearer","serviceId":"9eab499c-1d0b-4593-8ba5-cb1eb9bf81e3","credentialId":"d2e0c717-76c0-44f9-8f39-4afadb141487","occurredAt":1791255957497}
+541 |     const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
+542 |     return { ...f, value };
+543 |   }
+544 |   async function provider(work: (calls: any[], endpoint: string) => Promise<void>, onCall?: () => Promise<void>) {
+545 |     const calls: any[] = [], previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
+546 |     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+                             ^
+error: Failed to start server. Is port 0 in use?
+ syscall: "listen",
+   errno: 0,
+    code: "EADDRINUSE"
+
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:546:24)
+      at provider (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:544:27)
+      at <anonymous> (/private/tmp/jadpo-rm306-recovery/tests/runtime/delivery-hook-components.test.ts:708:11)
+(fail) closed scheduler assembly components (sqlite) > fresh generated process resumes the immutable staged page with a new operation snapshot and original intent identity [6.63ms]
+(pass) native durable singleton activation storage (sqlite) > UTC interval floor coalesces downtime into one occurrence and activation time remains distinct [6.42ms]
+(pass) native durable singleton activation storage (sqlite) > concurrent claim has one winner; overlapping ticks retain one latest follow-up [6.03ms]
+(pass) native durable singleton activation storage (sqlite) > page commits atomically, is bounded and immutable; continuation gets a fresh activation snapshot [6.74ms]
+(pass) native durable singleton activation storage (sqlite) > fresh process recovers a staged page after lease expiry; stale activation cannot checkpoint or finish [117.15ms]
+(pass) native durable singleton activation storage (sqlite) > renewal preserves exact page/cursor/fence/profile/deadline, ignores forged handle deadlines and rolls back with its transaction [4.47ms]
+(pass) native durable singleton activation storage (sqlite) > expired/stale/wrong-generation renewal never changes the replacement activation or its immutable work [3.96ms]
+(pass) native durable singleton activation storage (sqlite) > unmodified native renewal SQL refuses delayed statement/ack authority and preserves an ahead-of-clock old lease [313.72ms]
+(skip) native durable singleton activation storage (sqlite) > PostgreSQL renewal row-lock wait past the old lease returns no authority and cannot change the durable work
+(pass) native durable singleton activation storage (sqlite) > tick/claim/page rollback retain durable state and configuration mismatch refuses [8.56ms]
+(pass) native durable singleton activation storage (sqlite) > corrupt persisted Instant authority and incoherent active state refuse atomically instead of granting a stale lease [61.48ms]
+(pass) native durable singleton activation storage (sqlite) > durable Instant decoding preserves the portable years0001 and9999 boundaries [5.50ms]
+(pass) native durable singleton activation storage (sqlite) > legacy schema migration preserves live authority without inventing a renewal duration; expired reclaim installs the explicit profile [7.80ms]
+
+ 11 pass
+ 1 skip
+ 9 fail
+ 227 expect() calls
+Ran 21 tests across 1 file. [14.76s]

@@ -1,0 +1,4 @@
+2026-10-06 04:06:34.743 BST [7042] FATAL:  could not create shared memory segment: Operation not permitted
+2026-10-06 04:06:34.743 BST [7042] DETAIL:  Failed system call was shmget(key=209484673, size=56, 03600).
+child process exited with exit code 1
+initdb: removing data directory "/private/tmp/jadpo-renewal-review-pg.4Pvj9k/data"

@@ -1,0 +1,244 @@
+{
+  "negativeCases": [
+    {
+      "name": "protected",
+      "exitCode": 1,
+      "humanOwnedLivenessDiagnostic": true,
+      "sourceSha256": "d99b8e879763ae6f29aee9e6c667128f4c1d7375321142912b94d1404e65b57b",
+      "secretBlockedBeforeTarget": false
+    },
+    {
+      "name": "call",
+      "exitCode": 1,
+      "humanOwnedLivenessDiagnostic": true,
+      "sourceSha256": "1cbbeb6771a7e68860f94247ee7464518deabe627a5a0dc7bd36b08b7692e584",
+      "secretBlockedBeforeTarget": false
+    },
+    {
+      "name": "extra-statement",
+      "exitCode": 1,
+      "humanOwnedLivenessDiagnostic": true,
+      "sourceSha256": "3135e6ee05052f40252e6e2f1190246d22954dfac897da506a84eadbdf17f6e8",
+      "secretBlockedBeforeTarget": false
+    },
+    {
+      "name": "clock",
+      "exitCode": 1,
+      "humanOwnedLivenessDiagnostic": true,
+      "sourceSha256": "90578a74fa068d3c1417f025e9eaa64941806e7531c6c773751e741622cc25ca",
+      "secretBlockedBeforeTarget": false
+    },
+    {
+      "name": "config",
+      "exitCode": 1,
+      "humanOwnedLivenessDiagnostic": true,
+      "sourceSha256": "54fd5cf934c04c6058d2406aaf09afc7a8818cc1d8c2c43e13611a083022d08d",
+      "secretBlockedBeforeTarget": false
+    },
+    {
+      "name": "query",
+      "exitCode": 1,
+      "humanOwnedLivenessDiagnostic": true,
+      "sourceSha256": "a8a64ff228ae11a8632d2e600c8b9f4855d3abd92171fc3bb8898e4be433e054",
+      "secretBlockedBeforeTarget": false
+    },
+    {
+      "name": "header",
+      "exitCode": 1,
+      "humanOwnedLivenessDiagnostic": true,
+      "sourceSha256": "a0cd6b21a67ec5ab8e09d74f0253c20a5cc3474fdd080a6932fbfe71920503f6",
+      "secretBlockedBeforeTarget": false
+    },
+    {
+      "name": "run",
+      "exitCode": 1,
+      "humanOwnedLivenessDiagnostic": true,
+      "sourceSha256": "99855cc8e4e8c08303fd5d7f8d79453423f164c75698a25fb2678e88e14a01d7",
+      "secretBlockedBeforeTarget": false
+    },
+    {
+      "name": "secret",
+      "exitCode": 1,
+      "humanOwnedLivenessDiagnostic": false,
+      "sourceSha256": "14122b5c6a567a30e62d5d19c8326727fbdd490672e61141c70dd5cde53a6e3d",
+      "secretBlockedBeforeTarget": true
+    }
+  ],
+  "repairBuildPass": true,
+  "catalogueEntry": {
+    "ruleId": "toolchain.target_liveness_not_local",
+    "category": "toolchain",
+    "summary": "Authored liveness route is not dependency-free",
+    "reason": "GET /health/live must remain public and local before readiness or authentication. This target supports only an input-free inline return of an output record containing literals or declared enum constants.",
+    "recommendedNextStep": "Choose a dependency-free public liveness response",
+    "repairKind": "human_decision",
+    "decisionOwner": "human",
+    "copyStatus": "authored",
+    "contextSchema": {
+      "allowedKeys": [
+        "route"
+      ],
+      "additionalProperties": false
+    },
+    "helpId": "diagnostics/toolchain.target_liveness_not_local",
+    "fixtures": [
+      "jadpo/crates/core/src/target/liveness.rs#authored_liveness_rejects_protected_calls_and_runtime_reads"
+    ],
+    "legacyAliases": [
+      "JADPO_TARGET_LIVENESS_NOT_LOCAL"
+    ]
+  },
+  "inventoryHealth": {
+    "route": "GET /health/live",
+    "method": "GET",
+    "path": "/health/live",
+    "auth": "none",
+    "path_fields": [],
+    "query": null,
+    "headers": [],
+    "input": null,
+    "output": "PublicHealth",
+    "success": {
+      "kind": "ok",
+      "http_status": 200
+    },
+    "deadline_ms": null,
+    "behavior": "inline_action",
+    "callable": null,
+    "failures": [],
+    "operational_boundary": "bun_http",
+    "operational_failures": [
+      {
+        "code": "internal_fault",
+        "http_status": 500,
+        "condition": "contained_runtime_defect"
+      },
+      {
+        "code": "transaction_unavailable",
+        "semantic_http_default": 503,
+        "http_status": 503,
+        "message": "A temporary storage issue prevented the operation.",
+        "condition": "retryable_no_commit_not_retried_or_exhausted",
+        "automatic_retry": false
+      },
+      {
+        "code": "read_unavailable",
+        "semantic_http_default": 503,
+        "http_status": 503,
+        "message": "A temporary storage issue prevented the read.",
+        "condition": "checked_query_only_operation_with_listed_structured_driver_cause",
+        "automatic_retry": false
+      },
+      {
+        "code": "outcome_unknown",
+        "semantic_http_default": null,
+        "http_status": 500,
+        "message": "The operation may have completed.",
+        "condition": "effect_may_have_occurred",
+        "automatic_retry": false
+      }
+    ]
+  },
+  "openapiHealth": {
+    "operationId": "GET /health/live",
+    "parameters": [],
+    "requestBody": null,
+    "responses": {
+      "200": {
+        "description": "Success",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/PublicHealth"
+            }
+          }
+        }
+      },
+      "500": {
+        "description": "Bun operational failure or declared failure; uncertain effects are not automatically retried",
+        "content": {
+          "application/json": {
+            "schema": {
+              "additionalProperties": false,
+              "properties": {
+                "error": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "internal_fault",
+                        "outcome_unknown"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "request_id"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "error"
+              ],
+              "type": "object"
+            }
+          }
+        }
+      },
+      "503": {
+        "description": "Bun storage unavailable or declared failure",
+        "content": {
+          "application/json": {
+            "schema": {
+              "additionalProperties": false,
+              "properties": {
+                "error": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "transaction_unavailable",
+                        "read_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "request_id"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "error"
+              ],
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "security": [],
+    "x-jadpo-fresh-authority": false
+  },
+  "generatedEarlyRoute": "if (request.method === \"GET\" && url.pathname === \"/health/live\") return json(200, validate_PublicHealth({ status: \"healthy\" }, \"response.body\"), requestId);",
+  "sourceRevision": "src_2c78570a2841d2f7",
+  "placementBeforeReadinessAndAuth": true
+}

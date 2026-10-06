@@ -1,0 +1,22 @@
+bun test v1.2.20 (6ad208bc)
+
+tests/runtime/delivery-hook-components.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+27 | const sqlitePath = join(root, "application.sqlite");
+28 | if (postgresUrl) Bun.env.DATABASE_URL = postgresUrl;
+29 | else Bun.env.SQLITE_PATH = sqlitePath;
+30 | const persistencePath = join(root, "persistence.ts");
+31 | const dependency = join(repository, "build/validation/jwt-dependencies/node_modules");
+32 | if (!existsSync(join(dependency, "jose/package.json"))) throw new Error("Install the pinned JWT dependency before running native authentication components");
+                                                                   ^
+error: Install the pinned JWT dependency before running native authentication components
+      at /private/tmp/jadpo-review-final/tests/runtime/delivery-hook-components.test.ts:32:63
+-------------------------------
+
+
+ 0 pass
+ 1 fail
+ 1 error
+Ran 1 test across 1 file. [12.07s]

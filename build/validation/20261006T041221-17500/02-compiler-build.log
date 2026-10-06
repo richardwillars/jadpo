@@ -1,0 +1,6 @@
+   Compiling jadpo-diagnostics v0.0.1 (/private/tmp/jadpo-parallel-integration/jadpo/crates/diagnostics)
+   Compiling jadpo-syntax v0.0.1 (/private/tmp/jadpo-parallel-integration/jadpo/crates/syntax)
+   Compiling jadpo-semantic v0.0.1 (/private/tmp/jadpo-parallel-integration/jadpo/crates/semantic)
+   Compiling jadpo-core v0.0.1 (/private/tmp/jadpo-parallel-integration/jadpo/crates/core)
+   Compiling jadpo-cli v0.0.1 (/private/tmp/jadpo-parallel-integration/jadpo/crates/cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.74s

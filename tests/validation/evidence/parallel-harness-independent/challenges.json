@@ -1,0 +1,35 @@
+{
+  "candidate": "d071557",
+  "challenges": [
+    {
+      "probe": "fresh final report",
+      "passed": true
+    },
+    {
+      "probe": "extra ledger observation tampered despite expectation fields match",
+      "refused": true,
+      "reason": "Ledger observations differ from raw observations"
+    },
+    {
+      "probe": "missing original case ID",
+      "refused": true,
+      "reason": "Missing, duplicate or foreign case/backend results"
+    },
+    {
+      "probe": "raw response bytes changed",
+      "refused": true,
+      "reason": "Changed raw observations"
+    },
+    {
+      "probe": "adapter source drift",
+      "refused": true,
+      "reason": "Stale or foreign harness provenance/schema"
+    },
+    {
+      "probe": "generated artifact bytes changed",
+      "refused": true,
+      "reason": "Changed generated instrumented artifacts"
+    }
+  ],
+  "all_source_evidence_restored": true
+}

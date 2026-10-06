@@ -1,0 +1,31 @@
+diff --git a/tests/runtime/entity-lifecycle.test.ts b/tests/runtime/entity-lifecycle.test.ts
+index 2d54236..5fd4419 100644
+--- a/tests/runtime/entity-lifecycle.test.ts
++++ b/tests/runtime/entity-lifecycle.test.ts
+@@ -258,8 +258,8 @@ describe("entity lifecycle transition lowering", () => {
+       status: "open",
+       deleted_at: new Date().toISOString(),
+     });
+-    expect(forgedUser.status).toBe(400);
+-    expect(forgedTodo.status).toBe(400);
++    expect(forgedUser.status).toBe(422);
++    expect(forgedTodo.status).toBe(422);
+   });
+ 
+   test("rejects host persistence attempts to override lifecycle initial state", async () => {
+diff --git a/tests/runtime/persistence-seed.test.ts b/tests/runtime/persistence-seed.test.ts
+index a5ae851..74a5c28 100644
+--- a/tests/runtime/persistence-seed.test.ts
++++ b/tests/runtime/persistence-seed.test.ts
+@@ -809,9 +809,9 @@ describe("generated SQLite persistence path", () => {
+       email: "not-an-email",
+     });
+ 
+-    expect(response.status).toBe(400);
++    expect(response.status).toBe(422);
+     expect(await response.json()).toMatchObject({
+-      error: { code: "invalid_request" },
++      error: { code: "invalid_input" },
+     });
+     expect(rows()).toEqual([]);
+   });

@@ -1,0 +1,164 @@
+   Compiling libc v0.2.189
+   Compiling cpufeatures v0.2.16
+   Compiling sha2 v0.10.8
+   Compiling jadpo-semantic v0.0.1 (/private/tmp/jadpo-boundary-independent/jadpo/crates/semantic)
+   Compiling jadpo-core v0.0.1 (/private/tmp/jadpo-boundary-independent/jadpo/crates/core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.98s
+     Running unittests src/lib.rs (cargo-target/debug/deps/jadpo_core-99ba2bd3e715b836)
+
+running 2 tests
+test target::liveness::tests::authored_liveness_preserves_constant_output_and_ordinary_fallback ... ok
+test target::liveness::tests::authored_liveness_rejects_protected_calls_and_runtime_reads ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 100 filtered out; finished in 0.02s
+
+     Running tests/auth_adapter_settings.rs (cargo-target/debug/deps/auth_adapter_settings-18261cdd2bb15f24)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/auth_credential_binding.rs (cargo-target/debug/deps/auth_credential_binding-7801ee8aa33c3206)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/auth_extension_review.rs (cargo-target/debug/deps/auth_extension_review-54992087a536f476)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/formatter_grammar_conformance.rs (cargo-target/debug/deps/formatter_grammar_conformance-e6bb665b11bbc964)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/identity_role_binding.rs (cargo-target/debug/deps/identity_role_binding-c3ba2e8ab53a49dd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/validation_approval_subject.rs (cargo-target/debug/deps/validation_approval_subject-383bf1e510dbcefe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 48 filtered out; finished in 0.00s
+
+     Running tests/validation_artifact_provenance.rs (cargo-target/debug/deps/validation_artifact_provenance-3d88f6b5a0e8f5a0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/validation_auth_policy.rs (cargo-target/debug/deps/validation_auth_policy-dc6877a804465f73)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/validation_config_time_contract.rs (cargo-target/debug/deps/validation_config_time_contract-14936cc7a5eb29cf)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+     Running tests/validation_diagnostic_config.rs (cargo-target/debug/deps/validation_diagnostic_config-4762675475043bff)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/validation_diagnostic_policy.rs (cargo-target/debug/deps/validation_diagnostic_policy-82b7321ea41f24d6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.00s
+
+     Running tests/validation_failures.rs (cargo-target/debug/deps/validation_failures-3de5e676ba5917e8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+     Running tests/validation_job_delivery_authority.rs (cargo-target/debug/deps/validation_job_delivery_authority-e5f7c6d57a80f60b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/validation_job_delivery_binding.rs (cargo-target/debug/deps/validation_job_delivery_binding-452f2722936ef137)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/validation_job_delivery_hooks.rs (cargo-target/debug/deps/validation_job_delivery_hooks-cbfc2699ca9ed409)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/validation_job_delivery_model.rs (cargo-target/debug/deps/validation_job_delivery_model-7885868524f0fef8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/validation_job_delivery_syntax.rs (cargo-target/debug/deps/validation_job_delivery_syntax-a88d2e7f558d472c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/validation_jobs.rs (cargo-target/debug/deps/validation_jobs-961e1dcb895f7712)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/validation_local_configuration.rs (cargo-target/debug/deps/validation_local_configuration-b29f6431c4f65491)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/validation_migrations_contract.rs (cargo-target/debug/deps/validation_migrations_contract-5bf7c46e79768cf9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/validation_persistence_contract.rs (cargo-target/debug/deps/validation_persistence_contract-fd6c524f15bcca3a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/validation_project_role_spans.rs (cargo-target/debug/deps/validation_project_role_spans-f7e975f667158c1f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/validation_syntax_modules.rs (cargo-target/debug/deps/validation_syntax_modules-fcab80b7e91bfaf2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+     Running tests/validation_tooling_contract.rs (cargo-target/debug/deps/validation_tooling_contract-bd9d1eb83efafeec)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/validation_types_contract.rs (cargo-target/debug/deps/validation_types_contract-6c0cb8c75df6bea3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 41 filtered out; finished in 0.00s
+

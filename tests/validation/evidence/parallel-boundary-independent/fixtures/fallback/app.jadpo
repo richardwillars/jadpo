@@ -1,0 +1,3 @@
+enum HealthStatus { healthy }
+output PublicHealth { status: HealthStatus }
+route GET /ordinary { auth: none output: PublicHealth action: { return PublicHealth { status: HealthStatus.healthy } } }

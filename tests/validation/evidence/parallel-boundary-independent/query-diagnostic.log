@@ -1,0 +1,11 @@
+error: Authored liveness route is not dependency-free
+ --> probes/diagnostics/query/app.jadpo:4:1
+  |
+4 | route GET /health/live { auth: none query: Q output: PublicHealth action: { return PublicHealth { status: HealthStatus.healthy } } }
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  reason: GET /health/live must remain public and local before readiness or authentication. This target supports only an input-free inline return of an output record containing literals or declared enum constants.
+  decision: Choose a dependency-free public liveness response (human_decision, owner: human)
+  behavioral impact: Compilation is blocked until this problem is fixed.
+  public contract impact: No public-contract change has been applied.
+  rule: toolchain.target_liveness_not_local
+  help: https://jadpo.dev/docs/diagnostics/toolchain.target_liveness_not_local

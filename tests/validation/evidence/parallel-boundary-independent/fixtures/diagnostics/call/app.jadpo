@@ -1,0 +1,4 @@
+function get_status() -> HealthStatus { return HealthStatus.healthy }
+enum HealthStatus { healthy }
+output PublicHealth { status: HealthStatus }
+route GET /health/live { auth: none output: PublicHealth action: { return PublicHealth { status: get_status() } } }
