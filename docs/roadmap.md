@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-22. This page is the only list of outstanding work: the
+**Updated:** 2026-10-23. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here. Finished phases,
@@ -25,6 +25,13 @@ and the full entries of finished chunks, are in the
 ## How a session works
 
 Saying **"continue the roadmap"** starts this routine; it runs unattended.
+
+Richard, 2026-10-23: Phase 9 dependent chunks may build and run their full
+gate on exact unmerged prerequisite commits, merged into their own chunk
+branch in dependency order. Record those commits and dependent pull requests;
+review and PR merges remain pending. Codex opens pull requests without auto
+merge and never merges them. A prerequisite need not reach `main` before a
+dependent chunk can complete its own build and full gate.
 
 1. Take the first chunk below that is not ticked. Its tag (`opus · high`)
    is the model and effort it needs. Say in one line which chunk is next and
@@ -209,7 +216,47 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [ ] **9.1 Benchmarks:** `opus · high` the golden todo plus focused workloads (reads,
   writes, signed-in lists, large rows, cold start) on native, Wasm under
   workerd and on Workers, against an equivalent Bun and TypeScript app and
-  Node; results published with the method.
+  Node; results published with the method. Full scope remains outstanding
+  through 9.1a, 9.1d, 9.1b and 9.1c, in that order; the split changes sizing,
+  not acceptance (2026-10-22). This is an umbrella: sessions take the first
+  unticked concrete subchunk below; tick 9.1 only once all four are complete.
+- [x] **9.1a Instrumentation and focused scaffold**: `tools/bench/README.md`; compiler/runtime §2.11.
+- [ ] **9.1d Golden todo and local comparison:** `opus · high` after 9.1a,
+  implement the actual golden todo and strong TypeScript baseline from
+  `examples/golden-todo` on both sides, establish all 44 acceptance cases,
+  audit the reached request path and fix missing required guarantees, then
+  compare the complete application plus focused reads, writes, signed-in
+  lists, large rows and cold start on native, Wasm under workerd, Bun and
+  Node. Validate responses and persisted state, report p95 and throughput
+  with repeatable method and honest variability. Phase 10.1's golden todo
+  end to end on both targets, its contract cases passing, and independent
+  review of the whole first build remain required, as does Phase 10.2's
+  agent comparison. Do not substitute generic fixtures for this benchmark.
+  Needed before runtime performance changes. Delivered through 9.1d1–9.1d4
+  below; sessions take their first unticked concrete subchunk. The split
+  changes sizing, not the application or comparison scope.
+- [x] **9.1d1 Provisioned external JWT subjects**: compiler/runtime §2.6; area 8, "Ways to sign in" and implementation status.
+- [x] **9.1d2 Golden todo and executable contract**: compiler/runtime §2.6 and §2.11; `examples/golden-todo/README.md`.
+- [x] **9.1d2a Generic runtime contract fixes:** §2.6; areas 5 (Lifecycle), 10 (connection URLs) and 11 (safe key windows and record modes).
+- [x] **9.1d2b Golden todo and all 44 cases**: compiler/runtime §2.11; `examples/golden-todo/README.md`.
+- [ ] **9.1d3 Strong TypeScript golden todo:** `opus · high` after 9.1d2:
+  implement the same versioned application contract and all 44 cases with
+  the specified strict TypeScript, Hono, Zod, Drizzle, CASL and JOSE stack
+  on Bun and Node. Audit the reached request path against Jadpo's required
+  guarantees, including durable authentication, admission, cancellation,
+  transaction retries, idempotency and output validation before commit.
+  Declared schemas alone do not establish runtime response validation.
+  Its final gate may use the exact unmerged prerequisite histories above;
+  dependency review and merges remain separate.
+- [ ] **9.1d4 Local application comparison:** `opus · high` after 9.1a,
+  9.1d2 and 9.1d3: run the complete golden todo plus focused reads, writes,
+  signed-in lists, large rows and cold start on native, workerd, Bun and
+  Node. Use the same validated contracts, authentication and fixtures;
+  check responses and persisted state, and record throughput, p95, cold
+  start, memory, exact sources and repeatable method with honest variability.
+  Tick 9.1d only after all four subchunks meet its original acceptance.
+- [ ] **9.1b Runtime performance:** `opus · high` after 9.1d, measure the same
+  local protocol before and after each improvement.
   From the Phase 6 review: deliveries swept concurrently within each
   sweep, with a bound, and a backlog of 10,000 deliveries among the
   workloads.
@@ -219,7 +266,13 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   the AI budget's reserve and charge each one statement; a write after an
   outside call checking its version in its own `WHERE`; a delivery's
   breaker read joined into its claim.
-- [ ] **9.2 Optimise WebAssembly** `opus · xhigh` until it matches the Bun app on throughput
+- [ ] **9.1c Workers benchmark results:** `opus · high` **needs Richard**
+  after 9.1b: approve access and deployment before using his account. Run the
+  golden todo plus focused workloads on Workers against the equivalent Bun and
+  TypeScript app and Node; results published with the method. Include the
+  10,000-delivery backlog and the runtime improvements' before/after results.
+  Real edge measurement is required before Phase 9 finishes.
+- [ ] **9.2 Optimise WebAssembly** `opus · xhigh` after 9.1a, 9.1d and 9.1b, until it matches the Bun app on throughput
   and p95, or Richard accepts a measured gap. The earlier experiments reached
   about 79% of Bun's throughput and list what to try next
   ([optimisation results](experiments/wasm-optimization-results.md)).

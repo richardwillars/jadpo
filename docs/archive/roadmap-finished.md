@@ -2939,3 +2939,66 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   by no locale; a one-action Workers project declaring no locales
   (release, wasm-bindgen's module, gzip -9) went from 13,017,859 bytes
   to 12,111,677 (3,959,704 to 3,647,526 gzipped), 0.91 MB less.
+
+## Phase 9 — Performance
+
+- [x] **9.1a Instrumentation and focused scaffold:** `opus · high` robust local
+  load/verifier instrumentation, generic focused microbenchmark fixtures on
+  native and workerd against Bun and Node, p95/cold-start/raw method metadata,
+  fault-sensitive correctness checks in the gate. This is not golden-todo
+  conformance or an application speed claim; short smoke runs verify the
+  instruments only. Method and limits in `tools/bench/README.md`.
+  Built: reusable local load/verifier instrumentation and ordinary generic
+  fixtures on native, workerd, Bun and Node; short smoke checks validate the
+  instruments, without a golden-conformance or application-speed claim.
+  Request-path omissions and method in `tools/bench/README.md`; compiler/runtime
+  §2.11 records the scope and limits. The original 9.1 remains outstanding
+  through 9.1d, 9.1b and 9.1c.
+
+- [x] **9.1d1 Provisioned external JWT subjects:** `opus · high` a generic
+  prerequisite of the golden todo: the declared issuer and audience, bounded
+  discovery and public signing keys, area 19 verification, and one current
+  application-user lookup per request. Public HTTPS providers only, with no
+  redirects; trusted issuer metadata may name another public HTTPS key host
+  (Richard, 2026-10-22). Native and compiled workerd tests cover algorithms,
+  typed subjects, provider failures, cancellation and fresh authority.
+  First-sign-in hooks for external subjects and scope declarations remain
+  explicitly unbuilt; no application-specific compiler path.
+
+- [x] **9.1d2a Generic runtime contract fixes:** `opus · high` after 9.1a:
+  fix the area 5 strict retention cutoff for literal and configured periods,
+  and area 11's safe provider-key window for a single changing call, using
+  generic regressions including real delivery replay beyond the safe window.
+  Preserve keyed replay, failure classification, lease fencing and existing
+  single-call applications. A separate branch/worktree and full gate are
+  required. Also validate connection URL structure in shared startup/config
+  checking, retaining valid explicit local-socket forms and reporting every
+  invalid declaration without credentials (Richard, 2026-10-23).
+
+- [x] **9.1d2 Golden todo and executable contract:** `opus · high` after
+  9.1d1, delivered through 9.1d2a and 9.1d2b below. Both remain required;
+  the split isolates generic defects exposed by the executable contract
+  (2026-10-23), without reducing its 44-case scope.
+  Built through 9.1d2a and 9.1d2b: generic runtime fixes, the actual golden
+  application and all 44 shared cases on native and compiled workerd.
+
+- [x] **9.1d2b Golden todo and all 44 cases:** `opus · high` after 9.1d1
+  and 9.1d2a: implement the actual application from `examples/golden-todo`
+  using the current area pages, with all 44 case IDs executable on native
+  and workerd. Preserve the original candidate and make any correction
+  required by a decided area an explicit versioned successor, retaining the
+  case and its policy obligation. Include authentication timelines, physical
+  query accounting, omission-aware patches, pagination, relationships,
+  lifecycle, reminder delivery, preflight and dependency failures.
+  Unsupported cases remain visible and block completion; generic fixtures
+  do not count. Independent application and harness authoring may proceed
+  against an explicitly identified verified prerequisite checkout. Final
+  validation uses its own checkout with the exact prerequisite histories
+  incorporated, under Richard’s stacked-dependency authorization above.
+  Built: the ordinary golden application and versioned executable contract,
+  preserving the original candidate. All 44 cases pass on native and compiled
+  workerd; the full 89-step gate passes. Exact prerequisite histories are
+  incorporated under the stacked-dependency authorization; review and PR merges
+  remain pending. Shared local PostgreSQL connection handling and generic
+  declared-provider readiness metadata close the contract without application-
+  specific compiler paths.
