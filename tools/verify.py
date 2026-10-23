@@ -395,6 +395,8 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
     # a tag of its own, and templates are built under a name of their own
     # and renamed.
     if full:
+        checks.append(Step('warm delivery services: reuse, fresh ticks and durable failure controls', 'tests',
+                           [python, 'tools/bench/delivery_services.py'], postgres=True, alone=True))
         # One wrapper owns npm installation and the whole TS pipeline under an
         # OS lock; the raw-HTTP Node/Bun controllers use this run's PostgreSQL.
         # Real deadline controls and cold type-aware lint checks need the same
