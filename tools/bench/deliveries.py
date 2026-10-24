@@ -172,7 +172,7 @@ def request(port, path, body=None, *, method=None):
         connection.close()
 
 
-def worker(directory, pg, logs, owned):
+def worker(directory, pg, logs, owned, *, extra_bindings=(), runtime_directory=None):
     pool_port = spike.free_port()
     with logs.open('ab') as log:
         pool = subprocess.Popen([str(spike.POOL), '--listen', f'127.0.0.1:{pool_port}',
@@ -182,8 +182,8 @@ def worker(directory, pg, logs, owned):
     spike.wait_for_port(pool_port)
     out = directory / 'workers/build/target/kiosk'
     wrangler = json.loads((out / 'wrangler.json').read_text())
-    folder = directory / 'workerd'
-    folder.mkdir(exist_ok=True)
+    folder = runtime_directory or directory / 'workerd'
+    folder.mkdir(parents=True, exist_ok=True)
     modules = []
     for path in sorted(out.iterdir()):
         if not path.is_file():
@@ -200,6 +200,7 @@ def worker(directory, pg, logs, owned):
     }};''')
     shutil.copy(ROOT / 'tools/workers/ratelimit-binding.mjs', folder / 'ratelimit-binding.mjs')
     bindings = ['(name="DATABASE_URL",hyperdrive=(designator="pg",database="workers",user="jadpo",password="",scheme="postgresql"))']
+    bindings.extend(extra_bindings)
     for limit in wrangler.get('ratelimits', []):
         bindings.append(f'(name="{limit["name"]}",wrapped=(moduleName="bench:ratelimit",innerBindings=[(name="limit",json="{limit["simple"]["limit"]}"),(name="period",json="{limit["simple"]["period"]}"),(name="log",json="false")]))')
     port = spike.free_port()
