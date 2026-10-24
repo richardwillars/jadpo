@@ -1959,6 +1959,29 @@ than asking a person to check the database; anything else a fault with its
 SQLSTATE and message.
 Since chunk 8.1n its connections use TLS as their connection says
 ("PostgreSQL over TLS", below).
+
+Since chunk 9.2a3, `Transaction::query_last_read` is a terminal-read
+capability: its default runs ordinary `query`, preserving other drivers and
+recorded transactions. The store uses it only for a fresh standalone read
+whose plan and context prove no later application SQL: no settings, recheck,
+includes, action, hold/held boundary, handled delivery, background/resumable
+or step state, provider codec, or unproved extension/compound column type.
+The PostgreSQL driver additionally rejects unspecified parameter OIDs and
+falls back after any earlier statement/failure/savepoint. Eligible reads
+queue explicit repeatable-read BEGIN, the unnamed typed SELECT and COMMIT in
+order before awaiting their responses. All three complete; the query result
+and saved terminal result remain separate. Normal policy filtering and value
+interpretation still run before the boundary selects the outcome: missing,
+hidden or invalid stored-value failures win over ending errors, and only a
+successful body exposes a saved commit error. Existing three-attempt retry
+classification/budgets stay in the boundary. A finalizing future owns its
+connection, so cancellation drops it immediately; no later statement can run,
+and only a synchronized successful terminal operation can return the
+connection to the pool. Commit/rollback consume the saved result without
+sending another command. Recorded transactions keep the ordinary default,
+so their physical commit/rollback record stays truthful. This changes no
+Workers invocation/socket ownership or cross-invocation pooling.
+
 `jadpo-host-native` gives `Runtime` (one current-thread tokio runtime
 with a `LocalSet`), `NativeTransport` over tokio's TCP and Unix sockets,
 and `postgres(url)`.
@@ -7824,3 +7847,347 @@ routes across three projects and kiosk memory at 12,058,624 bytes after
 100/500 bookings pass; only established pgvector-version skips remain.
 Measured artifacts stay the exact 288a source above. Subsequent gate-result
 and roadmap/archive completion metadata do not change executable behavior.
+
+
+#### Standalone repeatable-read handoffs (chunk 9.2a3, 2026-10-24 London)
+
+The kept generic terminal-read capability is described in §2.6. It retains
+explicit repeatable read and the ordinary path for every unproved case; no
+route/entity special case, autocommit substitute or language/configuration
+choice is introduced. Three SQL commands remain. The scripted driver proves
+queue order, and source/generated-plan inspection proves the eligible
+production route. Later native wire-exchange diagnostics, recorded below,
+observe 3→2 total exchanges for specific fixtures. Workers exchange/wakeup/socket
+counts and any reduction in SQL-command count remain unmeasured.
+
+Correctness was tested before performance. Commit
+`fd7909541217319567b77d45cce70dd0337a5670` first exposed a sequential ending:
+the bounded server withheld responses until RR BEGIN, the complete unnamed
+parameterized P/B/D/E/Sync group and COMMIT arrived. All three initial controls
+compiled and failed the two-second bound on the old path. A preceding test
+module-path compile error was fixed before that meaningful red. Runtime
+routing/outcome controls followed at `06941ce78224c75248cd50e5605e53516d48bcfe`;
+initial fixture corrections concerned `block_on` result handling and quoted
+SQL expectations. Implementation is `e4dc2d392fc5ea2163d33256d1645c1d6b90bf08`.
+The cancellation fixture originally waited for Terminate while withholding
+pending responses; it was corrected to drain already queued replies before
+observing termination. That was a script deadlock, not a measured speed result.
+
+Focused checks passed: all 35 driver library tests (seven terminal protocol
+controls), nine runtime routing/boundary controls, and live PostgreSQL explicit
+RR/clean same-backend reuse/no named statements. They cover query error plus
+COMMIT's ROLLBACK tag, deferred commit error/disconnect, query-versus-end error
+precedence, no post-terminal SQL, cancellation without replies/during replies,
+all actual three-attempt concurrency budgets, policy-before-decoding, hidden/
+missing/invalid values, no SQL for an invalid cursor, settings/includes/recheck
+extra SQL, held/handled/background/resumable exclusions, extension parameters
+and compound/provider-coded columns, and truthful recorded rollback. An
+initial live-test command named a nonexistent `postgres` integration target;
+the corrected `integration postgres::a_terminal` command passed. Affected
+all-target Clippy and formatting passed; its initial `expect` lint was replaced
+with ordinary fallback. Final test-only `c9d5c98b` adds cancellation immediately
+after the first poll, before waiting for server enqueue, and corrects the
+extension fallback script's ReadyForQuery status to T. All seven terminal tests
+and affected all-target Clippy passed again. No one-second action retry rule
+was added: area 6 notes that bound is not built; the actual three-attempt budget
+is preserved.
+
+The read-only production witness decoded the exact built `plan.bin` rather
+than inferring eligibility from a recorded differential run. Golden
+`GET /todos/{todo_id}` has no settings/recheck/includes/keys, built-in UUID,
+bool, text, enum and instant types; focused `GET /api/samples/{sample_id}` has
+UUID/text columns and no extra SQL. HTTP Run::Query goes directly to store in
+a fresh context and the generated plan uses `JsonCodecs.coder=None`.
+Golden `GET /users/{user_id}/todos` has includes and stays ordinary. Entire
+baseline/candidate `RuntimePlan`s compare equal after normalizing precisely
+build identity, folder-derived `providers.application` (historical `workers`
+versus `golden`/`focused`), and focused OpenAPI `info.title` (`workers` versus
+`focused`). All remaining plan fields, including auth, policy, quotas,
+deadlines, schemas and configuration, match. Golden application bytes are
+identical; focused declaration ordering/whitespace differs but the normalized
+whole-plan equality covers its semantics. No measured read invokes a provider
+or OpenAPI. This is a source/plan proof, not an operation-count capture.
+
+The bounded screen extends existing `worker_screen.py`: old s/2/3 defaults and
+24-cell semantics stay unchanged; explicit `--profiles s` imports a qualified
+historical reference solely from immutable saved files. The reference producer
+is `288a677879092449b25b182ea72969e046c41ab8`, tree
+`62f889aad1b25ea77c09fe5fd515b5319fcf70da`, original full-176 build SHA
+`b1652f731c9ec1a097d63e09359ee70703d0e2b5aa5b5f84a2256d8f12772228`.
+Its full qualification remains historical. The source worktree is a2; its live
+output paths were overwritten by later qualification, so they are never an
+import fallback. The focused actual-served Wrangler comes from accepted raw
+`capacity-awake-none-pg-off-c16-r3/results.json`, SHA
+`c360d47969bed02165943d6479e7a6f8823e32ab8d651fda607d9c992456225d`:
+first intended focused Workers row, ascii-small round 1, saved
+`003-host/wrangler.json`, SHA
+`a9921c8e4ab45d7d4dd41e37b61d1de7d314cceb749ecf85dfcd593e13db95d5`.
+Its source/build linkage and all four served-module mappings/hashes must match
+the qualified producer. Golden Wrangler is saved artifact 0009, SHA
+`b76750000fa904249f0d3e35a45b9df6b93b8f6da6d9f9e43faa937c9a38c7cc`.
+Runner-consumed main/date/rate-limit fields match the candidate; source rules
+are additionally compared. Differing local Worker names do not affect the runner. No named diagnostic Wasm is imported.
+
+Unchanged compiler/schema/application/security/TS/load input prefixes, actual
+workerd and signing-helper binaries, emitted JS, npm dependencies, current
+migration CLI, current tracked HEAD/tree/modes/bytes, saved build inputs,
+actual served modules, exact full bodies, persisted state, credentials, quotas
+and durations-off controls are guarded. New unit controls reject incomplete or
+unqualified historical records, missing maps, bad first matching served rows,
+source/artifact drift, wrong protocol/profile choices and final snapshot drift.
+The qualifier additionally rejects all tracked source/mode changes except
+exactly its own two harness/test files. No source guard is bypassed or old
+manifest rewritten. Earlier live paths may later change; saved copies are
+historical authority. The current migration CLI applies unchanged schema and
+is identified separately from the historical Worker producer.
+
+All attempts are retained, without favorable retries:
+
+- `terminal-acb15caf-screen1`, source
+  `acb15caff7338ffc13a653c9230a7fbfbdfa5b44`, tree
+  `bccb66c5b6fcfca8657b0fce02e7f5203d9f4f87`: successful build, then the first
+  reference setup failed because imported golden lacked Wrangler. One failed
+  row, no load start or requests, and no speed result. Its frozen acb harness
+  completed the postguard at failure time. The later stricter Wrangler validator
+  does not retroactively validate that old manifest; original manifest/raw remain
+  untouched. The importer was fixed using immutable actual-served provenance,
+  not a historical live-output or named-Wasm fallback.
+- `terminal-2a2eb9a9-screen2`, source
+  `2a2eb9a92879b1e2236c4d377c7525abc8b7b10d`, tree
+  `435b85d733e127b035d35b87ff122a75348d6c2a`: build only, no load. Child-executable
+  audit found the signing helper missing from reused-tool guards. The inherited
+  final-gate helper differed from the qualified timed helper. Own helper was
+  restored from verified saved artifact 0030 (SHA
+  `876e3ebab3cd80e1191c8a7679e57a1d82b9ae177c8236d35dea500518480985`)
+  and explicitly pinned before a fresh build; a2 was never modified.
+- `terminal-adc32128-screen3`, source
+  `adc32128d4ce2df4ac0dc8f83af30318d0ad2d19`, tree
+  `b4234b8b0cf3cf30da626eb4d1b7c30aebfd3fb4`: both no-load reference setups
+  pass, then the complete predeclared 18 cells pass (two reversed rounds,
+  three workloads × reference/Os/Bun, c16, 2 seconds + 1 warmup, 2,048
+  credentials). All rounds appear below. No inspector and PostgreSQL durations
+  off on both runtimes; parent/reviewer host work stopped during load.
+- `terminal-c9d5c98b-confirm`, source
+  `c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0`, tree
+  `14452429a83e908b2506bd33e3522b880c07fdb6`: test-only cancellation refinement,
+  fresh guarded build with exactly identical production Wasm/plan hashes,
+  both no-load setups pass, then all 27 predeclared cells pass (three alternating
+  forward/reverse rounds, 8 seconds + 2 warmup; otherwise identical controls).
+
+Each table cell is **rps / p95 ms / service CPU ms per request**. Service CPU
+excludes PostgreSQL and the separate pool helper; helper CPU and all cold,
+first-response, RSS, load CPU and host observations remain in every raw row.
+No inspector/PG duration subtraction or operation-count inference is made.
+
+Short screen, all 18 cells:
+
+| Workload / round | Reference | Os candidate | Bun control |
+| --- | --- | --- | --- |
+| golden-read / 1 | 2023.205 / 9.503 / 0.5672 | 2270.689 / 8.965 / 0.4483 | 6304.548 / 3.607 / 0.1957 |
+| golden-read / 2 | 2018.869 / 9.521 / 0.5017 | 2262.669 / 8.798 / 0.4500 | 6311.397 / 3.654 / 0.1955 |
+| ascii-large / 1 | 1182.144 / 19.829 / 0.8762 | 1253.510 / 20.149 / 0.8098 | 5703.413 / 5.025 / 0.2259 |
+| ascii-large / 2 | 1191.092 / 19.868 / 0.8657 | 1278.024 / 18.858 / 0.8034 | 5909.912 / 4.190 / 0.2197 |
+| unicode-large / 1 | 743.874 / 33.931 / 1.3609 | 786.218 / 26.162 / 1.3068 | 1608.323 / 12.395 / 0.7368 |
+| unicode-large / 2 | 744.792 / 28.179 / 1.3867 | 781.266 / 26.865 / 1.3032 | 1627.356 / 12.309 / 0.7239 |
+
+Confirmation, all 27 cells:
+
+| Workload / round | Reference | Os candidate | Bun control |
+| --- | --- | --- | --- |
+| golden-read / 1 | 2073.491 / 9.383 / 0.4839 | 2314.325 / 8.794 / 0.4330 | 6411.293 / 3.491 / 0.1585 |
+| golden-read / 2 | 2075.051 / 9.518 / 0.4811 | 2259.672 / 9.142 / 0.4428 | 6485.868 / 3.478 / 0.1565 |
+| golden-read / 3 | 2225.580 / 8.753 / 0.4492 | 2296.113 / 8.846 / 0.4359 | 6465.912 / 3.477 / 0.1575 |
+| ascii-large / 1 | 1185.300 / 21.919 / 0.8512 | 1280.498 / 19.884 / 0.7901 | 6156.098 / 3.619 / 0.1809 |
+| ascii-large / 2 | 1233.556 / 20.192 / 0.8230 | 1301.450 / 18.771 / 0.7777 | 6170.387 / 3.620 / 0.1799 |
+| ascii-large / 3 | 1224.808 / 20.613 / 0.8269 | 1303.612 / 18.665 / 0.7759 | 6197.705 / 3.598 / 0.1793 |
+| unicode-large / 1 | 754.364 / 30.435 / 1.3397 | 805.471 / 29.696 / 1.2546 | 1636.014 / 12.255 / 0.7151 |
+| unicode-large / 2 | 763.794 / 28.122 / 1.3278 | 793.920 / 26.188 / 1.2761 | 1635.824 / 12.243 / 0.7130 |
+| unicode-large / 3 | 755.513 / 30.888 / 1.3344 | 795.866 / 31.035 / 1.2682 | 1635.600 / 12.206 / 0.7154 |
+
+Confirmation medians are signed 2,075.05→2,296.11 rps (**+10.65%**), ASCII
+1,224.81→1,301.45 (**+6.26%**), Unicode 755.51→795.87 (**+5.34%**).
+Corresponding median p95 changes are −5.72%/−8.94%/−2.43%, CPU/request
+−9.40%/−5.95%/−4.96%. Bun median controls are 6,465.91/6,170.39/1,635.82
+rps. Per-round reference→candidate throughput divided by the same-round Bun
+control is signed .3234→.3610/.3199→.3484/.3442→.3551, ASCII
+.1925→.2080/.1999→.2109/.1976→.2103, Unicode
+.4611→.4923/.4669→.4853/.4619→.4866. Short-screen median gains were
++12.15%/+6.67%/+5.29%; their Bun controls and every adverse row stay above.
+The candidate is kept for this consistent bounded signal, with no universal
+improvement claim or favorable cell rerun.
+
+Adverse observations are retained: short ASCII round-1 p95 **+1.61%**;
+confirmation signed round-3 **+1.06%**, Unicode round-3 **+0.48%**. Signed
+confirmation peak RSS rises from reference **290.0–302.0 MB** to candidate
+**317.8–318.0 MB**; no memory-leak or memory-neutrality claim follows. ASCII
+peaks are reference 391.9/443.1/428.9 versus candidate 393.6/373.9/374.4 MB,
+Unicode 340.0/329.9/333.9 versus 378.0/341.3/324.4 MB. Confirmation cold/first
+medians (reference→candidate) are signed 74.721/31.025→63.095/28.357 ms,
+ASCII 59.358/34.100→58.548/35.753, Unicode 61.234/34.484→59.605/33.533;
+these are setup observations with substantial round variance, not a cold-start
+optimization claim. Signed reference throughput rose in confirmation round 3;
+Bun was steadier, but time/host order still limits causal attribution.
+
+All 45 measured rows have zero load/warmup errors, invalid bodies or unexpected
+statuses and zero persisted read delta. Full-body identities match across all
+variants/rounds: signed 166 bytes SHA
+`bc539cfd278da650f245a34c8e457dcfb78b1873c5cd96c7eb36d9a05f576acd`,
+ASCII 65,610 bytes SHA
+`e6635d868a17c9b9132826291a9f1b28a1d34d29bc2602ba736fa3152000599a`,
+Unicode 152,992 bytes SHA
+`be8a15fe78ae21f7343cff8cda046d8766ec6b5f709d47f9e9baf50488ebb127`.
+Clock wall gaps are short 4.884–262.217 ms (the maximum is signed reference
+round 1, whose higher CPU also stays in the table), confirmation 4.445–12.215
+ms; all pass the declared 1-second bound. Available `pmset -g log` observations
+have no Sleep/DarkWake events in either campaign. Transient own `caffeinate -i`
+wrappers and campaign database/server/helper/build processes were reaped before
+releasing quiet; a preexisting user caffeinate was untouched. Broader inspection
+after the failed gate found an earlier focused-test PostgreSQL server, PID
+48713, in a temporary path outside the worktree filter. Its only test database
+was `terminal_session`. Both campaigns' start/end inventories retain that same
+PID and five background children at 0.0 snapshot CPU. This is a disclosed ambient
+process limitation: endpoint snapshots do not prove continuous idle state or
+exclude intervening maintenance. Earlier claims that every owned process had
+been reaped were incomplete. The exact server was stopped with pg_ctl fast/wait;
+the new focused test now owns a local Server whose Drop runs, and focused CLI
+diagnostics use an explicitly owned shared server closed/waited in finally.
+The captures are retained with this limit; no automatic favorable rerun occurred.
+
+Shipping Os/fatLTO/CGU1 and runtime versions stay fixed (workerd 2026-10-07,
+Bun 1.2.20, Node 24.18.1, PostgreSQL 16.3, Rust 1.99.0 selected through
+Rustup proxy paths, Python 3.14.0). Inherited encoded/ordinary Rust flags and
+target override are unset; CARGO_INCREMENTAL=0, CARGO_PROFILE_DEV_DEBUG=0,
+CARGO_BUILD_JOBS=4, SOURCE_DATE_EPOCH=0 and own scoped XDG
+`target/jadpo-compiled/gate-cache-1db7e872` are recorded. The inactive a2 target
+was CoW-cloned into the sibling a3 worktree, dependencies reused only with
+hash guards, and no a2 source/cache/raw/snapshot was written. Outer selectors
+and effective Cargo argv/flags are recorded, not an independent child compiler
+execution trace. Size proxies (not provider upload sizes):
+
+| Module | Reference→candidate Wasm bytes | gzip6 bytes | gzip9 bytes |
+| --- | --- | --- | --- |
+| golden | 7,317,350→7,325,885 | 2,683,087→2,690,127 | 2,669,630→2,677,724 |
+| focused | 7,355,942→7,364,442 | 2,656,047→2,661,906 | 2,644,581→2,649,425 |
+
+All candidate builds retain exact Wasm SHA golden
+`086870ded80a3444724ec2909b4652c836b60f6d6bdc8e113268fa969e5a0226`,
+focused `b10c4e815a0f55a5a09d0bd87f73076fc02dfdf6420c60854043133c41eecc8f`;
+plans respectively
+`e0dfce4ec7b1c67da6850fa9276ca5a00c79270b1a2f85994e60084cd61639d6` /
+`3e7f8d173226423e6d72672786fc3d153771030f62033fdbaa4a3fef253bbd82`.
+
+Selected qualification is deliberately split. At
+`26b91df0bf9b8460eb64ea285a6bacd40d038048`, tree
+`48b7a3feda97a58c7b97db4f5805b8841022d112`, exact timed c9d production files
+first pass guarded owner bodies, concealed foreign/missing 404s, absent/forged
+credentials, ordinary list/includes, focused large Unicode body, existing
+signed-owner/expired opaque credential/persisted-write controls, and unchanged
+business/sample rows. All served originals and saved copies are retained.
+Then all **176 current-source shared contract cases pass**, 44 each native,
+workerd, Bun and Node. The test-control workerd/native wrappers use recorded
+ordinary fallback; these 176 are not relabelled optimized-production coverage.
+Scripted driver/runtime tests cover error/cancellation/eligibility, while the
+separate actual production acceptance and source/plan witness cover the exact
+optimized host path. Only `worker_screen.py` and its unit test differ from timed
+producer, checked by every other tracked hash and mode. Before 176 the original
+timed helper/build/dependency postguard passes; conformance rebuilds its helper
+and records the new SHA
+`70adc6896ca8aa5c6fac1e922c75d69246bc1d91f92abd2fa1d674b415a1db6f`
+in a separate immutable snapshot. All 13,171 timed saved inputs, timed modules,
+actual served files, source and original build manifest remain guarded afterward.
+The completed qualification took 354.27 seconds, not a performance measurement.
+No extra named/profiling/native-performance builds or complete four-runtime
+performance matrix were run for this experiment; the latter remains deferred.
+
+The following paths are under `tools/bench/work/worker-screen/` in the sibling
+a3 worktree. Each original file is retained; no failed or earlier manifest/raw
+was patched. Build identities also contain the full current/historical source
+maps, dependencies, wrapper flags and saved artifact mappings.
+
+| Path | SHA-256 |
+| --- | --- |
+| `terminal-acb15caf-screen1/build.json` | `39a4300a21a487158839af91c5bd49760bcdcbad4155007dabf364c2089cc469` |
+| `terminal-acb15caf-screen1/screen18-none-pg-off-c16-r2/results.json` | `1866d67c7bd5ab3ebd2cf84e586c39316172f27d4c6b1ebf5488cd4f6b3197e0` |
+| `terminal-2a2eb9a9-screen2/build.json` | `45fa37ad159d1981a3e9a3ff332586c018f82a95b391bed142fce6b135edaeac` |
+| `terminal-adc32128-screen3/build.json` | `1a39e776e314590d9548b147d31aac82125f2db3a054a1fdda417ca0cd8e72a1` |
+| `terminal-adc32128-screen3/setup-smoke/results.json` | `af23e3f34ffb12e955fa8741740a4abab8aa3e02f8acc492830fdd39fdbd217b` |
+| `terminal-adc32128-screen3/screen18-none-pg-off-c16-r2/results.json` | `de9198080d5ebd81243ab3a99f9fceafa8e9090a7f7a0641a54d15db7f927bd1` |
+| `terminal-c9d5c98b-confirm/build.json` | `146a231c0194bb7e57ccbe2002f66b8fedbaca2d67785bd2cfd7656060e63e69` |
+| `terminal-c9d5c98b-confirm/setup-smoke/results.json` | `cadede773ab80a61422df9e021c37bf858081d1dbc7cdc269d576fc2564cd378` |
+| `terminal-c9d5c98b-confirm/confirmation27-none-pg-off-c16-r3/results.json` | `512f07b8d83852a7fc3c54a7059b11a3489b21caa697f7a2581072be32fc0d4f` |
+| `terminal-c9d5c98b-confirm/qualification-26b91df0/results.json` | `ebca0b7bbdb36627d8a349ae96268ddac60c1f9d356ae13620e42b71f190b380` |
+
+The first final full gate at `26e583721df16efbfb5fe086f60686ea6ed914c5`,
+tree `d3a4e3633f8c71891978f18ea67b025d450f7f5f`, failed **27/93 steps in
+285 seconds** (66 passed). Its direct task stdout and final summary are retained;
+large failure output hit terminal truncation, so the early count failures were
+reproduced separately before changing assertions. The example-name checker
+reported nine uses of fixture `packet` plus fixture strings Item/Missing: it
+scans every src file and recognizes only inline cfg(test) modules. Enclosing
+the two actual test implementations in inline cfg(test) modules keeps the
+scanner unchanged and passes all 3,176 names/94 type-name controls.
+
+The unchanged-production focused repro then captured native external_tokens
+and hidden-read assertions **left 2, right 3**, each cargo exit 101. The former
+counter increments the first write after a complete PostgreSQL ReadyForQuery,
+buffering protocol messages independently of TCP fragmentation. The latter is
+a weaker first-write-after-any-received-bytes proxy. The current native /self
+fixture therefore has one authority exchange plus one queued terminal business
+transaction exchange; the hidden 404 fixture also observes two total exchanges.
+Exact expected counts were updated to two with their response/policy assertions
+intact; both focused groups pass, including all external credential algorithms.
+These diagnostics do not count Workers wakeups/calls or imply fewer SQL commands.
+
+The first gate also exhausted storage in PostgreSQL, compiler, npm and workerd
+checks despite roughly 12 GB free beforehand; cascading failures were not
+accepted as a successful gate. After all owned processes were reaped, a protected
+inactive-target cleanup restored about 45.4 GiB actual free space. Focused retry
+then passed all nine runtime/seven driver controls, the live explicit-RR test
+with its owned server, both native count groups, unchanged example-name scanner
+and affected four-crate all-target Clippy. No production implementation changed:
+only test enclosure, exact count expectations and focused-server lifetime changed.
+Earlier 176/source and exact timed-production qualification remain separately
+identified above.
+
+The second full gate, at `6f55028e14aa472e72228d8eefe8d4074c850495`, tree
+`716b71f3d27716363d3c070bafbab1e4ea28f91b`, passed **92/93 steps in 706
+seconds**. Its sole failure was existing native HTTPS reuse test
+`fetch::an_https_connection_is_kept_and_used_again`, fetch.rs:360:
+`NotSent("no connection in time")` within a five-second request budget.
+NativeFetch can produce that message from connection setup or sender readiness;
+the cause remains unlocalized. This is an observed intermittent timeout,
+not proof of a particular load, DNS or TLS cause. All database groups, both
+44-case Jadpo targets, TypeScript conformance, the 264-project corpus, wasm,
+Workers deployments/routes and watch checks passed.
+
+Without changing the native fetch implementation, fixture or five-second
+budget, five isolated package-artifact invocations pass (0.01 seconds each)
+and its complete 15-test integration suite passes in 0.61 seconds. Because a
+package-only Cargo build has different feature unification, the same bounded
+five-plus-full-suite control was also run directly on the preserved workspace
+artifact `integration-15b4f3b8efc27dd5`, SHA
+`8e2eae8afdf8c262e28c4176a27dcac9fdce4ae582633d50bf6379b37e53daf0`:
+five pass at 0.01 seconds each, all 15 pass in 0.61 seconds. Both diagnostics
+and all owned processes were reaped. These focused passes do not make the
+failed full gate pass or explain its timeout. Production and test code remain
+unchanged for the next full-gate retry; only these failure facts are added.
+No performance or 176 qualification rerun substitutes for that required gate.
+
+Inactive checkout retirement preserves every ignored benchmark record and
+protected artifact under `/Users/richardwillars/Documents/Codex/jadpo-benchmark-archive/`;
+original roots remain compatible aliases, so recorded historical paths still
+resolve. The active a3 source/cache is untouched.
+
+The final normal `python3 tools/verify.py` gate passed **93/93 steps in 360 s**
+at `0fceca62204cdc74a813871b3cf4298ea74c1c5c`, tree
+`bdbec09f4b1ba6f2732d8722e6f2c68ffad46e13`, exit 0/reaped. It includes the
+unchanged native HTTPS test, all 264 corpus projects / 526 tests / 5,832 typed
+comparisons, 44 native and 44 workerd contracts, TypeScript conformance,
+Workers deployments/routes and watch checks. Kiosk memory stayed 12,058,624
+bytes after both 100 and 500 bookings. No test skip, budget relaxation or
+production/test implementation change intervened between the second failure
+and this successful retry; only failure facts were added. Its earlier timeout
+remains unexplained. All owned services, temporary PostgreSQL instances and
+build/helper sessions were reaped; the pre-existing user caffeinate and app
+processes were untouched. Subsequent edits record completion metadata only.
+The code PR is manual; no merge or auto-merge is authorized.
