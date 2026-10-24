@@ -241,6 +241,9 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   TypeScript app and Node; results published with the method. Include the
   10,000-delivery backlog and the runtime improvements' before/after results.
   Real edge measurement is required before Phase 9 finishes.
+  Richard’s unattended instruction (2026-10-24) defers account/deployment
+  actions while independent local 9.2 work continues; this acceptance remains.
+
 - [ ] **9.2 Optimise WebAssembly** `opus · xhigh` after 9.1a, 9.1d and 9.1b, until it matches the Bun app on throughput
   and p95, or Richard accepts a measured gap. The earlier experiments reached
   about 79% of Bun's throughput and list what to try next
@@ -259,6 +262,22 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   cargo features chosen from the plan, as `postgres` and `smtp` are;
   validators' patterns compiled when first used if 9.1 shows cold start
   pays for them.
+- [x] **9.2a1 Current request-path and large JSON profiling**: compiler/runtime §2.11, "Whole-request CPU attribution"; `tools/bench/README.md`.
+- [ ] **9.2a2 Bulk JSON string writing:** `gpt-6.1-sol · xhigh`
+  after 9.2a1, continuing the same unattended local 9.2 model batch.
+  Optimise the measured generic JSON string writer using safe bulk UTF-8 spans
+  and fewer output-buffer allocations. Preserve area 19's byte-identical compact
+  JSON, existing escape spelling, Unicode and appended-output behaviour; leave
+  authentication, policy, quotas, boundary normalisation and validation intact.
+  Start with independent canonical/round-trip and deterministic allocation
+  controls, including dense and late escapes. Compare fresh baseline/candidate
+  builds with the same final harness, Workers against strong Bun first, retaining
+  complete body/state checks and a small signed-read regression guard. Throughput
+  and p95 runs omit inspector and PostgreSQL duration logging on both sides;
+  keep diagnostic profiles separate. Record exact sources/artifacts, every round,
+  failed/adverse attempts, CPU scopes and remaining limits in §2.11 and the bench
+  README. Pass the full gate and open a separate manual PR without merging.
+  The complete four-runtime app comparison remains deferred until more progress.
 - [ ] **9.2b One passkey implementation** `opus · xhigh`: 8.2l's pure-Rust
   checks used by both hosts, `webauthn-rs` kept only as a test reference,
   the test authenticator on `p256`, so no native deployable links
